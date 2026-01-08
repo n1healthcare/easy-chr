@@ -119,6 +119,7 @@ export class GenerateRealmUseCase {
           *   FontAwesome (Free v6.x)
           *   Chart.js (v4.x)
           *   Google Fonts (Inter or Roboto)
+          *   Marked.js (https://cdn.jsdelivr.net/npm/marked/marked.min.js) - FOR MARKDOWN RENDERING
       3.  **Mandatory Structure:**
           *   **Hero Section:** Title, Executive Summary, and a "Key Vitals" grid.
           *   **Patient Advocacy:** A dedicated section for "Questions for Your Doctor" (Verbatim).
@@ -129,10 +130,48 @@ export class GenerateRealmUseCase {
           *   Auto-detect data in the text (tables, lists of numbers).
           *   Generate \`<canvas>\` elements and write the corresponding Chart.js configuration scripts at the bottom of the body.
           *   Use "doughnut" for composition, "line" for trends, "bar" for comparisons. Colors should match the dark theme (neon colors).
-      5.  **Interactivity:**
-          *   Smooth scrolling navigation.
-          *   Hover effects on cards (scale up, glow).
-          *   Chart tooltips. 
+      5.  **Interactivity & "Dig Deeper" Feature:**
+          *   **The Feature:** Every major content section MUST have a "Dig Deeper" button.
+          *   **Behavior:** When clicked, this button sends the section's text to the backend to perform live Google Search grounding.
+          *   **Implementation:**
+              *   Add a button: \`<button onclick="digDeeper('section-xyz', this.parentElement.innerText)" class="...">🔍 Dig Deeper</button>\`
+              *   Add a hidden container below the section: \`<div id="research-section-xyz" class="hidden mt-4 p-4 bg-slate-800/50 rounded-lg border border-indigo-500/30"></div>\`
+              *   **Script:** You MUST include this exact script at the bottom of the body:
+                \`\`\`javascript
+                async function digDeeper(sectionId, contextText) {
+                    const container = document.getElementById('research-' + sectionId);
+                    if (!container.classList.contains('hidden')) {
+                        container.classList.add('hidden'); // Toggle off
+                        return;
+                    }
+                    container.classList.remove('hidden');
+                    container.innerHTML = '<div class="animate-pulse text-indigo-400">📡 Contacting Medical Research Agent... (Searching Google)</div>';
+                    
+                    try {
+                        const response = await fetch('/api/research', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ sectionContext: contextText })
+                        });
+                        
+                        const reader = response.body.getReader();
+                        const decoder = new TextDecoder();
+                        let markdownBuffer = '';
+                        container.innerHTML = ''; // Clear loading
+
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            const chunk = decoder.decode(value);
+                            markdownBuffer += chunk;
+                            // Real-time markdown rendering
+                            container.innerHTML = marked.parse(markdownBuffer);
+                        }
+                    } catch (err) {
+                        container.innerHTML = '<div class="text-red-400">Research Agent Error: ' + err.message + '</div>';
+                    }
+                }
+                \`\`\`
           
       **Response Format:**
       ONLY return the raw HTML code. Do not wrap in markdown blocks if possible, but if you do, I will strip them. NO PREAMBLE.
@@ -189,4 +228,3 @@ export class GenerateRealmUseCase {
     yield { type: 'result', url: `/realms/${realmId}/index.html` };
   }
 }
-    
