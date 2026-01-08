@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@google/gemini-cli-core/*": ["./vendor/gemini-cli/packages/core/src/*"]
+    }
+  },
+  "include": ["**/*.ts", "./vendor/gemini-cli/packages/core/src/**/*.ts"]
+}
