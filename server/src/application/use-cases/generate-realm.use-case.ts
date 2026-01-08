@@ -65,6 +65,7 @@ export class GenerateRealmUseCase {
       console.error("Specialists failed:", error);
       yield { type: 'log', message: `❌ Specialists failed: ${error}` };
       yield { type: 'step', name: 'Specialist Agents', status: 'failed' };
+      return; // STOP EXECUTION
     }
 
     // PHASE 2: SYNTHESIZER (Master Report)
@@ -80,6 +81,7 @@ export class GenerateRealmUseCase {
       console.error("Synthesizer failed:", error);
       yield { type: 'log', message: `❌ Synthesizer failed: ${error}` };
       yield { type: 'step', name: 'Synthesizer Agent', status: 'failed' };
+      return; // STOP EXECUTION
     }
 
     // PHASE 3: BUILDER (HTML Generation)
@@ -103,6 +105,13 @@ export class GenerateRealmUseCase {
       *   **Components:** Glassmorphism cards (translucent backgrounds with blurs), glowing borders, modern typography.
       *   **Visuals:** Every section MUST have an icon (FontAwesome). Every numerical dataset MUST be visualized (Chart.js).
       
+      **CRITICAL CONTENT RULES (ZERO DATA LOSS POLICY):**
+      1.  **ZERO DATA LOSS:** Explicitly state that every list item, every question, and every recommendation in the markdown MUST appear in the HTML.
+          *   *Example:* If the report lists 3 specific questions for the doctor, you MUST create a "Physician Strategy" section with those exact 3 questions.
+          *   *Example:* If the report lists 8 supplements, the HTML must display 8 supplement cards. 6 is a failure.
+      2.  **VERBATIM TRANSFER:** You are a mirror. Sections like "Questions for Your Doctor" or "Q&A" must be copied word-for-word. Do NOT summarize or "gist" it.
+      3.  **VISUAL COMPLETENESS:** Ensure that if a system (e.g., "Neuro-Cognitive" or "Energy") is mentioned in the text, it MUST have a corresponding visual element or section card. Do not skip a system just because it is short.
+      
       **Strict Technical Requirements:**
       1.  **Output:** STRICTLY valid HTML5 containing CSS and JS. Start with \`<!DOCTYPE html>\`.
       2.  **Libraries (Use CDNs):**
@@ -110,13 +119,12 @@ export class GenerateRealmUseCase {
           *   FontAwesome (Free v6.x)
           *   Chart.js (v4.x)
           *   Google Fonts (Inter or Roboto)
-      3.  **Content Handling:**
-          *   **DO NOT SUMMARIZE.** Expand on the report details.
-          *   **Structure:**
-              *   **Hero Section:** Title, summary, and a "Key Vitals" grid (use cards with big numbers/icons).
-              *   **Timeline:** If dates exist, build a vertical timeline component.
-              *   **Deep Dive Sections:** Create distinct, scrollable sections for "Analysis", "Relationships", etc.
-              *   **Gallery:** If images exist in the markdown (e.g. \`![Alt](src)\`), display them in a masonry grid or styled frame.
+      3.  **Mandatory Structure:**
+          *   **Hero Section:** Title, Executive Summary, and a "Key Vitals" grid.
+          *   **Patient Advocacy:** A dedicated section for "Questions for Your Doctor" (Verbatim).
+          *   **Timeline:** Vertical timeline component for the health journey.
+          *   **Deep Dive Sections:** Create distinct sections for EACH system analyzed (Metabolic, Gut, Neuro, etc.).
+          *   **Action Plan:** Detailed dietary, lifestyle, and supplementation grids (Full Protocol).
       4.  **Charts:**
           *   Auto-detect data in the text (tables, lists of numbers).
           *   Generate \`<canvas>\` elements and write the corresponding Chart.js configuration scripts at the bottom of the body.
@@ -124,8 +132,8 @@ export class GenerateRealmUseCase {
       5.  **Interactivity:**
           *   Smooth scrolling navigation.
           *   Hover effects on cards (scale up, glow).
-          *   Chart tooltips.
-      
+          *   Chart tooltips. 
+          
       **Response Format:**
       ONLY return the raw HTML code. Do not wrap in markdown blocks if possible, but if you do, I will strip them. NO PREAMBLE.
     `;
