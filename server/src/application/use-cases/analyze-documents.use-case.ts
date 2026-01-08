@@ -10,10 +10,6 @@ export class AnalyzeDocumentsUseCase {
     console.log(`Specialists: Analyzing ${extractedFilePaths.length} documents...`);
 
     // We run these SEQUENTIALLY to avoid overwhelming the LLM provider/proxy (500 errors)
-    console.log("-> Running Facts Agent...");
-    yield "Facts Agent: Extracting hard numbers and metrics...";
-    await this.runFactsAgent(realmDir, extractedFilePaths, userPrompt);
-    
     console.log("-> Running Analysis Agent...");
     yield "Analysis Agent: Identifying trends and anomalies...";
     await this.runAnalysisAgent(realmDir, extractedFilePaths, userPrompt);
@@ -21,39 +17,6 @@ export class AnalyzeDocumentsUseCase {
     console.log("-> Running Relationships Agent...");
     yield "Relationships Agent: Connecting dots and building timelines...";
     await this.runRelationshipsAgent(realmDir, extractedFilePaths, userPrompt);
-  }
-
-  private async runFactsAgent(realmDir: string, filePaths: string[], userPrompt: string): Promise<void> {
-    const outputPath = path.join(realmDir, 'facts.md');
-    const systemPrompt = `
-      You are a **Clinical Data Auditor** working for a top-tier Functional Medicine clinic.
-      
-      **User's Specific Focus:** "${userPrompt}"
-      (Pay extra attention to data points relevant to this focus).
-
-      **Goal:** Meticulously extract all clinical data points to build a "Patient Truth" database. We cannot afford to miss a single biomarker, date, or medication.
-      
-      **Extraction Rules:**
-      1.  **Biomarkers:** Extract Value, Unit, AND Reference Range if available. (e.g., "HbA1c: 5.7% (Ref: <5.7%)").
-      2.  **Context:** Note if the patient was fasting, non-fasting, stressed, or post-operative during the test.
-      3.  **Citations:** Every fact must link back to its source file: \`[Source: Filename.pdf]\`.
-      4.  **Medications/Supplements:** List usage, dosage, and frequency.
-      5.  **Dates:** Standardize all dates to ISO 8601 (YYYY-MM-DD).
-      
-      **Output Structure:**
-      ## Biomarkers (Categorized by Lipid, Metabolic, Hormone, etc.)
-      - [Date] LDL Cholesterol: 130 mg/dL (High) [Source: ...]
-      
-      ## Medications & History
-      - [Date] Started Atorvastatin 10mg [Source: ...]
-
-      **CRITICAL INSTRUCTION - THINKING PROCESS:**
-      1.  First, THINK about the extraction strategy and identify potential data gaps.
-      2.  When you are ready to output the final Markdown, you MUST output the separator: \`---END_OF_THOUGHT---\`.
-      3.  Everything AFTER that separator will be saved as the final file.
-    `;
-
-    await this.generateAndSave(systemPrompt, 'facts-agent', filePaths, outputPath);
   }
 
   private async runAnalysisAgent(realmDir: string, filePaths: string[], userPrompt: string): Promise<void> {
