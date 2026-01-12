@@ -46,9 +46,9 @@ export class AnalyzeDocumentsUseCase {
       *   **Trajectory:** "If unchanged, patient is heading towards..."
 
       **CRITICAL INSTRUCTION - THINKING PROCESS:**
-      1.  First, THINK deeply about the patterns, correlations, and future implications.
-      2.  When you are ready to output the final Markdown, you MUST output the separator: \`---END_OF_THOUGHT---\`.
-      3.  Everything AFTER that separator will be saved as the final file.
+      1.  First, enclose your thinking process in \`<thinking>...</thinking>\` tags.
+      2.  Analyze the data deeply within these tags.
+      3.  Then, output the final Markdown content immediately after the closing tag.
     `;
 
     await this.generateAndSave(systemPrompt, 'analysis-agent', filePaths, outputPath);
@@ -79,9 +79,9 @@ export class AnalyzeDocumentsUseCase {
       *   **Systemic Connections:** How the [Gut Issue] is likely driving the [Autoimmune Marker].
 
       **CRITICAL INSTRUCTION - THINKING PROCESS:**
-      1.  First, THINK about the timeline, cause-and-effect relationships, and hidden triggers.
-      2.  When you are ready to output the final Markdown, you MUST output the separator: \`---END_OF_THOUGHT---\`.
-      3.  Everything AFTER that separator will be saved as the final file.
+      1.  First, enclose your thinking process in \`<thinking>...</thinking>\` tags.
+      2.  Analyze the data deeply within these tags.
+      3.  Then, output the final Markdown content immediately after the closing tag.
     `;
 
     await this.generateAndSave(systemPrompt, 'relationships-agent', filePaths, outputPath);
@@ -103,14 +103,16 @@ export class AnalyzeDocumentsUseCase {
       fullResponse += chunk;
     }
 
-    // Split thinking from content
+    // Parse XML thinking tags
     let finalContent = fullResponse;
-    if (fullResponse.includes('---END_OF_THOUGHT---')) {
-      const parts = fullResponse.split('---END_OF_THOUGHT---');
-      if (parts.length > 1) {
-        finalContent = parts[1].trim();
-        console.log(`[${sessionPrefix} Thinking]: ${parts[0].substring(0, 200)}...`);
-      }
+    const thinkingMatch = fullResponse.match(/<thinking>([\s\S]*?)<\/thinking>/);
+    
+    if (thinkingMatch) {
+      const thought = thinkingMatch[1].trim();
+      console.log(`[${sessionPrefix} Thinking]: ${thought.substring(0, 200)}...`);
+      
+      // Remove thinking tags and content to get the clean report
+      finalContent = fullResponse.replace(/<thinking>[\s\S]*?<\/thinking>/, '').trim();
     }
 
     fs.writeFileSync(outputPath, finalContent);

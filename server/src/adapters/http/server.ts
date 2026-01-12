@@ -9,6 +9,7 @@ import { Readable } from 'stream';
 import { GeminiAdapter } from '../gemini/gemini.adapter.js';
 import { SendChatUseCase } from '../../application/use-cases/send-chat.use-case.js';
 import { GenerateRealmUseCase } from '../../application/use-cases/generate-realm.use-case.js';
+import { ResearchSectionUseCase } from '../../application/use-cases/research-section.use-case.js';
 
 export async function createServer() {
   const server = fastify({
@@ -35,9 +36,10 @@ export async function createServer() {
   // Dependency Injection
   const geminiAdapter = new GeminiAdapter();
   await geminiAdapter.initialize();
-  
+
   const sendChatUseCase = new SendChatUseCase(geminiAdapter);
   const generateRealmUseCase = new GenerateRealmUseCase(geminiAdapter);
+  const researchSectionUseCase = new ResearchSectionUseCase(geminiAdapter);
 
   server.post('/api/chat', async (request, reply) => {
     const { message, sessionId } = request.body as { message: string, sessionId?: string };
@@ -45,6 +47,28 @@ export async function createServer() {
 
     try {
       const stream = await sendChatUseCase.execute(message, finalSessionId);
+      const readableStream = Readable.from(stream);
+      return reply.send(readableStream);
+    } catch (error) {
+      request.log.error(error);
+      reply.status(500).send({ error: 'Internal Server Error' });
+    }
+  });
+
+  const researchBodySchema = {
+    type: 'object',
+    required: ['sectionContext'],
+    properties: {
+      sectionContext: { type: 'string', minLength: 1 },
+      userQuery: { type: 'string' },
+    },
+  };
+
+  server.post('/api/research', { schema: { body: researchBodySchema } }, async (request, reply) => {
+    const { sectionContext, userQuery } = request.body as { sectionContext: string, userQuery?: string };
+
+    try {
+      const stream = researchSectionUseCase.execute(sectionContext, userQuery);
       const readableStream = Readable.from(stream);
       return reply.send(readableStream);
     } catch (error) {

@@ -1,7 +1,8 @@
 {
-  "name": "client",
+  "name": "n1-realm-generator-client",
+  "description": "React frontend for the N1 Personal Realm Generator - Document upload and Realm viewing interface",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
