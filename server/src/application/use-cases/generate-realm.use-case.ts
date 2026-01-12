@@ -120,6 +120,7 @@ export class GenerateRealmUseCase {
           *   Chart.js (v4.x)
           *   Google Fonts (Inter or Roboto)
           *   Marked.js (https://cdn.jsdelivr.net/npm/marked/marked.min.js) - FOR MARKDOWN RENDERING
+          *   DOMPurify (https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js) - FOR XSS PROTECTION
       3.  **Mandatory Structure:**
           *   **Hero Section:** Title, Executive Summary, and a "Key Vitals" grid.
           *   **Patient Advocacy:** A dedicated section for "Questions for Your Doctor" (Verbatim).
@@ -134,8 +135,20 @@ export class GenerateRealmUseCase {
           *   **The Feature:** Every major content section MUST have a "Dig Deeper" button.
           *   **Behavior:** When clicked, this button sends the section's text to the backend to perform live Google Search grounding.
           *   **Implementation:**
-              *   Add a button: \`<button onclick="digDeeper('section-xyz', this.parentElement.innerText)" class="...">🔍 Dig Deeper</button>\`
+              *   Wrap each section's content in a container: \`<div class="section-content">...actual content here...</div>\`
+              *   Add a button: \`<button onclick="digDeeper('section-xyz', this.previousElementSibling.innerText)" class="...">🔍 Dig Deeper</button>\`
               *   Add a hidden container below the section: \`<div id="research-section-xyz" class="hidden mt-4 p-4 bg-slate-800/50 rounded-lg border border-indigo-500/30"></div>\`
+              *   **Structure Example:**
+                \`\`\`html
+                <div>
+                  <div class="section-content">
+                    <h2>Section Title</h2>
+                    <p>Content to be researched...</p>
+                  </div>
+                  <button onclick="digDeeper('section-xyz', this.previousElementSibling.innerText)">🔍 Dig Deeper</button>
+                  <div id="research-section-xyz" class="hidden"></div>
+                </div>
+                \`\`\`
               *   **Script:** You MUST include this exact script at the bottom of the body:
                 \`\`\`javascript
                 async function digDeeper(sectionId, contextText) {
@@ -164,8 +177,9 @@ export class GenerateRealmUseCase {
                             if (done) break;
                             const chunk = decoder.decode(value);
                             markdownBuffer += chunk;
-                            // Real-time markdown rendering
-                            container.innerHTML = marked.parse(markdownBuffer);
+                            // Real-time markdown rendering with XSS protection
+                            const dirtyHtml = marked.parse(markdownBuffer);
+                            container.innerHTML = DOMPurify.sanitize(dirtyHtml);
                         }
                     } catch (err) {
                         container.innerHTML = '<div class="text-red-400">Research Agent Error: ' + err.message + '</div>';

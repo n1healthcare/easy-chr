@@ -1,9 +1,12 @@
 {
-  "name": "server",
+  "name": "n1-realm-generator-server",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Backend server for the N1 Personal Realm Generator - Multi-agent AI pipeline for document analysis and HTML generation",
+  "main": "src/index.ts",
   "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

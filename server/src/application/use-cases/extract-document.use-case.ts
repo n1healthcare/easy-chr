@@ -45,11 +45,6 @@ export class ExtractDocumentUseCase {
       3.  **Format:**
           -   Use strictly standard Markdown.
           -   No conversational filler ("Here is the file..."). Just the content.
-
-      **CRITICAL INSTRUCTION - THINKING PROCESS:**
-      1.  First, THINK about the document structure, date formats, and potential OCR errors.
-      2.  When you are ready to output the final Markdown, you MUST output the separator: \`---END_OF_THOUGHT---\`.
-      3.  Everything AFTER that separator will be saved as the final file.
     `;
 
     // We use the configured Markdown Model (e.g., Flash)
@@ -65,16 +60,8 @@ export class ExtractDocumentUseCase {
       fullResponse += chunk;
     }
 
-    // Split thinking from content
-    let finalContent = fullResponse;
-    if (fullResponse.includes('---END_OF_THOUGHT---')) {
-      const parts = fullResponse.split('---END_OF_THOUGHT---');
-      // parts[0] is the thinking (we discard or log it), parts[1] is the content
-      if (parts.length > 1) {
-        finalContent = parts[1].trim();
-        console.log(`[Librarian Thinking]: ${parts[0].substring(0, 200)}...`); // Log snippet of thought
-      }
-    }
+    // In this optimized version, we take the direct response as the content
+    const finalContent = fullResponse.trim();
 
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });

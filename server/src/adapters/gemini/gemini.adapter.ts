@@ -30,20 +30,32 @@ export class GeminiAdapter implements LLMClientPort {
     console.log('Gemini Adapter initialized successfully.');
   }
 
-  async sendMessageStream(message: string, sessionId: string, filePaths?: string[], options?: { model?: string }): Promise<AsyncGenerator<string, void, unknown>> {
+  async sendMessageStream(message: string, sessionId: string, filePaths?: string[], options?: { model?: string, tools?: any[] }): Promise<AsyncGenerator<string, void, unknown>> {
     if (!this.config) {
       throw new Error('GeminiAdapter not initialized');
     }
 
-    let chat = this.chatSessions.get(sessionId);
-    if (!chat) {
+    // If tools are provided, create a new chat session with tools (don't cache it)
+    // Otherwise, use the cached session
+    let chat: GeminiChat;
+    if (options?.tools && options.tools.length > 0) {
       chat = new GeminiChat(
         this.config,
         'You are a helpful assistant.',
-        [], // Tools
-        []  // History
+        options.tools,
+        []  // History - fresh session for tool-based requests
       );
-      this.chatSessions.set(sessionId, chat);
+    } else {
+      chat = this.chatSessions.get(sessionId);
+      if (!chat) {
+        chat = new GeminiChat(
+          this.config,
+          'You are a helpful assistant.',
+          [], // Tools
+          []  // History
+        );
+        this.chatSessions.set(sessionId, chat);
+      }
     }
 
     const modelConfigKey = {
@@ -56,13 +68,21 @@ export class GeminiAdapter implements LLMClientPort {
 
     if (filePaths && filePaths.length > 0) {
       for (const filePath of filePaths) {
-        // Better mime detection can be added later or inferred from extension
         const ext = path.extname(filePath).toLowerCase();
+        const filename = path.basename(filePath);
+
+        // Text-based files: send as text parts
+        if (['.md', '.txt', '.json', '.csv', '.xml', '.js', '.ts'].includes(ext)) {
+          const content = fs.readFileSync(filePath, 'utf-8');
+          parts.push({
+            text: `\n\n--- File: ${filename} ---\n${content}\n----------------\n`
+          });
+          continue;
+        }
+
+        // Binary files: send as inlineData
         let detectedMime = 'application/octet-stream';
         if (ext === '.pdf') detectedMime = 'application/pdf';
-        if (ext === '.txt') detectedMime = 'text/plain';
-        if (ext === '.md') detectedMime = 'text/plain';
-        if (ext === '.json') detectedMime = 'application/json';
         if (ext === '.png') detectedMime = 'image/png';
         if (ext === '.jpg' || ext === '.jpeg') detectedMime = 'image/jpeg';
 

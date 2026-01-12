@@ -36,10 +36,10 @@ export async function createServer() {
   // Dependency Injection
   const geminiAdapter = new GeminiAdapter();
   await geminiAdapter.initialize();
-  
+
   const sendChatUseCase = new SendChatUseCase(geminiAdapter);
   const generateRealmUseCase = new GenerateRealmUseCase(geminiAdapter);
-  const researchSectionUseCase = new ResearchSectionUseCase();
+  const researchSectionUseCase = new ResearchSectionUseCase(geminiAdapter);
 
   server.post('/api/chat', async (request, reply) => {
     const { message, sessionId } = request.body as { message: string, sessionId?: string };
@@ -55,7 +55,16 @@ export async function createServer() {
     }
   });
 
-  server.post('/api/research', async (request, reply) => {
+  const researchBodySchema = {
+    type: 'object',
+    required: ['sectionContext'],
+    properties: {
+      sectionContext: { type: 'string', minLength: 1 },
+      userQuery: { type: 'string' },
+    },
+  };
+
+  server.post('/api/research', { schema: { body: researchBodySchema } }, async (request, reply) => {
     const { sectionContext, userQuery } = request.body as { sectionContext: string, userQuery?: string };
 
     try {
