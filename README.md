@@ -81,43 +81,6 @@ cd ../server
 cp .env.example .env  # If .env.example exists, otherwise create .env manually
 ```
 
-Required environment variables (edit `server/.env`):
-
-```env
-# Gemini API Configuration
-GEMINI_API_KEY=your_api_key_here
-GOOGLE_GEMINI_BASE_URL=https://generativelanguage.googleapis.com  # Or your LiteLLM proxy URL
-GOOGLE_GEMINI_MODEL=gemini-2.5-pro
-
-# Model Selection for Different Stages
-MARKDOWN_MODEL=gemini-2.5-flash
-INTERMEDIATE_MODEL=gemini-2.5-pro
-HTML_MODEL=gemini-2.5-flash
-IMAGE_MODEL=imagen-3.0-generate-001
-
-# Optional: Claude Configuration (if using Anthropic models)
-ANTHROPIC_BASE_URL=https://api.anthropic.com
-ANTHROPIC_AUTH_TOKEN=your_anthropic_key_here
-CLAUDE_MODEL=claude-4.5-haiku
-
-# Optional: Data Directory
-DATA_DIRECTORY=data
-
-# Optional: N1 API Configuration
-N1_API_HEADER=N1-Api-Key
-N1_API_KEY=your_n1_api_key
-N1_API_BASE_URL=https://api.n1.care/
-
-# Optional: Observability (Langfuse)
-LANGFUSE_SECRET_KEY=your_secret_key
-LANGFUSE_PUBLIC_KEY=your_public_key
-LANGFUSE_HOST=https://cloud.langfuse.com
-OBSERVABILITY_ENABLED=false
-
-# Server Configuration
-PORT=3000
-```
-
 ## Running the Application
 
 ### Development Mode
@@ -177,8 +140,7 @@ N1_Interface/
 │   ├── package.json
 │   └── tsconfig.json
 │
-├── DESIGN.md                   # Architecture & design decisions
-├── ENGINEERING_101.md          # Development journey & technical details
+├── DESIGN.md
 └── README.md                   # This file
 ```
 
@@ -266,10 +228,6 @@ Before deploying to production:
 ### Port already in use
 - Change the `PORT` variable in `server/.env`
 - Or kill the process using the port: `lsof -ti:3000 | xargs kill`
-
-## Contributing
-
-See `ENGINEERING_101.md` for detailed development history and technical decisions.
 
 ## License
 

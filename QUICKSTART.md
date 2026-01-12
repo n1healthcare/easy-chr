@@ -79,4 +79,3 @@ npm run dev
 
 - Read the full [README.md](README.md) for detailed documentation
 - Check [DESIGN.md](DESIGN.md) for architecture details
-- See [ENGINEERING_101.md](ENGINEERING_101.md) for development history

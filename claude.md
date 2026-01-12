@@ -152,7 +152,6 @@ cd client && npm run dev
 - **README.md** - Full setup and API documentation
 - **QUICKSTART.md** - 5-minute setup guide
 - **DESIGN.md** - Original architecture and design decisions
-- **ENGINEERING_101.md** - Development history and technical deep-dive
 
 ## Key Conventions
 
@@ -167,7 +166,7 @@ cd client && npm run dev
 ## Need Help?
 
 1. Check this file first
-2. Read relevant documentation (README, DESIGN, ENGINEERING_101)
+2. Read relevant documentation (README, DESIGN)
 3. Look at existing code patterns in similar files
 4. Check git history for context on why things are the way they are
 
