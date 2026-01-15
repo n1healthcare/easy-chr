@@ -12,16 +12,9 @@ import fs from 'fs';
 import { LLMClientPort } from '../ports/llm-client.port.js';
 import { readFileWithEncoding } from '../../../vendor/gemini-cli/packages/core/src/utils/fileUtils.js';
 import { PDFExtractionService } from '../../services/pdf-extraction.service.js';
+import type { RealmGenerationEvent } from '../../domain/types.js';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-export type RealmGenerationEvent =
-  | { type: 'step'; name: string; status: 'running' | 'completed' | 'failed' }
-  | { type: 'log'; message: string }
-  | { type: 'stream'; content: string }
-  | { type: 'result'; extractedPath: string };
+export type { RealmGenerationEvent };
 
 // ============================================================================
 // Use Case Implementation
@@ -100,8 +93,9 @@ export class AgenticDoctorUseCase {
           yield { type: 'log', message: 'Warning: PDF extraction produced no output' };
         }
       } catch (error) {
-        console.error('[AgenticDoctor] PDF extraction failed:', error);
-        yield { type: 'log', message: `PDF extraction failed: ${error}` };
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('[AgenticDoctor] PDF extraction failed:', errorMessage);
+        yield { type: 'log', message: `PDF extraction failed: ${errorMessage}` };
       }
     }
 
@@ -135,7 +129,8 @@ export class AgenticDoctorUseCase {
         allExtractedContent += `\n\n## [${fileName}]\n\n${textContent}`;
         yield { type: 'log', message: `Processed: ${fileName}` };
       } catch (error) {
-        yield { type: 'log', message: `Warning: Could not process ${path.basename(filePath)}: ${error}` };
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        yield { type: 'log', message: `Warning: Could not process ${path.basename(filePath)}: ${errorMessage}` };
       }
     }
 

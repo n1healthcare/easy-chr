@@ -39,6 +39,18 @@ interface PageExtractionResult {
   error?: string;
 }
 
+// Internal event type for extractSinglePDF (includes result for page_complete events)
+interface InternalExtractionEvent {
+  type: 'log' | 'page_complete';
+  data: {
+    fileName: string;
+    pageNumber?: number;
+    totalPages?: number;
+    message: string;
+    result?: PageExtractionResult;
+  };
+}
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -110,18 +122,17 @@ export class PDFExtractionService {
         // Get page results for this PDF
         for await (const event of this.extractSinglePDF(pdfPath)) {
           if (event.type === 'page_complete' && event.data.result) {
-            allResults.push(event.data.result as PageExtractionResult);
+            allResults.push(event.data.result);
           }
 
           // Forward progress events
           yield {
-            type: event.type as PDFExtractionEvent['type'],
+            type: event.type,
             data: {
-              fileName: event.data.fileName as string | undefined,
-              pageNumber: event.data.pageNumber as number | undefined,
-              totalPages: event.data.totalPages as number | undefined,
-              message: event.data.message as string | undefined,
-              error: event.data.error as string | undefined,
+              fileName: event.data.fileName,
+              pageNumber: event.data.pageNumber,
+              totalPages: event.data.totalPages,
+              message: event.data.message,
             }
           };
         }
@@ -160,7 +171,7 @@ export class PDFExtractionService {
    */
   private async *extractSinglePDF(
     pdfPath: string
-  ): AsyncGenerator<{ type: string; data: Record<string, unknown> }> {
+  ): AsyncGenerator<InternalExtractionEvent> {
     const fileName = path.basename(pdfPath);
 
     // Convert PDF to images
