@@ -8,7 +8,7 @@ import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import { GeminiAdapter } from '../gemini/gemini.adapter.js';
 import { SendChatUseCase } from '../../application/use-cases/send-chat.use-case.js';
-import { GenerateRealmUseCase } from '../../application/use-cases/generate-realm.use-case.js';
+import { AgenticDoctorUseCase } from '../../application/use-cases/agentic-doctor.use-case.js';
 import { ResearchSectionUseCase } from '../../application/use-cases/research-section.use-case.js';
 
 export async function createServer() {
@@ -38,8 +38,11 @@ export async function createServer() {
   await geminiAdapter.initialize();
 
   const sendChatUseCase = new SendChatUseCase(geminiAdapter);
-  const generateRealmUseCase = new GenerateRealmUseCase(geminiAdapter);
   const researchSectionUseCase = new ResearchSectionUseCase(geminiAdapter);
+
+  // Initialize the Agentic Doctor Use Case
+  const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter);
+  await agenticDoctorUseCase.initialize();
 
   server.post('/api/chat', async (request, reply) => {
     const { message, sessionId } = request.body as { message: string, sessionId?: string };
@@ -108,13 +111,14 @@ export async function createServer() {
       reply.raw.setHeader('Connection', 'keep-alive');
       reply.raw.setHeader('Access-Control-Allow-Origin', '*');
 
-      const generator = generateRealmUseCase.execute(prompt, uploadedFilePaths);
+      // Use the Agentic Doctor for analysis and realm generation
+      const generator = agenticDoctorUseCase.execute(prompt, uploadedFilePaths);
 
       for await (const event of generator) {
         reply.raw.write(`event: ${event.type}\n`);
         reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
       }
-      
+
       reply.raw.end();
     } catch (error) {
       request.log.error(error);
