@@ -11,5 +11,14 @@ export const REALM_CONFIG = {
     markdown: process.env.MARKDOWN_MODEL || 'gemini-2.0-flash-exp',
     intermediate: process.env.INTERMEDIATE_MODEL || 'gemini-2.0-pro-exp',
     html: process.env.HTML_MODEL || 'gemini-2.0-pro-exp',
-  }
+    // Agentic Doctor model - uses the most capable model for complex medical analysis
+    // Falls back to INTERMEDIATE_MODEL which is typically a capable model
+    doctor: process.env.DOCTOR_MODEL || process.env.INTERMEDIATE_MODEL || 'gemini-2.5-pro',
+  },
+  agenticLoop: {
+    // Maximum iterations for the agentic loop (tool calls + refinements)
+    maxIterations: parseInt(process.env.MAX_AGENTIC_ITERATIONS || '10'),
+    // Enable/disable web search for medical knowledge
+    enableWebSearch: process.env.ENABLE_WEB_SEARCH !== 'false',
+  },
 };

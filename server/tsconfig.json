@@ -12,5 +12,14 @@
       "@google/gemini-cli-core/*": ["./vendor/gemini-cli/packages/core/src/*"]
     }
   },
-  "include": ["**/*.ts", "./vendor/gemini-cli/packages/core/src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "**/TRASH/**",
+    "**/node_modules/**",
+    "**/*.test.ts",
+    "**/__mocks__/**",
+    "vendor/**"
+  ]
 }

@@ -10,3 +10,34 @@ export interface ChatSession {
   createdAt: Date;
   updatedAt: Date;
 }
+
+// ============================================================================
+// Document Extraction Event Types
+// ============================================================================
+
+export interface StepEvent {
+  type: 'step';
+  name: string;
+  status: 'running' | 'completed' | 'failed';
+}
+
+export interface LogEvent {
+  type: 'log';
+  message: string;
+}
+
+export interface StreamEvent {
+  type: 'stream';
+  content: string;
+}
+
+export interface ResultEvent {
+  type: 'result';
+  extractedPath: string;
+}
+
+export type RealmGenerationEvent =
+  | StepEvent
+  | LogEvent
+  | StreamEvent
+  | ResultEvent;
