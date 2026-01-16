@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import './App.css'
 
 interface RealmEvent {
@@ -25,7 +25,6 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const logEndRef = useRef<HTMLDivElement>(null)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files
@@ -92,13 +91,10 @@ function App() {
 
         for (const block of blocks) {
           const lines = block.split('\n')
-          let eventType = ''
           let eventData = ''
 
           for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              eventType = line.substring(7).trim()
-            } else if (line.startsWith('data: ')) {
+            if (line.startsWith('data: ')) {
               eventData = line.substring(6)
             }
           }
