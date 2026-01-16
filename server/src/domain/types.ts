@@ -33,7 +33,7 @@ export interface StreamEvent {
 
 export interface ResultEvent {
   type: 'result';
-  extractedPath: string;
+  url: string;
 }
 
 export type RealmGenerationEvent =

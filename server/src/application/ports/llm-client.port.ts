@@ -1,4 +1,5 @@
 import { Message } from '../../domain/types.js';
+import type { Config } from '../../../vendor/gemini-cli/packages/core/src/config/config.js';
 
 export interface LLMClientPort {
   /**
@@ -15,4 +16,11 @@ export interface LLMClientPort {
    * @returns An async generator yielding chunks of the response
    */
   sendMessageStream(message: string, sessionId: string, filePaths?: string[], options?: { model?: string, tools?: any[] }): Promise<AsyncGenerator<string, void, unknown>>;
+
+  /**
+   * Get the underlying Config object for advanced agent operations.
+   * This provides access to the gemini-cli Config which can be used
+   * with LocalAgentExecutor for agentic workflows.
+   */
+  getConfig(): Config;
 }

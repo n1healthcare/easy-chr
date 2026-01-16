@@ -10,6 +10,17 @@ export class GeminiAdapter implements LLMClientPort {
   private config: Config | null = null;
   private chatSessions: Map<string, GeminiChat> = new Map();
 
+  /**
+   * Get the underlying Config object for advanced agent operations.
+   * Must be called after initialize().
+   */
+  getConfig(): Config {
+    if (!this.config) {
+      throw new Error('GeminiAdapter not initialized. Call initialize() first.');
+    }
+    return this.config;
+  }
+
   async initialize(): Promise<void> {
     const model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
     console.log(`Using Gemini Model: ${model}`);
