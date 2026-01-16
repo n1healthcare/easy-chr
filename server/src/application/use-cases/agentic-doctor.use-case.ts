@@ -673,22 +673,48 @@ You MUST produce a CORRECTED version of the synthesis that:
 
 ---
 
-## Input Data
+## Input Data (4 Sources)
 
-${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Original Extracted Data (Source of Truth)
-<extracted_data>
-${allExtractedContent}
-</extracted_data>
+You have FOUR input sources. Use them in this priority order:
 
-### Cross-System Connections
+### Priority 1: Rich Medical Analysis (PRIMARY for diagnoses, timeline, prognosis, supplements)
+This contains the most detailed analysis with all rich sections.
+<analysis>
+${analysisContent}
+</analysis>
+
+### Priority 2: Cross-System Connections (for mechanism explanations)
 <cross_systems>
 ${crossSystemsContent}
 </cross_systems>
 
-### Final Synthesized Analysis
+### Priority 3: Final Synthesized Analysis (for patient-facing narrative)
 <final_analysis>
 ${finalAnalysisContent}
 </final_analysis>
+
+### Priority 4: Original Extracted Data (source of truth for raw values)
+${prompt ? `#### Patient's Question/Context\n${prompt}\n\n` : ''}<extracted_data>
+${allExtractedContent}
+</extracted_data>
+
+---
+
+## Extraction Priority Rules
+
+1. **For diagnoses[], timeline[], prognosis, supplementSchedule, lifestyleOptimizations, monitoringProtocol[], doctorQuestions[]:**
+   → Extract from <analysis> FIRST (it has the richest content)
+   → Fill gaps from <final_analysis>
+
+2. **For connections[]:**
+   → Extract from <cross_systems> (it has detailed mechanisms)
+
+3. **For allFindings[], criticalFindings[], trends[]:**
+   → Use values from <extracted_data> (source of truth for numbers)
+   → Use status/interpretation from <analysis>
+
+4. **For systemsHealth, actionPlan:**
+   → Extract from <analysis> or <final_analysis>
 
 ---
 
@@ -699,6 +725,7 @@ Extract ALL data into the structured JSON format specified in your instructions.
 - Output ONLY valid JSON - no markdown, no explanation
 - Include EVERY value from extracted_data in the allFindings array
 - Include EVERY connection from cross_systems in the connections array
+- Extract ALL rich sections from analysis (diagnoses, timeline, prognosis, supplements, lifestyle, monitoring, doctor questions)
 - Include ALL symptoms, medications, and history in qualitativeData
 
 **Output the JSON now (starting with {):**`;
@@ -794,73 +821,85 @@ Extract ALL data into the structured JSON format specified in your instructions.
     try {
       const htmlSkill = loadHTMLBuilderSkill();
 
-      // Use narrative analysis, cross-system connections, AND structured data for HTML generation
+      // Use ALL sources: structured data, analysis, cross-systems, and final analysis
       const htmlPrompt = `${htmlSkill}
 
 ---
 
-## Input Data
+## Input Data (4 Sources with Priority Order)
 
-You have THREE inputs to work with:
-1. **Narrative Analysis** - Patient-facing text content for explanations
-2. **Cross-System Analysis** - Detailed connections and mechanisms between body systems
-3. **Structured Data** - Chart-ready JSON for visualizations
+You have FOUR inputs. Use them in this priority order for different content types:
 
-${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Narrative Analysis (for text content)
-<final_analysis>
-${finalAnalysisContent}
-</final_analysis>
+${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}
 
-### Cross-System Analysis (for flow diagrams and mechanism explanations)
-<cross_systems>
-${crossSystemsContent}
-</cross_systems>
-
-### Structured Data (for charts and visualizations)
+### Priority 1: Structured Data (for charts and visualizations)
+Use this for ALL numeric visualizations - it has exact values ready for SVG rendering.
 <structured_data>
 ${structuredDataContent}
 </structured_data>
 
+### Priority 2: Rich Medical Analysis (for detailed sections)
+Use this for diagnoses, timeline, prognosis, supplements, lifestyle, monitoring protocol, doctor questions.
+This has the MOST DETAILED content - do NOT skip sections that exist here!
+<analysis>
+${analysisContent}
+</analysis>
+
+### Priority 3: Cross-System Analysis (for mechanism explanations)
+Use this for flow diagrams, cause→effect relationships, and root cause explanations.
+<cross_systems>
+${crossSystemsContent}
+</cross_systems>
+
+### Priority 4: Final Synthesized Analysis (for patient-facing narrative)
+Use this for polished, patient-friendly text explanations and the "big picture" story.
+<final_analysis>
+${finalAnalysisContent}
+</final_analysis>
+
 ---
 
-## How to Use Each Input
+## Content Type → Source Priority Matrix
 
-**Use the NARRATIVE for:**
-- Text explanations and paragraphs
-- The "Big Picture" story
-- Patient-facing language and recommendations
+| What You're Building | Primary Source | Secondary Source |
+|---------------------|----------------|------------------|
+| **Gauge charts, bar charts, line charts** | structured_data (exact values) | - |
+| **Radar/spider charts** | structured_data.systemsHealth | - |
+| **Trend charts** | structured_data.trends | - |
+| **Flow diagrams** | structured_data.connections + cross_systems (mechanisms) | - |
+| **Diagnoses cards** | structured_data.diagnoses OR analysis | final_analysis |
+| **Timeline section** | structured_data.timeline OR analysis | final_analysis |
+| **Prognosis section** | structured_data.prognosis OR analysis | final_analysis |
+| **Supplement schedule** | structured_data.supplementSchedule OR analysis | final_analysis |
+| **Lifestyle recommendations** | structured_data.lifestyleOptimizations OR analysis | final_analysis |
+| **Monitoring protocol** | structured_data.monitoringProtocol OR analysis | final_analysis |
+| **Doctor questions** | structured_data.doctorQuestions OR analysis | final_analysis |
+| **Data tables (all findings)** | structured_data.allFindings | - |
+| **Narrative text/explanations** | final_analysis | analysis |
+| **Mechanism explanations** | cross_systems | analysis |
+| **Action plan timeline** | structured_data.actionPlan | analysis |
 
-**Use the CROSS-SYSTEM ANALYSIS for:**
-- Flow diagrams showing cause → effect relationships
-- Mechanism explanations (the "why" behind connections)
-- Root cause hypotheses with supporting evidence
-- System interaction maps
-- Educational content explaining how body systems interact
+---
 
-**Use the STRUCTURED DATA for:**
-- Gauge charts (from criticalFindings)
-- Trend/line charts (from trends)
-- Flow diagrams (from connections - use cross_systems for mechanism text)
-- Radar charts (from systemsHealth)
-- Timeline visualizations (from actionPlan)
-- Data tables (from allFindings)
-- Symptom/medication lists (from qualitativeData)
+## CRITICAL Instructions
 
-**The structured data gives you EXACT values for chart rendering:**
-- Use the numeric values directly for SVG coordinates
-- Use the status fields for color coding
-- Use the connections array for flow diagram arrows
-- Use systemsHealth scores for radar chart points
-- Use cross_systems for detailed mechanism explanations in flow diagrams
+1. **For charts/gauges/visualizations:** Use EXACT values from structured_data - don't approximate
+2. **For rich sections:** Check structured_data first, then analysis - include ALL sections that exist
+3. **For narrative:** Use final_analysis for patient-friendly language
+4. **For mechanisms:** Use cross_systems for detailed cause→effect explanations
+5. **EVERY data point should appear somewhere** - don't drop information
+6. **If a section exists in analysis but not structured_data**, still include it using the analysis content
+7. **Make critical findings impossible to miss** - prominent placement, visual emphasis
 
 ---
 
 **Remember:**
-- You are an intelligent data storyteller
+- You are an intelligent data storyteller designing a COMPREHENSIVE health report
+- Include ALL sections from the analysis - diagnoses, timeline, prognosis, supplements, lifestyle, monitoring, questions
 - The structured_data has chart-ready values - USE THEM for accurate visualizations
-- The narrative has the explanations - USE IT for text content
-- Every data point should appear somewhere
-- Make critical findings impossible to miss
+- The analysis has rich content - USE IT for detailed sections
+- The cross_systems has mechanisms - USE IT for flow diagrams and explanations
+- The final_analysis has polished narrative - USE IT for text content
 ${prompt ? `- The patient asked: "${prompt}" - make sure this is prominently addressed` : ''}
 
 **Output the complete HTML file now (starting with <!DOCTYPE html>):**`;
