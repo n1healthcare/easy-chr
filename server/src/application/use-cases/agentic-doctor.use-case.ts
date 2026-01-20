@@ -1,14 +1,15 @@
 /**
  * AgenticDoctorUseCase - Medical Document Analysis Pipeline
  *
- * 7-Phase Pipeline:
+ * 8-Phase Pipeline:
  * Phase 1: Document Extraction - PDFs via Vision OCR, text files directly → extracted.md
  * Phase 2: Medical Analysis - LLM with medical-analysis skill → analysis.md
  * Phase 3: Cross-System Analysis - LLM identifies connections between systems → cross_systems.md
- * Phase 4: Synthesis - LLM merges insights into cohesive narrative → final_analysis.md
- * Phase 5: Validation - LLM validates completeness and accuracy → validation.md (with correction loop)
- * Phase 6: Data Structuring - LLM extracts chart-ready JSON → structured_data.json
- * Phase 7: Realm Generation - LLM with html-builder skill → interactive Health Realm (index.html)
+ * Phase 4: Research - Web search to validate claims with external sources → research.json
+ * Phase 5: Synthesis - LLM merges insights + research into cohesive narrative → final_analysis.md
+ * Phase 6: Validation - LLM validates completeness and accuracy → validation.md (with correction loop)
+ * Phase 7: Data Structuring - LLM extracts chart-ready JSON → structured_data.json
+ * Phase 8: Realm Generation - LLM with html-builder skill → interactive Health Realm (index.html)
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -19,6 +20,7 @@ import { LLMClientPort } from '../ports/llm-client.port.js';
 import { readFileWithEncoding } from '../../../vendor/gemini-cli/packages/core/src/utils/fileUtils.js';
 import { PDFExtractionService } from '../../services/pdf-extraction.service.js';
 import { AgenticMedicalAnalyst, type AnalystEvent } from '../../services/agentic-medical-analyst.service.js';
+import { researchClaims, formatResearchAsMarkdown, type ResearchOutput, type ResearchEvent } from '../../services/research-agent.service.js';
 import { REALM_CONFIG } from '../../config.js';
 import type { RealmGenerationEvent } from '../../domain/types.js';
 
@@ -386,8 +388,83 @@ ${analysisContent}
     }
 
     // ========================================================================
-    // Phase 4: Synthesis
-    // Merges analysis and cross-system insights into cohesive narrative
+    // Phase 4: Research
+    // Validates medical claims with external sources using web search
+    // ========================================================================
+    yield { type: 'step', name: 'Research', status: 'running' };
+    yield { type: 'log', message: 'Validating claims with external sources...' };
+
+    const researchPath = path.join(storageDir, 'research.json');
+    let researchOutput: ResearchOutput = { researchedClaims: [], unsupportedClaims: [], additionalFindings: [] };
+    let researchMarkdown = '';
+
+    try {
+      // Get the Gemini config from the LLM client
+      const geminiConfig = this.llmClient.getConfig();
+
+      if (geminiConfig) {
+        const researchGenerator = researchClaims(
+          geminiConfig,
+          analysisContent,
+          crossSystemsContent,
+          prompt
+        );
+
+        // Process research events - manually iterate to capture return value
+        let result = await researchGenerator.next();
+        while (!result.done) {
+          // When not done, result.value is ResearchEvent
+          const event = result.value as ResearchEvent;
+
+          switch (event.type) {
+            case 'claim_extracted':
+              yield { type: 'log', message: event.data.message || '' };
+              break;
+            case 'searching':
+              yield { type: 'log', message: `[Research] ${event.data.message}` };
+              break;
+            case 'claim_researched':
+              const sourcesCount = event.data.result?.sources?.length || 0;
+              yield { type: 'log', message: `[Research] Claim ${event.data.claimIndex}/${event.data.totalClaims}: ${sourcesCount > 0 ? `${sourcesCount} source(s) found` : 'No sources found'}` };
+              break;
+            case 'complete':
+              yield { type: 'log', message: event.data.message || '' };
+              break;
+            case 'error':
+              yield { type: 'log', message: `[Research] Warning: ${event.data.message}` };
+              break;
+          }
+
+          result = await researchGenerator.next();
+        }
+
+        // When done, result.value is ResearchOutput
+        researchOutput = result.value as ResearchOutput;
+        researchMarkdown = formatResearchAsMarkdown(researchOutput);
+
+        // Save research output
+        await fs.promises.writeFile(researchPath, JSON.stringify(researchOutput, null, 2), 'utf-8');
+        console.log(`[AgenticDoctor] Research complete: ${researchOutput.researchedClaims.length} claims verified`);
+
+        yield { type: 'log', message: `Research complete: ${researchOutput.researchedClaims.length} claims verified, ${researchOutput.unsupportedClaims.length} unsupported` };
+        yield { type: 'step', name: 'Research', status: 'completed' };
+      } else {
+        console.warn('[AgenticDoctor] Gemini config not available, skipping research phase');
+        yield { type: 'log', message: 'Research skipped (Gemini config not available)' };
+        yield { type: 'step', name: 'Research', status: 'completed' };
+      }
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[AgenticDoctor] Research failed:', errorMessage);
+      yield { type: 'log', message: `Research failed: ${errorMessage}. Continuing without external validation.` };
+      yield { type: 'step', name: 'Research', status: 'failed' };
+      // Continue anyway - research is enhancement, not critical
+    }
+
+    // ========================================================================
+    // Phase 5: Synthesis
+    // Merges analysis, cross-system insights, and research into cohesive narrative
     // ========================================================================
     yield { type: 'step', name: 'Synthesis', status: 'running' };
     yield { type: 'log', message: 'Synthesizing final analysis...' };
@@ -397,6 +474,11 @@ ${analysisContent}
 
     try {
       const synthesizerSkill = loadSynthesizerSkill();
+
+      // Include research findings in synthesis if available
+      const researchSection = researchOutput.researchedClaims.length > 0
+        ? `\n\n### Research Findings (Verified Claims with Citations)\n<research>\n${researchMarkdown}\n</research>`
+        : '';
 
       const synthesisPrompt = `${synthesizerSkill}
 
@@ -415,7 +497,7 @@ ${analysisContent}
 ### Cross-System Connections
 <cross_systems>
 ${crossSystemsContent}
-</cross_systems>`;
+</cross_systems>${researchSection}`;
 
       const synthesisStream = await this.llmClient.sendMessageStream(
         synthesisPrompt,
@@ -452,7 +534,7 @@ ${crossSystemsContent}
     }
 
     // ========================================================================
-    // Phase 5: Validation with Feedback Loop
+    // Phase 6: Validation with Feedback Loop
     // Validates analysis, and if issues found, sends corrections back to synthesizer
     // Maximum 1 correction cycle to avoid infinite loops
     // ========================================================================
@@ -593,7 +675,7 @@ ${requiredCorrections ? `### Required Corrections (MUST FIX)\n${requiredCorrecti
     yield { type: 'step', name: 'Validation', status: 'completed' };
 
     // ========================================================================
-    // Phase 6: Data Structuring
+    // Phase 7: Data Structuring
     // Extracts chart-ready JSON from all analysis data
     // ========================================================================
     yield { type: 'step', name: 'Data Structuring', status: 'running' };
@@ -701,7 +783,7 @@ ${allExtractedContent}
     }
 
     // ========================================================================
-    // Phase 7: HTML Generation
+    // Phase 8: HTML Generation
     // Uses sendMessageStream with html-builder skill
     // Receives both narrative (final_analysis.md) and structured data (structured_data.json)
     // ========================================================================

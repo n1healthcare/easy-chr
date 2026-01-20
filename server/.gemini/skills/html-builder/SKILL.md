@@ -74,6 +74,7 @@ The `structured_data` JSON contains chart-ready values. **Use these directly** i
 | `monitoringProtocol[]` | Follow-up schedule table | Test, frequency, target, purpose |
 | `doctorQuestions[]` | Questions section | Categorized questions with context |
 | `dataGaps[]` | Missing data section | Priority-ordered tests needed |
+| `references[]` | References section | Numbered citations with source links |
 
 ---
 
@@ -164,6 +165,28 @@ Apply these defaults to match the design system:
 - **Bars**: Rounded ends with `borderRadius: 8`
 - **Legend**: Position below chart, use `legend: { position: 'bottom' }`
 
+### CRITICAL: Chart Container Heights
+
+**Every chart canvas MUST be inside a container with an explicit height.** Without this, charts can expand infinitely and break the page layout.
+
+```css
+/* REQUIRED for all chart containers */
+.chart-container {
+  position: relative;
+  height: 300px;  /* MUST have explicit height */
+  width: 100%;
+}
+
+/* For gauge/doughnut charts */
+.gauge-container {
+  position: relative;
+  height: 150px;  /* Smaller for gauges */
+  width: 100%;
+}
+```
+
+**Never use `maintainAspectRatio: false` without an explicit container height.** This causes infinite canvas expansion.
+
 ### Minimal Chart Setup
 
 Include Chart.js in the `<head>`:
@@ -171,11 +194,13 @@ Include Chart.js in the `<head>`:
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 ```
 
-Each chart needs a canvas in the body and initialization in a script at the end:
+Each chart needs a canvas **inside a height-constrained container**:
 ```html
 <div class="card">
   <h3>Triglycerides Trend</h3>
-  <canvas id="trigsChart"></canvas>
+  <div class="chart-container" style="height: 300px;">
+    <canvas id="trigsChart"></canvas>
+  </div>
 </div>
 
 <script>
@@ -207,7 +232,11 @@ new Chart(document.getElementById('trigsChart'), {
 
 **Gauge chart example** (for critical findings):
 ```html
-<canvas id="trigsGauge"></canvas>
+<!-- MUST have height-constrained container -->
+<div class="gauge-container" style="height: 150px; position: relative;">
+  <canvas id="trigsGauge"></canvas>
+  <div class="gauge-value">2.9</div>
+</div>
 <script>
 new Chart(document.getElementById('trigsGauge'), {
   type: 'doughnut',
@@ -219,6 +248,8 @@ new Chart(document.getElementById('trigsGauge'), {
     }]
   },
   options: {
+    responsive: true,
+    maintainAspectRatio: false,  // OK because container has explicit height
     circumference: 180,
     rotation: -90,
     cutout: '75%',
@@ -287,8 +318,15 @@ Include these when:
 ### 6. Supplement/Treatment Specifics (When: Detailed recommendations exist)
 Cards with supplement name, dosage, timing, purpose, and notes. **Only include brand names if source data provides them.** Never invent brand recommendations.
 
-### 7. Scientific References (When: Studies or sources are cited in analysis)
-Numbered list with authors, title, journal. **Only include references from source analysis.** Never fabricate citations.
+### 7. Scientific References (When: `references[]` array exists in structured_data)
+Display the references section with:
+- Numbered list matching inline citation numbers [1], [2], etc.
+- Source title as clickable link to URI
+- Source type badge (journal, institution, guideline, education, health-site)
+- Confidence indicator (high/medium/low) styled appropriately
+- Brief snippet showing what the source supports
+
+**Only include references from the `references[]` array.** Never fabricate citations.
 
 ### 8. Longitudinal Trend Charts (When: 3+ data points for a marker over time)
 Chart.js line charts with reference range annotations, labeled data points, and trend interpretation (direction + explanation).
@@ -346,9 +384,9 @@ Ask these questions to determine what to include:
 │   ├── No: Skip monitoring section
 │   └── Yes: Include monitoring protocol table
 │
-├── Are there scientific references in the analysis?
+├── Does structured_data.references[] exist and have entries?
 │   ├── No: Skip references section
-│   └── Yes: Include references section (only cited sources)
+│   └── Yes: Include references section with numbered citations, source links, and type badges
 │
 └── Total sections count?
     ├── <5: No navigation needed
@@ -418,6 +456,8 @@ Ask these questions to determine what to include:
 - Create walls of text without visual breaks
 - Ignore the emotional weight of medical information
 - Make it look like a clinical report (cold, sterile)
+- **Put Chart.js canvases in containers without explicit height** - this causes infinite page expansion
+- Use `maintainAspectRatio: false` without a height-constrained container
 
 **DO:**
 - Let the data drive the structure
@@ -443,6 +483,13 @@ Before outputting, verify:
 - [ ] `qualitativeData` (symptoms, medications, history) is displayed where relevant
 - [ ] Narrative text from final_analysis is used for explanations
 
+### Chart Layout (CRITICAL)
+- [ ] **Every `<canvas>` is inside a container with explicit `height`** (e.g., `height: 300px` or `height: 150px` for gauges)
+- [ ] No chart uses `maintainAspectRatio: false` without a height-constrained parent
+- [ ] Gauge charts have containers with `height: 120px` to `180px`
+- [ ] Line/bar charts have containers with `height: 250px` to `400px`
+- [ ] Radar charts have containers with `height: 350px` to `450px`
+
 ### Rich Section Data (NEW)
 - [ ] `diagnoses[]` - Each diagnosis shown as a card with severity badge, key evidence, implications
 - [ ] `timeline[]` - Historical events shown chronologically with year groupings and significance markers
@@ -455,6 +502,7 @@ Before outputting, verify:
 - [ ] `monitoringProtocol[]` - Shown as a structured table with test, frequency, target, purpose
 - [ ] `doctorQuestions[]` - Displayed as numbered question cards with context
 - [ ] `dataGaps[]` - Missing tests shown with priority and reason
+- [ ] `references[]` - Displayed as numbered citations with source links and type badges
 
 ### Visual Hierarchy
 - [ ] The most important finding is immediately visible
@@ -544,6 +592,7 @@ Use this for polished, patient-friendly text explanations and the "big picture" 
 | **Lifestyle recommendations** | structured_data.lifestyleOptimizations OR analysis | final_analysis |
 | **Monitoring protocol** | structured_data.monitoringProtocol OR analysis | final_analysis |
 | **Doctor questions** | structured_data.doctorQuestions OR analysis | final_analysis |
+| **References/citations** | structured_data.references | - |
 | **Narrative text/explanations** | final_analysis | analysis |
 | **Mechanism explanations** | cross_systems | analysis |
 | **Action plan timeline** | structured_data.actionPlan | analysis |
@@ -566,7 +615,8 @@ Generate the Health Realm HTML using all input sources.
 
 **Remember:**
 - You are an intelligent data storyteller designing a COMPREHENSIVE health report
-- Include ALL sections from the analysis - diagnoses, timeline, prognosis, supplements, lifestyle, monitoring, questions
+- Include ALL sections from the analysis - diagnoses, timeline, prognosis, supplements, lifestyle, monitoring, questions, references
+- If `references[]` exists, include a References section with numbered citations linking to sources
 - The structured_data has chart-ready values - USE THEM for accurate visualizations
 - The analysis has rich content - USE IT for detailed sections
 - The cross_systems has mechanisms - USE IT for flow diagrams and explanations

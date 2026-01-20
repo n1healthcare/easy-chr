@@ -474,6 +474,18 @@ You MUST output valid JSON matching this exact schema:
       "reason": "Identify specific fungal species causing oxalates",
       "priority": "high"
     }
+  ],
+
+  "references": [
+    {
+      "id": 1,
+      "claim": "High triglycerides with normal LDL suggests carbohydrate-driven lipogenesis",
+      "title": "Triglyceride-Rich Lipoproteins and Cardiovascular Disease Risk",
+      "uri": "https://pubmed.ncbi.nlm.nih.gov/...",
+      "type": "journal | institution | guideline | education | health-site",
+      "confidence": "high | medium | low",
+      "snippet": "Brief quote or summary from the source supporting the claim"
+    }
   ]
 }
 ```
@@ -530,6 +542,14 @@ Extract from "Questions for Your Doctor" sections:
 - Categorize by type (diagnostic, referral, medication, etc.)
 - Include context
 - Note priority
+
+### References
+Extract from final_analysis.md "References" section (if present):
+- Each citation becomes an entry with sequential id (1, 2, 3...)
+- Capture the claim being supported
+- Include source title, URI, and type
+- Note the confidence level from research findings
+- Include relevant snippet if available
 
 ---
 
@@ -614,6 +634,7 @@ Before outputting, verify:
 - [ ] Lifestyle recommendations are in `lifestyleOptimizations` (if present)
 - [ ] Follow-up schedule is in `monitoringProtocol` (if present)
 - [ ] Doctor questions are in `doctorQuestions` (if present)
+- [ ] Research citations are in `references` (if present in final_analysis)
 
 ### Validation
 - [ ] JSON is valid (no syntax errors)
@@ -647,6 +668,10 @@ Before outputting, verify:
 ├── Does final_analysis.md have lifestyle recommendations?
 │   └── YES → Populate `lifestyleOptimizations` object
 │   └── NO → Use `null`
+│
+├── Does final_analysis.md have a References section?
+│   └── YES → Populate `references` array
+│   └── NO → Use empty array `[]`
 │
 └── And so on for each rich section...
 ```
@@ -689,9 +714,10 @@ This contains the most detailed analysis with all rich sections.
 
 ## Extraction Priority Rules
 
-1. **For diagnoses[], timeline[], prognosis, supplementSchedule, lifestyleOptimizations, monitoringProtocol[], doctorQuestions[]:**
+1. **For diagnoses[], timeline[], prognosis, supplementSchedule, lifestyleOptimizations, monitoringProtocol[], doctorQuestions[], references[]:**
    → Extract from <analysis> FIRST (it has the richest content)
    → Fill gaps from <final_analysis>
+   → For references[], look for the "References" section with numbered citations
 
 2. **For connections[]:**
    → Extract from <cross_systems> (it has detailed mechanisms)
@@ -713,7 +739,8 @@ Extract ALL data into the structured JSON format specified in this document.
 - Output ONLY valid JSON - no markdown, no explanation
 - Include EVERY value from extracted_data in the allFindings array
 - Include EVERY connection from cross_systems in the connections array
-- Extract ALL rich sections from analysis (diagnoses, timeline, prognosis, supplements, lifestyle, monitoring, doctor questions)
+- Extract ALL rich sections from analysis (diagnoses, timeline, prognosis, supplements, lifestyle, monitoring, doctor questions, references)
 - Include ALL symptoms, medications, and history in qualitativeData
+- Extract research citations from the References section into the `references` array
 
 **Output the JSON now (starting with `{`):**
