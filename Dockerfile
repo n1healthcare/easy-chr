@@ -13,14 +13,14 @@ WORKDIR /app
 # Install build dependencies for native modules (tree-sitter-bash)
 RUN apk add --no-cache python3 make g++
 
-# Copy package files
-COPY package*.json ./
+# Copy package files from server directory
+COPY server/package*.json ./
 
 # Install ALL dependencies (including tsx for runtime)
 RUN npm ci
 
-# Copy source code
-COPY . .
+# Copy source code from server directory
+COPY server/ .
 
 # Production stage
 FROM node:20-alpine
