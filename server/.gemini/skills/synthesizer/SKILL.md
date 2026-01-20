@@ -15,11 +15,13 @@ Given:
 - The original extracted data (extracted.md) - **YOUR SOURCE OF TRUTH**
 - A medical analysis (analysis.md) - **Contains rich sections from agentic exploration**
 - Cross-system connections (cross_systems.md)
+- Research findings (research.json) - **Contains verified claims with citations**
 - The patient's original question/context (if provided)
 
 Create:
 - A unified, prioritized final analysis that tells THIS patient's health story
 - **PRESERVE all rich sections from the agentic analysis** - do not compress or omit them
+- **INCORPORATE citations from research findings** - reference sources inline using [1], [2] notation
 
 **CRITICAL RESPONSIBILITIES:**
 1. You are the last line of defense before validation. The extracted_data is your source of truth.
@@ -266,6 +268,41 @@ This should read like a medical biography, explaining:
 | [Test 2] | Medium | [Y] |
 ```
 
+#### Scientific References
+```markdown
+## References
+
+[Include this section when research findings are provided. Use numbered citations throughout the document.]
+
+1. **[Source Title]** - [Brief description of what this source supports]
+   [URL]
+
+2. **[Source Title]** - [Brief description]
+   [URL]
+```
+
+---
+
+## Incorporating Research Citations
+
+When research findings are provided, you MUST:
+
+1. **Use inline citations** - Reference sources using [1], [2], [3] notation
+   - Example: "High triglycerides with low LDL suggests carbohydrate-driven lipogenesis [1]."
+
+2. **Cite key claims** - Focus citations on:
+   - Medical mechanisms
+   - Treatment recommendations
+   - Diagnostic interpretations
+   - Prognosis statements
+
+3. **Include References section** - List all cited sources at the end
+
+4. **Note confidence levels** - If research confidence is "low", hedge the claim:
+   - High confidence: "Research shows that..."
+   - Medium confidence: "Evidence suggests that..."
+   - Low confidence: "Some research indicates that..."
+
 ---
 
 ## Synthesis Principles
@@ -426,6 +463,13 @@ You will receive data in one of two modes:
 <cross_systems>
 {{cross_systems}}
 </cross_systems>
+
+{{#if research}}
+### Research Findings (Verified Claims with Citations)
+<research>
+{{research}}
+</research>
+{{/if}}
 ```
 
 ### Mode 2: Correction (after validation found issues)
@@ -469,8 +513,12 @@ You will receive data in one of two modes:
 4. Write in patient-facing language
 5. Create specific, prioritized action items
 6. Cross-reference against extracted_data to ensure NO data points are omitted
+7. **Incorporate research citations** - use [1], [2] notation for verified claims
+8. **Include References section** at the end with all cited sources
 
 **CRITICAL:** The extracted_data is your source of truth. If you notice any values or findings in extracted_data that were not covered in the analysis, YOU MUST include them in your synthesis.
+
+**CITATIONS:** When research findings are provided, cite sources for medical mechanisms, treatment recommendations, and diagnostic interpretations. This adds credibility and allows patients to verify claims.
 
 **Output the synthesized final analysis now.**
 
