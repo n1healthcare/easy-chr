@@ -1,5 +1,31 @@
 import { LLMClientPort } from '../ports/llm-client.port.js';
 import { REALM_CONFIG } from '../../config.js';
+import fs from 'fs';
+import path from 'path';
+
+// ============================================================================
+// Skill Loader
+// ============================================================================
+
+function loadResearcherSkill(): string {
+  const skillPath = path.join(
+    process.cwd(),
+    '.gemini',
+    'skills',
+    'researcher',
+    'SKILL.md'
+  );
+
+  try {
+    const content = fs.readFileSync(skillPath, 'utf-8');
+    // Extract content after frontmatter
+    const match = content.match(/---[\s\S]*?---\n([\s\S]*)/);
+    return match ? match[1].trim() : content;
+  } catch (error) {
+    console.warn('[ResearchSection] Could not load researcher SKILL.md, using fallback');
+    return 'You are an expert Medical Researcher. Use Google Search to find authoritative medical information.';
+  }
+}
 
 export class ResearchSectionUseCase {
   constructor(private readonly llmClient: LLMClientPort) {}
@@ -9,32 +35,22 @@ export class ResearchSectionUseCase {
 
     const modelName = REALM_CONFIG.models.intermediate;
     const sessionId = `research-${Date.now()}`; // Unique session for each research request
+    const researcherSkill = loadResearcherSkill();
 
-    const prompt = `
-      You are an expert Medical Researcher and Patient Advocate.
+    const prompt = `${researcherSkill}
 
-      **Context (From the Patient's Report):**
-      "${sectionContext}"
+---
 
-      ${userQuery ? `**Specific Question:** "${userQuery}"` : ''}
+## Your Task
 
-      **Goal:** "Dig Deeper" into this topic. Use Google Search to find the latest, most authoritative medical information to explain this context to the patient.
+**Context (From the Patient's Report):**
+"${sectionContext}"
 
-      **Research Guidelines:**
-      1.  **Grounding:** You MUST use Google Search to verify facts.
-      2.  **Explain the "Why":** Why is this marker high? What is the mechanism?
-      3.  **Actionable Context:** What are standard interventions? (Do not give medical advice, but standard-of-care info).
-      4.  **Compare:** How does this patient's data compare to general population averages?
+${userQuery ? `**Specific Question:** "${userQuery}"` : ''}
 
-      **Output Format:**
-      Return a clean **Markdown** response.
-      *   Use **Bold** for key concepts.
-      *   Use > Blockquotes for key study findings.
-      *   Cite sources inline if possible.
-      *   **Do not** repeat the input text. Add *new* value.
+**Goal:** "Dig Deeper" into this topic. Use Google Search to find the latest, most authoritative medical information to explain this context to the patient.
 
-      Start directly with the content.
-    `;
+Start directly with the content.`;
 
     try {
       // Use the LLMClientPort with Google Search tools

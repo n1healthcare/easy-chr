@@ -342,8 +342,6 @@ export class AgenticDoctorUseCase {
 
 ---
 
-## Input Data
-
 ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Original Extracted Data
 <extracted_data>
 ${allExtractedContent}
@@ -352,18 +350,7 @@ ${allExtractedContent}
 ### Initial Medical Analysis
 <analysis>
 ${analysisContent}
-</analysis>
-
----
-
-**Your Task:**
-1. Identify all cross-system connections in this patient's data
-2. Formulate root cause hypotheses that explain multiple findings
-3. Map the relationships between affected systems
-4. Note any expected connections that are NOT present
-${prompt ? `5. Pay special attention to connections relevant to the patient's question` : ''}
-
-**Output your cross-system analysis now:**`;
+</analysis>`;
 
       const crossSystemStream = await this.llmClient.sendMessageStream(
         crossSystemPrompt,
@@ -415,8 +402,6 @@ ${prompt ? `5. Pay special attention to connections relevant to the patient's qu
 
 ---
 
-## Input Data
-
 ${prompt ? `### Patient's Original Question\n${prompt}\n\n` : ''}### Original Extracted Data (Source of Truth)
 <extracted_data>
 ${allExtractedContent}
@@ -430,21 +415,7 @@ ${analysisContent}
 ### Cross-System Connections
 <cross_systems>
 ${crossSystemsContent}
-</cross_systems>
-
----
-
-**Your Task:**
-1. Merge the analysis and cross-system insights into ONE cohesive document
-2. Organize by clinical priority, not by lab category
-3. Weave connections INTO the narrative (don't separate them)
-4. Write in patient-facing language
-5. Create specific, prioritized action items
-6. Cross-reference against extracted_data to ensure NO data points are omitted
-
-**CRITICAL:** The extracted_data is your source of truth. If you notice any values or findings in extracted_data that were not covered in the analysis, YOU MUST include them in your synthesis.
-
-**Output the synthesized final analysis now:**`;
+</cross_systems>`;
 
       const synthesisStream = await this.llmClient.sendMessageStream(
         synthesisPrompt,
@@ -501,8 +472,6 @@ ${crossSystemsContent}
 
 ---
 
-## Input Data
-
 ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Original Extracted Data (Source of Truth)
 <extracted_data>
 ${allExtractedContent}
@@ -511,20 +480,7 @@ ${allExtractedContent}
 ### Final Synthesized Analysis (To Validate)
 <final_analysis>
 ${finalAnalysisContent}
-</final_analysis>
-
----
-
-**Your Task:**
-1. Check that EVERY data point (numeric AND qualitative) from extracted_data appears in final_analysis
-2. Verify all calculations and percentages are correct
-3. Ensure all claims are supported by the data
-4. Check for internal consistency
-5. Verify all recommendations trace to specific findings
-6. Check that symptoms, medications, history, and context are preserved
-${prompt ? `7. Verify the analysis adequately addresses the patient's question` : ''}
-
-**Output your validation report now:**`;
+</final_analysis>`;
 
         let validationContent = '';
         const validationStream = await this.llmClient.sendMessageStream(
@@ -571,8 +527,6 @@ ${prompt ? `7. Verify the analysis adequately addresses the patient's question` 
 
 ## CORRECTION TASK
 
-The previous synthesis was validated and found to have issues that need correction.
-
 ${prompt ? `### Patient's Original Question\n${prompt}\n\n` : ''}### Original Extracted Data (Source of Truth)
 <extracted_data>
 ${allExtractedContent}
@@ -588,25 +542,7 @@ ${finalAnalysisContent}
 ${validationContent}
 </validation_report>
 
-${requiredCorrections ? `### Required Corrections (MUST FIX)\n${requiredCorrections}` : ''}
-
----
-
-**Your Task:**
-You MUST produce a CORRECTED version of the synthesis that:
-1. Fixes ALL issues identified in the validation report
-2. Adds any missing data points from extracted_data
-3. Corrects any calculation errors
-4. Removes or properly hedges unsupported claims
-5. Preserves all context (medications, symptoms, history)
-6. Addresses the patient's question (if provided)
-
-**IMPORTANT:**
-- Do NOT just acknowledge the errors - actually FIX them in the output
-- Include ALL data from extracted_data
-- Your output should be a complete, corrected final analysis
-
-**Output the CORRECTED synthesized final analysis now:**`;
+${requiredCorrections ? `### Required Corrections (MUST FIX)\n${requiredCorrections}` : ''}`;
 
             let correctedContent = '';
             const correctionStream = await this.llmClient.sendMessageStream(
@@ -673,12 +609,7 @@ You MUST produce a CORRECTED version of the synthesis that:
 
 ---
 
-## Input Data (4 Sources)
-
-You have FOUR input sources. Use them in this priority order:
-
-### Priority 1: Rich Medical Analysis (PRIMARY for diagnoses, timeline, prognosis, supplements)
-This contains the most detailed analysis with all rich sections.
+${prompt ? `#### Patient's Question/Context\n${prompt}\n\n` : ''}### Priority 1: Rich Medical Analysis (PRIMARY for diagnoses, timeline, prognosis, supplements)
 <analysis>
 ${analysisContent}
 </analysis>
@@ -694,41 +625,9 @@ ${finalAnalysisContent}
 </final_analysis>
 
 ### Priority 4: Original Extracted Data (source of truth for raw values)
-${prompt ? `#### Patient's Question/Context\n${prompt}\n\n` : ''}<extracted_data>
+<extracted_data>
 ${allExtractedContent}
-</extracted_data>
-
----
-
-## Extraction Priority Rules
-
-1. **For diagnoses[], timeline[], prognosis, supplementSchedule, lifestyleOptimizations, monitoringProtocol[], doctorQuestions[]:**
-   → Extract from <analysis> FIRST (it has the richest content)
-   → Fill gaps from <final_analysis>
-
-2. **For connections[]:**
-   → Extract from <cross_systems> (it has detailed mechanisms)
-
-3. **For allFindings[], criticalFindings[], trends[]:**
-   → Use values from <extracted_data> (source of truth for numbers)
-   → Use status/interpretation from <analysis>
-
-4. **For systemsHealth, actionPlan:**
-   → Extract from <analysis> or <final_analysis>
-
----
-
-**Your Task:**
-Extract ALL data into the structured JSON format specified in your instructions.
-
-**CRITICAL:**
-- Output ONLY valid JSON - no markdown, no explanation
-- Include EVERY value from extracted_data in the allFindings array
-- Include EVERY connection from cross_systems in the connections array
-- Extract ALL rich sections from analysis (diagnoses, timeline, prognosis, supplements, lifestyle, monitoring, doctor questions)
-- Include ALL symptoms, medications, and history in qualitativeData
-
-**Output the JSON now (starting with {):**`;
+</extracted_data>`;
 
       const structureStream = await this.llmClient.sendMessageStream(
         structurePrompt,
@@ -826,83 +725,25 @@ Extract ALL data into the structured JSON format specified in your instructions.
 
 ---
 
-## Input Data (4 Sources with Priority Order)
-
-You have FOUR inputs. Use them in this priority order for different content types:
-
-${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}
-
-### Priority 1: Structured Data (for charts and visualizations)
-Use this for ALL numeric visualizations - it has exact values ready for SVG rendering.
+${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Priority 1: Structured Data (for charts and visualizations)
 <structured_data>
 ${structuredDataContent}
 </structured_data>
 
 ### Priority 2: Rich Medical Analysis (for detailed sections)
-Use this for diagnoses, timeline, prognosis, supplements, lifestyle, monitoring protocol, doctor questions.
-This has the MOST DETAILED content - do NOT skip sections that exist here!
 <analysis>
 ${analysisContent}
 </analysis>
 
 ### Priority 3: Cross-System Analysis (for mechanism explanations)
-Use this for flow diagrams, cause→effect relationships, and root cause explanations.
 <cross_systems>
 ${crossSystemsContent}
 </cross_systems>
 
 ### Priority 4: Final Synthesized Analysis (for patient-facing narrative)
-Use this for polished, patient-friendly text explanations and the "big picture" story.
 <final_analysis>
 ${finalAnalysisContent}
-</final_analysis>
-
----
-
-## Content Type → Source Priority Matrix
-
-| What You're Building | Primary Source | Secondary Source |
-|---------------------|----------------|------------------|
-| **Gauge charts, bar charts, line charts** | structured_data (exact values) | - |
-| **Radar/spider charts** | structured_data.systemsHealth | - |
-| **Trend charts** | structured_data.trends | - |
-| **Flow diagrams** | structured_data.connections + cross_systems (mechanisms) | - |
-| **Diagnoses cards** | structured_data.diagnoses OR analysis | final_analysis |
-| **Timeline section** | structured_data.timeline OR analysis | final_analysis |
-| **Prognosis section** | structured_data.prognosis OR analysis | final_analysis |
-| **Supplement schedule** | structured_data.supplementSchedule OR analysis | final_analysis |
-| **Lifestyle recommendations** | structured_data.lifestyleOptimizations OR analysis | final_analysis |
-| **Monitoring protocol** | structured_data.monitoringProtocol OR analysis | final_analysis |
-| **Doctor questions** | structured_data.doctorQuestions OR analysis | final_analysis |
-| **Data tables (all findings)** | structured_data.allFindings | - |
-| **Narrative text/explanations** | final_analysis | analysis |
-| **Mechanism explanations** | cross_systems | analysis |
-| **Action plan timeline** | structured_data.actionPlan | analysis |
-
----
-
-## CRITICAL Instructions
-
-1. **For charts/gauges/visualizations:** Use EXACT values from structured_data - don't approximate
-2. **For rich sections:** Check structured_data first, then analysis - include ALL sections that exist
-3. **For narrative:** Use final_analysis for patient-friendly language
-4. **For mechanisms:** Use cross_systems for detailed cause→effect explanations
-5. **EVERY data point should appear somewhere** - don't drop information
-6. **If a section exists in analysis but not structured_data**, still include it using the analysis content
-7. **Make critical findings impossible to miss** - prominent placement, visual emphasis
-
----
-
-**Remember:**
-- You are an intelligent data storyteller designing a COMPREHENSIVE health report
-- Include ALL sections from the analysis - diagnoses, timeline, prognosis, supplements, lifestyle, monitoring, questions
-- The structured_data has chart-ready values - USE THEM for accurate visualizations
-- The analysis has rich content - USE IT for detailed sections
-- The cross_systems has mechanisms - USE IT for flow diagrams and explanations
-- The final_analysis has polished narrative - USE IT for text content
-${prompt ? `- The patient asked: "${prompt}" - make sure this is prominently addressed` : ''}
-
-**Output the complete HTML file now (starting with <!DOCTYPE html>):**`;
+</final_analysis>`;
 
       yield { type: 'log', message: 'Generating interactive HTML experience...' };
 

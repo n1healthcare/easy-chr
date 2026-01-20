@@ -271,3 +271,25 @@ Call `complete_analysis()` only when you have:
 ## Disclaimer
 
 This analysis is informational and educational. It does not constitute medical diagnosis, treatment, or professional medical advice. All findings should be verified by qualified healthcare providers before making any medical decisions.
+
+---
+
+## Input Data Format
+
+You may receive a patient's question/context:
+
+```
+{{#if patient_question}}
+## Patient's Question/Context
+
+{{patient_question}}
+
+**Address this context directly in your analysis. The patient is looking for specific answers to their question.**
+{{/if}}
+```
+
+---
+
+## Begin Exploration
+
+Start by calling `list_documents()` to see what medical data is available, then systematically explore and analyze using the tools provided.

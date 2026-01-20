@@ -710,17 +710,15 @@ export class AgenticMedicalAnalyst {
   }
 
   private buildSystemPrompt(patientContext?: string): string {
-    // Load the comprehensive skill from file
+    // Load the comprehensive skill from file (includes task instructions)
     const skill = loadMedicalAnalysisSkill();
 
-    // Build the prompt with skill + patient context + action directive
+    // Build the prompt with skill + patient context (task instructions are in SKILL.md)
     let prompt = skill;
 
     if (patientContext) {
-      prompt += `\n\n---\n\n## Patient's Question/Context\n\n${patientContext}\n\n**Address this context directly in your analysis. The patient is looking for specific answers to their question.**`;
+      prompt += `\n\n---\n\n## Patient's Question/Context\n\n${patientContext}`;
     }
-
-    prompt += `\n\n---\n\n## Begin Exploration\n\nStart by calling list_documents() to see what medical data is available, then systematically explore and analyze.`;
 
     return prompt;
   }
