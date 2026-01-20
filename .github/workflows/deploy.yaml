@@ -1,0 +1,70 @@
+name: Build and Push to GitHub Container Registry
+
+on:
+  push:
+    branches: [develop]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: n1healthcare/easy-chr
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate version tag
+        id: version
+        run: |
+          # Generate date in YYYYMMDD format
+          DATE=$(date -u +%Y%m%d)
+
+          # Query all package versions from GHCR using GitHub API
+          ALL_TAGS=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/orgs/n1healthcare/packages/container/easy-chr/versions" \
+            2>/dev/null | jq -r '.[].metadata.container.tags[]' 2>/dev/null || echo "")
+
+          # Filter tags matching today's date pattern V{DATE}_N
+          EXISTING_TAGS=$(echo "$ALL_TAGS" | grep -E "^V${DATE}_[0-9]+$" || echo "")
+
+          # Find the highest release number for today
+          MAX_NUM=0
+          if [ -n "$EXISTING_TAGS" ]; then
+            for tag in $EXISTING_TAGS; do
+              NUM=$(echo $tag | sed "s/V${DATE}_//")
+              if [ "$NUM" -gt "$MAX_NUM" ]; then
+                MAX_NUM=$NUM
+              fi
+            done
+          fi
+
+          # Increment for next release
+          NEXT_NUM=$((MAX_NUM + 1))
+          VERSION_TAG="V${DATE}_${NEXT_NUM}"
+
+          echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_OUTPUT
+          echo "Generated version tag: $VERSION_TAG"
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION_TAG }} \
+            --build-arg VERSION=easy-chr-ghcr-${{ steps.version.outputs.VERSION_TAG }} \
+            -f ./Dockerfile .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.VERSION_TAG }}

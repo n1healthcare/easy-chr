@@ -89,14 +89,14 @@ jobs:
           push: true
           provenance: false
           build-args: |
-            VERSION=phoenix-parser-${{ needs.prepare-main.outputs.version_tag }}
+            VERSION=easy-chr-${{ needs.prepare-main.outputs.version_tag }}
           tags: |
             ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ needs.prepare-main.outputs.version_tag }}-amd64
           cache-from: type=gha,scope=prod-amd64
           cache-to: type=gha,mode=max,scope=prod-amd64
 
   build-arm64-main:
-    runs-on: xlarge-runner
+    runs-on: ubuntu-latest
     needs: [prepare-main]
     if: github.ref_name == 'main'
     env:
@@ -135,7 +135,7 @@ jobs:
           push: true
           provenance: false
           build-args: |
-            VERSION=phoenix-parser-${{ needs.prepare-main.outputs.version_tag }}
+            VERSION=easy-chr-${{ needs.prepare-main.outputs.version_tag }}
           tags: |
             ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ needs.prepare-main.outputs.version_tag }}-arm64
           cache-from: type=gha,scope=prod-arm64
@@ -290,14 +290,14 @@ jobs:
           push: true
           provenance: false
           build-args: |
-            VERSION=phoenix-parser-${{ needs.prepare-staging.outputs.version_tag }}
+            VERSION=easy-chr-${{ needs.prepare-staging.outputs.version_tag }}
           tags: |
             ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ needs.prepare-staging.outputs.version_tag }}-amd64
           cache-from: type=gha,scope=staging-amd64
           cache-to: type=gha,mode=max,scope=staging-amd64
 
   build-arm64-staging:
-    runs-on: xlarge-runner
+    runs-on: ubuntu-latest
     needs: [prepare-staging]
     if: github.ref_name != 'main'
     env:
@@ -336,7 +336,7 @@ jobs:
           push: true
           provenance: false
           build-args: |
-            VERSION=phoenix-parser-${{ needs.prepare-staging.outputs.version_tag }}
+            VERSION=easy-chr-${{ needs.prepare-staging.outputs.version_tag }}
           tags: |
             ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ needs.prepare-staging.outputs.version_tag }}-arm64
           cache-from: type=gha,scope=staging-arm64
