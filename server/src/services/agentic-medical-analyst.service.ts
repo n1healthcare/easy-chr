@@ -710,14 +710,20 @@ export class AgenticMedicalAnalyst {
   }
 
   private buildSystemPrompt(patientContext?: string): string {
-    // Load the comprehensive skill from file (includes task instructions)
-    const skill = loadMedicalAnalysisSkill();
+    // Load the comprehensive skill from file (includes task instructions and placeholders)
+    let prompt = loadMedicalAnalysisSkill();
 
-    // Build the prompt with skill + patient context (task instructions are in SKILL.md)
-    let prompt = skill;
-
+    // Substitute the {{patient_question}} placeholder in SKILL.md
+    // This ensures patient context appears BEFORE "Begin Exploration" command
     if (patientContext) {
-      prompt += `\n\n---\n\n## Patient's Question/Context\n\n${patientContext}`;
+      // Remove the {{#if}} and {{/if}} markers, keep the content, substitute the variable
+      prompt = prompt
+        .replace(/\{\{#if patient_question\}\}/g, '')
+        .replace(/\{\{\/if\}\}/g, '')
+        .replace(/\{\{patient_question\}\}/g, patientContext);
+    } else {
+      // Remove the entire conditional block if no patient context
+      prompt = prompt.replace(/\{\{#if patient_question\}\}[\s\S]*?\{\{\/if\}\}/g, '');
     }
 
     return prompt;
