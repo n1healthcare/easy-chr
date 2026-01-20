@@ -3,8 +3,8 @@
 # This Dockerfile builds N1-Interface for execution as Kubernetes Jobs
 # spawned by forge-sentinel, matching the workflow-claude-code architecture.
 #
-# Build: docker build -f Dockerfile.job -t n1-interface-job:latest .
-# Run:   docker run -e USER_ID=... -e REPORT_ID=... -e N1_API_KEY=... n1-interface-job
+# Build: docker build -t n1-interface:latest .
+# Run:   docker run -e USER_ID=... -e REPORT_ID=... -e N1_API_KEY=... n1-interface
 
 FROM node:20-alpine AS builder
 
@@ -56,6 +56,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # - PROJECT_ID: GCP project ID
 # - GCS_SERVICE_ACCOUNT_JSON: GCS credentials (JSON string)
 # - MODEL: Gemini model to use
+# Progress updates are sent via N1 API (POST /reports/status)
 
 # Run in job mode using tsx (TypeScript runtime, no build needed)
 CMD ["npx", "tsx", "src/job-runner.ts"]

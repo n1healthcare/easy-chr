@@ -28,6 +28,80 @@ import { GcsStorageAdapter } from './adapters/gcs/gcs-storage.adapter.js';
 import path from 'path';
 import fs from 'fs';
 
+// ============================================================================
+// Progress Notification via N1 API
+// ============================================================================
+
+type ProgressStage =
+  | 'Preparing'
+  | 'Analyzing'
+  | 'Writing'
+  | 'Checking'
+  | 'Finalizing'
+  | 'Complete'
+  | 'Has Error';
+
+interface ProgressUpdate {
+  stage: ProgressStage;
+  progress: number;  // 0-100
+  message: string;
+  errorDetails?: string;
+}
+
+// Map our pipeline steps to N1 API progress stages
+const PROGRESS_MAP: Record<string, ProgressUpdate> = {
+  initializing:      { stage: 'Preparing',  progress: 5,   message: 'Setting up AI pipeline...' },
+  fetching_records:  { stage: 'Preparing',  progress: 15,  message: 'Retrieving your medical records...' },
+  analyzing:         { stage: 'Analyzing',  progress: 30,  message: 'Analyzing your health data...' },
+  generating_report: { stage: 'Writing',    progress: 60,  message: 'Building your health report...' },
+  uploading:         { stage: 'Finalizing', progress: 85,  message: 'Saving your report...' },
+  completed:         { stage: 'Complete',   progress: 100, message: 'Your health report is ready!' },
+  failed:            { stage: 'Has Error',  progress: 0,   message: 'Report generation failed' },
+};
+
+async function notifyProgress(
+  config: { n1ApiBaseUrl: string; n1ApiKey: string; userId: string; reportId: string },
+  step: keyof typeof PROGRESS_MAP,
+  customMessage?: string,
+  errorDetails?: string
+): Promise<void> {
+  const update = PROGRESS_MAP[step];
+  if (!update) {
+    console.log(`[Progress] Unknown step: ${step}`);
+    return;
+  }
+
+  const payload = {
+    report_id: config.reportId,
+    user_id: config.userId,
+    progress: update.progress,
+    status: step === 'failed' ? 'error' : 'processing',
+    message: customMessage || update.message,
+    progress_stage: update.stage,
+    error_details: errorDetails,
+  };
+
+  console.log(`[Progress] ${update.stage} (${update.progress}%): ${payload.message}`);
+
+  try {
+    const response = await fetch(`${config.n1ApiBaseUrl}/reports/status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'N1-Api-Key': config.n1ApiKey,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      console.warn(`[Progress] API call failed (${response.status}): ${await response.text()}`);
+    }
+  } catch (error) {
+    // Don't fail the job if progress update fails - just log it
+    console.warn(`[Progress] API error:`, error);
+  }
+}
+
 dotenv.config();
 
 interface JobConfig {
@@ -96,6 +170,7 @@ async function runJob() {
 
   try {
     // Step 1: Initialize Gemini adapter
+    await notifyProgress(config, 'initializing');
     console.log('[1/5] Initializing Gemini adapter...');
     const geminiAdapter = new GeminiAdapter();
     await geminiAdapter.initialize();
@@ -110,11 +185,13 @@ async function runJob() {
     console.log('');
 
     // Step 3: Initialize N1 API adapter and fetch PDFs
+    await notifyProgress(config, 'fetching_records');
     console.log('[3/5] Fetching PDFs from N1 API...');
     const n1ApiAdapter = new N1ApiAdapter(config.n1ApiBaseUrl, config.n1ApiKey);
     const fetchAndProcessUseCase = new FetchAndProcessPDFsUseCase(n1ApiAdapter, agenticDoctorUseCase);
 
     // Step 4: Process PDFs through pipeline
+    await notifyProgress(config, 'analyzing');
     console.log('[4/5] Processing PDFs through multi-agent pipeline...');
     const generator = fetchAndProcessUseCase.execute(config.userId, config.prompt);
 
@@ -135,10 +212,12 @@ async function runJob() {
       throw new Error('No realm was generated');
     }
 
+    await notifyProgress(config, 'generating_report');
     console.log('✓ Processing complete');
     console.log('');
 
     // Step 5: Upload to GCS
+    await notifyProgress(config, 'uploading');
     console.log('[5/5] Uploading result to Google Cloud Storage...');
     const gcsAdapter = new GcsStorageAdapter(
       config.bucketName,
@@ -164,7 +243,8 @@ async function runJob() {
     console.log(`✓ Uploaded to GCS: ${publicUrl}`);
     console.log('');
 
-    // Success!
+    // Success - notify completion
+    await notifyProgress(config, 'completed');
     console.log('================================================================================');
     console.log('Job completed successfully!');
     console.log(`Finished at: ${new Date().toISOString()}`);
@@ -174,6 +254,10 @@ async function runJob() {
     process.exit(0);
 
   } catch (error) {
+    // Notify failure
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    await notifyProgress(config, 'failed', undefined, errorMessage);
+
     console.error('');
     console.error('================================================================================');
     console.error('Job failed!');
