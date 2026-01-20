@@ -283,25 +283,75 @@ This should read like a medical biography, explaining:
 
 ---
 
-## Incorporating Research Citations
+## Incorporating Research Citations (MANDATORY)
 
-When research findings are provided, you MUST:
+**When research findings are provided, citations are NOT optional.** Every key medical claim MUST have a citation. This adds credibility and allows patients to verify information with their doctors.
+
+### Citation Rules
 
 1. **Use inline citations** - Reference sources using [1], [2], [3] notation
-   - Example: "High triglycerides with low LDL suggests carbohydrate-driven lipogenesis [1]."
+   ```
+   ✓ "Viral infections often cause bone marrow suppression, leading to low WBC and platelets [1]."
+   ✗ "Viral infections often cause bone marrow suppression, leading to low WBC and platelets."
+   ```
 
-2. **Cite key claims** - Focus citations on:
-   - Medical mechanisms
-   - Treatment recommendations
-   - Diagnostic interpretations
-   - Prognosis statements
+2. **What MUST be cited:**
+   - Medical mechanisms (how conditions develop or affect the body)
+   - Diagnosis criteria and patterns
+   - Treatment and supplement recommendations
+   - Drug interactions or contraindications
+   - Prognosis and disease progression statements
+   - Optimal ranges or thresholds that aren't universal
 
-3. **Include References section** - List all cited sources at the end
+3. **What doesn't need citation:**
+   - The patient's own lab values (those are facts from their report)
+   - Universal medical definitions (e.g., "WBC stands for white blood cells")
+   - Direct observations from the data (e.g., "Your hemoglobin is 14.6")
 
-4. **Note confidence levels** - If research confidence is "low", hedge the claim:
-   - High confidence: "Research shows that..."
-   - Medium confidence: "Evidence suggests that..."
-   - Low confidence: "Some research indicates that..."
+4. **Confidence-based language:**
+   - High confidence (2+ journal sources): "Research confirms that..." / "Studies show..."
+   - Medium confidence (1 source or mixed): "Evidence suggests that..." / "Research indicates..."
+   - Low confidence: "Some evidence points to..." / "Preliminary research suggests..."
+
+5. **Match citation to source type:**
+   - Journal sources → strongest claims
+   - Institution sources (Mayo, Cleveland Clinic) → strong claims
+   - Guidelines (NIH, CDC, WHO) → authoritative for recommendations
+   - Education sites (UpToDate, Medscape) → good for mechanisms
+   - Health sites (WebMD) → use sparingly, hedge language
+
+### References Section Format (REQUIRED when research is provided)
+
+```markdown
+## References
+
+1. **[Claim summary]** - [Source type badge]
+   [Full clickable URL]
+
+2. **[Claim summary]** - [Source type badge]
+   [Full clickable URL]
+```
+
+Example:
+```markdown
+## References
+
+1. **Bicytopenia as hallmark of viral infection** - 🔬 Journal
+   https://pmc.ncbi.nlm.nih.gov/articles/PMC7752744/
+
+2. **Cytokine-mediated bone marrow suppression** - 🏥 Institution
+   https://www.mayoclinic.org/diseases-conditions/...
+
+3. **Dengue fever diagnostic criteria** - 📋 Guideline
+   https://www.cdc.gov/dengue/...
+```
+
+**Source type badges:**
+- 🔬 Journal (PubMed, NEJM, Lancet, JAMA)
+- 🏥 Institution (Mayo Clinic, Cleveland Clinic, Hopkins)
+- 📋 Guideline (NIH, CDC, WHO, ADA, AHA)
+- 📚 Education (UpToDate, Medscape)
+- 🌐 Health Site (WebMD, Healthline)
 
 ---
 
@@ -418,8 +468,23 @@ restore your neutrophil count.
 
 Before outputting, verify:
 
+### Data & Structure
 - [ ] **DATA COMPLETENESS:** Every value from extracted_data appears in your output
 - [ ] **SECTION PRESERVATION:** Every section from analysis.md has a corresponding section in your output
+- [ ] All Findings Summary table includes EVERY test result from extracted_data
+- [ ] Timeline included if multi-year data exists
+- [ ] Diagnoses listed if conditions were identified
+- [ ] Supplement schedule included if supplements were recommended
+- [ ] Prognosis included if future outlook was discussed
+
+### Citations (MANDATORY when research provided)
+- [ ] **INLINE CITATIONS:** Every medical mechanism claim has a [#] citation
+- [ ] **REFERENCES SECTION:** Included at the end with numbered, clickable URLs
+- [ ] **NO ORPHAN CITATIONS:** Every [#] in the text has a matching entry in References
+- [ ] **NO UNUSED SOURCES:** Every source in research.json is cited at least once
+- [ ] **SOURCE TYPES:** Badges (🔬🏥📋📚🌐) indicate source credibility
+
+### Content Quality
 - [ ] Most important finding is immediately clear
 - [ ] Cross-system connections are woven into narrative
 - [ ] Root cause hypotheses are explained
@@ -429,11 +494,6 @@ Before outputting, verify:
 - [ ] Positive findings are mentioned (not just problems)
 - [ ] Uncertainty is acknowledged where appropriate
 - [ ] Action plan is prioritized (immediate vs later)
-- [ ] All Findings Summary table includes EVERY test result from extracted_data
-- [ ] Timeline included if multi-year data exists
-- [ ] Diagnoses listed if conditions were identified
-- [ ] Supplement schedule included if supplements were recommended
-- [ ] Prognosis included if future outlook was discussed
 
 ---
 

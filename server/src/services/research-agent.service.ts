@@ -12,6 +12,52 @@ import { webSearch, type WebSearchResult } from './web-search.service.js';
 import { REALM_CONFIG } from '../config.js';
 
 // ============================================================================
+// URL Resolution (Google redirect → actual URL)
+// ============================================================================
+
+/**
+ * Resolves a Google grounding redirect URL to the actual destination URL.
+ * Returns the original URL if resolution fails.
+ */
+async function resolveRedirectUrl(url: string): Promise<string> {
+  // Skip if not a Google redirect URL
+  if (!url.includes('vertexaisearch.cloud.google.com/grounding-api-redirect')) {
+    return url;
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      redirect: 'manual' // Don't follow redirects, just get the Location header
+    });
+
+    const location = response.headers.get('location');
+    if (location) {
+      return location;
+    }
+  } catch (error) {
+    console.warn(`[ResearchAgent] Failed to resolve redirect URL: ${url}`);
+  }
+
+  return url; // Fallback to original
+}
+
+/**
+ * Validates that a URL is accessible (returns 2xx or 3xx status).
+ */
+async function validateUrl(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      signal: AbortSignal.timeout(5000) // 5 second timeout
+    });
+    return response.ok || (response.status >= 300 && response.status < 400);
+  } catch {
+    return false;
+  }
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -340,18 +386,54 @@ export async function* researchClaims(
       const searchResult = await webSearch(config, claim.searchQuery);
 
       if (searchResult.text && searchResult.sources.length > 0) {
+        // Resolve redirect URLs and validate sources in parallel
+        const resolvedSources = await Promise.all(
+          searchResult.sources.map(async (s) => {
+            const realUri = await resolveRedirectUrl(s.uri);
+            const isValid = await validateUrl(realUri);
+            return {
+              title: s.title,
+              uri: realUri,
+              type: classifySource(realUri, s.title),
+              isValid
+            };
+          })
+        );
+
+        // Filter to only valid sources with real URLs
+        const validSources: ResearchSource[] = resolvedSources
+          .filter(s => s.isValid)
+          .map(({ title, uri, type }) => ({ title, uri, type }));
+
+        // Only count as supported if we have at least one valid source
+        if (validSources.length === 0) {
+          unsupportedClaims.push({
+            id: `claim-${i + 1}`,
+            originalClaim: claim.claim,
+            searchQuery: claim.searchQuery,
+            reason: 'No valid sources found (URLs could not be verified)'
+          });
+
+          yield {
+            type: 'claim_researched',
+            data: {
+              claim: claim.claim,
+              claimIndex: i + 1,
+              totalClaims: claims.length,
+              message: 'No valid sources found'
+            }
+          };
+          continue;
+        }
+
         const researchedClaim: ResearchedClaim = {
           id: `claim-${i + 1}`,
           originalClaim: claim.claim,
           searchQuery: claim.searchQuery,
           supported: true,
-          confidence: searchResult.sources.length >= 2 ? 'high' : 'medium',
-          evidence: searchResult.text.substring(0, 500), // Truncate for storage
-          sources: searchResult.sources.map(s => ({
-            title: s.title,
-            uri: s.uri,
-            type: classifySource(s.uri, s.title)
-          }))
+          confidence: validSources.length >= 2 ? 'high' : 'medium',
+          evidence: searchResult.text,
+          sources: validSources
         };
 
         researchedClaims.push(researchedClaim);
@@ -363,7 +445,7 @@ export async function* researchClaims(
             claimIndex: i + 1,
             totalClaims: claims.length,
             result: researchedClaim,
-            message: `Found ${searchResult.sources.length} source(s)`
+            message: `Found ${validSources.length} verified source(s)`
           }
         };
       } else {
@@ -403,9 +485,6 @@ export async function* researchClaims(
         }
       };
     }
-
-    // Small delay between searches to avoid rate limiting
-    await new Promise(resolve => setTimeout(resolve, 500));
   }
 
   yield {
