@@ -1,0 +1,413 @@
+name: Build and Deploy to AWS
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-2
+  AWS_ACCOUNT_ID: 191421493115
+
+jobs:
+  # ============================================================================
+  # PRODUCTION (main branch)
+  # ============================================================================
+  prepare-main:
+    runs-on: ubuntu-latest
+    if: github.ref_name == 'main'
+    outputs:
+      version_tag: ${{ steps.version.outputs.VERSION_TAG }}
+    env:
+      ECR_REPOSITORY: n1-prod/workflow-easy-chr
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/production-github-ecr-push
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Generate version tag
+        id: version
+        run: |
+          DATE=$(date -u +%Y%m%d)
+          ALL_TAGS=$(aws ecr describe-images \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'imageDetails[*].imageTags[]' \
+            --output text 2>/dev/null || echo "")
+          EXISTING_TAGS=$(echo "$ALL_TAGS" | tr '\t' '\n' | grep -E "^V${DATE}_[0-9]+$" || echo "")
+          MAX_NUM=0
+          if [ -n "$EXISTING_TAGS" ]; then
+            for tag in $EXISTING_TAGS; do
+              NUM=$(echo $tag | sed "s/V${DATE}_//")
+              if [ "$NUM" -gt "$MAX_NUM" ]; then
+                MAX_NUM=$NUM
+              fi
+            done
+          fi
+          NEXT_NUM=$((MAX_NUM + 1))
+          VERSION_TAG="V${DATE}_${NEXT_NUM}"
+          echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_OUTPUT
+          echo "Generated version tag: $VERSION_TAG"
+
+  build-amd64-main:
+    runs-on: ubuntu-latest
+    needs: [prepare-main]
+    if: github.ref_name == 'main'
+    env:
+      ECR_REPOSITORY: n1-prod/workflow-easy-chr
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/production-github-ecr-push
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push AMD64 image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          build-args: |
+            VERSION=phoenix-parser-${{ needs.prepare-main.outputs.version_tag }}
+          tags: |
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ needs.prepare-main.outputs.version_tag }}-amd64
+          cache-from: type=gha,scope=prod-amd64
+          cache-to: type=gha,mode=max,scope=prod-amd64
+
+  build-arm64-main:
+    runs-on: xlarge-runner
+    needs: [prepare-main]
+    if: github.ref_name == 'main'
+    env:
+      ECR_REPOSITORY: n1-prod/workflow-easy-chr
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/production-github-ecr-push
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+
+      - name: Build and push ARM64 image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          build-args: |
+            VERSION=phoenix-parser-${{ needs.prepare-main.outputs.version_tag }}
+          tags: |
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ needs.prepare-main.outputs.version_tag }}-arm64
+          cache-from: type=gha,scope=prod-arm64
+          cache-to: type=gha,mode=max,scope=prod-arm64
+
+  manifest-main:
+    runs-on: ubuntu-latest
+    needs: [prepare-main, build-amd64-main, build-arm64-main]
+    if: github.ref_name == 'main'
+    env:
+      ECR_REPOSITORY: n1-prod/workflow-easy-chr
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/production-github-ecr-push
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+
+      - name: Create and push multi-arch manifest
+        env:
+          VERSION_TAG: ${{ needs.prepare-main.outputs.version_tag }}
+          REGISTRY: ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+        run: |
+          docker manifest create $REGISTRY/$ECR_REPOSITORY:$VERSION_TAG \
+            $REGISTRY/$ECR_REPOSITORY:$VERSION_TAG-amd64 \
+            $REGISTRY/$ECR_REPOSITORY:$VERSION_TAG-arm64
+          docker manifest push $REGISTRY/$ECR_REPOSITORY:$VERSION_TAG
+
+          docker manifest create $REGISTRY/$ECR_REPOSITORY:latest \
+            $REGISTRY/$ECR_REPOSITORY:$VERSION_TAG-amd64 \
+            $REGISTRY/$ECR_REPOSITORY:$VERSION_TAG-arm64
+          docker manifest push $REGISTRY/$ECR_REPOSITORY:latest
+
+          echo "Successfully created multi-arch manifest for $VERSION_TAG"
+
+  notify-main:
+    runs-on: ubuntu-latest
+    needs: [build-amd64-main, build-arm64-main, manifest-main]
+    if: always() && github.ref_name == 'main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Slack Deployment Notification (Success)
+        if: needs.build-amd64-main.result == 'success' && needs.build-arm64-main.result == 'success' && needs.manifest-main.result == 'success'
+        uses: n1healthcare/github-action-deployment-approval@main
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+        with:
+          require_approval: false
+          notification_title: "Deployment Successful"
+          notification_status: "success"
+
+      - name: Slack Deployment Notification (Failure)
+        if: needs.build-amd64-main.result == 'failure' || needs.build-arm64-main.result == 'failure' || needs.manifest-main.result == 'failure'
+        uses: n1healthcare/github-action-deployment-approval@main
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+        with:
+          require_approval: false
+          notification_title: "Deployment Failed"
+          notification_status: "failure"
+
+  # ============================================================================
+  # STAGING (non-main branches)
+  # ============================================================================
+  prepare-staging:
+    runs-on: ubuntu-latest
+    if: github.ref_name != 'main'
+    outputs:
+      version_tag: ${{ steps.version.outputs.VERSION_TAG }}
+    env:
+      ECR_REPOSITORY: n1-staging/workflow-easy-chr
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/staging-github-ecr-push
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Generate version tag
+        id: version
+        run: |
+          DATE=$(date -u +%Y%m%d)
+          ALL_TAGS=$(aws ecr describe-images \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'imageDetails[*].imageTags[]' \
+            --output text 2>/dev/null || echo "")
+          EXISTING_TAGS=$(echo "$ALL_TAGS" | tr '\t' '\n' | grep -E "^V${DATE}_[0-9]+$" || echo "")
+          MAX_NUM=0
+          if [ -n "$EXISTING_TAGS" ]; then
+            for tag in $EXISTING_TAGS; do
+              NUM=$(echo $tag | sed "s/V${DATE}_//")
+              if [ "$NUM" -gt "$MAX_NUM" ]; then
+                MAX_NUM=$NUM
+              fi
+            done
+          fi
+          NEXT_NUM=$((MAX_NUM + 1))
+          VERSION_TAG="V${DATE}_${NEXT_NUM}"
+          echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_OUTPUT
+          echo "Generated version tag: $VERSION_TAG"
+
+  build-amd64-staging:
+    runs-on: ubuntu-latest
+    needs: [prepare-staging]
+    if: github.ref_name != 'main'
+    env:
+      ECR_REPOSITORY: n1-staging/workflow-easy-chr
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/staging-github-ecr-push
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push AMD64 image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          build-args: |
+            VERSION=phoenix-parser-${{ needs.prepare-staging.outputs.version_tag }}
+          tags: |
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ needs.prepare-staging.outputs.version_tag }}-amd64
+          cache-from: type=gha,scope=staging-amd64
+          cache-to: type=gha,mode=max,scope=staging-amd64
+
+  build-arm64-staging:
+    runs-on: xlarge-runner
+    needs: [prepare-staging]
+    if: github.ref_name != 'main'
+    env:
+      ECR_REPOSITORY: n1-staging/workflow-easy-chr
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/staging-github-ecr-push
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+
+      - name: Build and push ARM64 image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          build-args: |
+            VERSION=phoenix-parser-${{ needs.prepare-staging.outputs.version_tag }}
+          tags: |
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ needs.prepare-staging.outputs.version_tag }}-arm64
+          cache-from: type=gha,scope=staging-arm64
+          cache-to: type=gha,mode=max,scope=staging-arm64
+
+  manifest-staging:
+    runs-on: ubuntu-latest
+    needs: [prepare-staging, build-amd64-staging, build-arm64-staging]
+    if: github.ref_name != 'main'
+    env:
+      ECR_REPOSITORY: n1-staging/workflow-easy-chr
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/staging-github-ecr-push
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+
+      - name: Create and push multi-arch manifest
+        env:
+          VERSION_TAG: ${{ needs.prepare-staging.outputs.version_tag }}
+          REGISTRY: ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+        run: |
+          docker manifest create $REGISTRY/$ECR_REPOSITORY:$VERSION_TAG \
+            $REGISTRY/$ECR_REPOSITORY:$VERSION_TAG-amd64 \
+            $REGISTRY/$ECR_REPOSITORY:$VERSION_TAG-arm64
+          docker manifest push $REGISTRY/$ECR_REPOSITORY:$VERSION_TAG
+
+          docker manifest create $REGISTRY/$ECR_REPOSITORY:latest \
+            $REGISTRY/$ECR_REPOSITORY:$VERSION_TAG-amd64 \
+            $REGISTRY/$ECR_REPOSITORY:$VERSION_TAG-arm64
+          docker manifest push $REGISTRY/$ECR_REPOSITORY:latest
+
+          echo "Successfully created multi-arch manifest for $VERSION_TAG"
+
+  notify-staging:
+    runs-on: ubuntu-latest
+    needs: [build-amd64-staging, build-arm64-staging, manifest-staging]
+    if: always() && github.ref_name != 'main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Slack Deployment Notification (Success)
+        if: needs.build-amd64-staging.result == 'success' && needs.build-arm64-staging.result == 'success' && needs.manifest-staging.result == 'success'
+        uses: n1healthcare/github-action-deployment-approval@main
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+        with:
+          require_approval: false
+          notification_title: "Deployment Successful"
+          notification_status: "success"
+
+      - name: Slack Deployment Notification (Failure)
+        if: needs.build-amd64-staging.result == 'failure' || needs.build-arm64-staging.result == 'failure' || needs.manifest-staging.result == 'failure'
+        uses: n1healthcare/github-action-deployment-approval@main
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+        with:
+          require_approval: false
+          notification_title: "Deployment Failed"
+          notification_status: "failure"

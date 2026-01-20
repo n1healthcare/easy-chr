@@ -2,11 +2,12 @@
   "compilerOptions": {
     "target": "esnext",
     "module": "esnext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": false,
     "skipLibCheck": true,
+    "noEmitOnError": false,
     "baseUrl": ".",
     "paths": {
       "@google/gemini-cli-core/*": ["./vendor/gemini-cli/packages/core/src/*"]
