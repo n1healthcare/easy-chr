@@ -650,3 +650,70 @@ Before outputting, verify:
 │
 └── And so on for each rich section...
 ```
+
+---
+
+## Input Data Format
+
+You will receive data with 4 sources:
+
+```
+{{#if patient_question}}
+#### Patient's Question/Context
+{{patient_question}}
+{{/if}}
+
+### Priority 1: Rich Medical Analysis (PRIMARY for diagnoses, timeline, prognosis, supplements)
+This contains the most detailed analysis with all rich sections.
+<analysis>
+{{analysis}}
+</analysis>
+
+### Priority 2: Cross-System Connections (for mechanism explanations)
+<cross_systems>
+{{cross_systems}}
+</cross_systems>
+
+### Priority 3: Final Synthesized Analysis (for patient-facing narrative)
+<final_analysis>
+{{final_analysis}}
+</final_analysis>
+
+### Priority 4: Original Extracted Data (source of truth for raw values)
+<extracted_data>
+{{extracted_data}}
+</extracted_data>
+```
+
+---
+
+## Extraction Priority Rules
+
+1. **For diagnoses[], timeline[], prognosis, supplementSchedule, lifestyleOptimizations, monitoringProtocol[], doctorQuestions[]:**
+   → Extract from <analysis> FIRST (it has the richest content)
+   → Fill gaps from <final_analysis>
+
+2. **For connections[]:**
+   → Extract from <cross_systems> (it has detailed mechanisms)
+
+3. **For allFindings[], criticalFindings[], trends[]:**
+   → Use values from <extracted_data> (source of truth for numbers)
+   → Use status/interpretation from <analysis>
+
+4. **For systemsHealth, actionPlan:**
+   → Extract from <analysis> or <final_analysis>
+
+---
+
+## Your Task
+
+Extract ALL data into the structured JSON format specified in this document.
+
+**CRITICAL:**
+- Output ONLY valid JSON - no markdown, no explanation
+- Include EVERY value from extracted_data in the allFindings array
+- Include EVERY connection from cross_systems in the connections array
+- Extract ALL rich sections from analysis (diagnoses, timeline, prognosis, supplements, lifestyle, monitoring, doctor questions)
+- Include ALL symptoms, medications, and history in qualitativeData
+
+**Output the JSON now (starting with `{`):**

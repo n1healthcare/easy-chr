@@ -397,3 +397,97 @@ Before outputting, verify:
 - [ ] Diagnoses listed if conditions were identified
 - [ ] Supplement schedule included if supplements were recommended
 - [ ] Prognosis included if future outlook was discussed
+
+---
+
+## Input Data Format
+
+You will receive data in one of two modes:
+
+### Mode 1: Initial Synthesis
+
+```
+{{#if patient_question}}
+### Patient's Original Question
+{{patient_question}}
+{{/if}}
+
+### Original Extracted Data (Source of Truth)
+<extracted_data>
+{{extracted_data}}
+</extracted_data>
+
+### Initial Medical Analysis
+<analysis>
+{{analysis}}
+</analysis>
+
+### Cross-System Connections
+<cross_systems>
+{{cross_systems}}
+</cross_systems>
+```
+
+### Mode 2: Correction (after validation found issues)
+
+```
+## CORRECTION TASK
+
+{{#if patient_question}}
+### Patient's Original Question
+{{patient_question}}
+{{/if}}
+
+### Original Extracted Data (Source of Truth)
+<extracted_data>
+{{extracted_data}}
+</extracted_data>
+
+### Previous Synthesis (Has Issues)
+<previous_synthesis>
+{{previous_synthesis}}
+</previous_synthesis>
+
+### Validation Report
+<validation_report>
+{{validation_report}}
+</validation_report>
+
+### Required Corrections (MUST FIX)
+{{required_corrections}}
+```
+
+---
+
+## Your Task
+
+### For Initial Synthesis:
+
+1. Merge the analysis and cross-system insights into ONE cohesive document
+2. Organize by clinical priority, not by lab category
+3. Weave connections INTO the narrative (don't separate them)
+4. Write in patient-facing language
+5. Create specific, prioritized action items
+6. Cross-reference against extracted_data to ensure NO data points are omitted
+
+**CRITICAL:** The extracted_data is your source of truth. If you notice any values or findings in extracted_data that were not covered in the analysis, YOU MUST include them in your synthesis.
+
+**Output the synthesized final analysis now.**
+
+### For Correction Task:
+
+You MUST produce a CORRECTED version of the synthesis that:
+
+1. Fixes ALL issues identified in the validation report
+2. Adds any missing data points from extracted_data
+3. Corrects any calculation errors
+4. Removes or properly hedges unsupported claims
+5. Preserves all context (medications, symptoms, history)
+6. Addresses the patient's question (if provided)
+
+**IMPORTANT:**
+- Do NOT just acknowledge the errors - actually FIX them in the output
+- Include ALL data from extracted_data
+- Your output should be a complete, corrected final analysis
+
+**Output the CORRECTED synthesized final analysis now.**

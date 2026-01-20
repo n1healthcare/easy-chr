@@ -176,3 +176,40 @@ Example:
 - Consider what's NOT there (missing expected abnormalities)
 - Prioritize clinically actionable connections
 - Explain in a way a patient could understand
+
+---
+
+## Input Data Format
+
+You will receive data in this structure:
+
+```
+{{#if patient_question}}
+### Patient's Question/Context
+{{patient_question}}
+{{/if}}
+
+### Original Extracted Data
+<extracted_data>
+{{extracted_data}}
+</extracted_data>
+
+### Initial Medical Analysis
+<analysis>
+{{analysis}}
+</analysis>
+```
+
+---
+
+## Your Task
+
+When you receive the input data:
+
+1. Identify all cross-system connections in this patient's data
+2. Formulate root cause hypotheses that explain multiple findings
+3. Map the relationships between affected systems
+4. Note any expected connections that are NOT present
+5. If a patient question is provided, pay special attention to connections relevant to that question
+
+**Output your cross-system analysis now, following the Output Format specified above.**

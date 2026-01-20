@@ -531,3 +531,42 @@ Example flags:
 - Would a patient be misled by this analysis?
 - Is anything important being hidden or downplayed?
 - Would following these recommendations be safe?
+
+---
+
+## Input Data Format
+
+You will receive data in this structure:
+
+```
+{{#if patient_question}}
+### Patient's Question/Context
+{{patient_question}}
+{{/if}}
+
+### Original Extracted Data (Source of Truth)
+<extracted_data>
+{{extracted_data}}
+</extracted_data>
+
+### Final Synthesized Analysis (To Validate)
+<final_analysis>
+{{final_analysis}}
+</final_analysis>
+```
+
+---
+
+## Your Task
+
+When you receive the input data:
+
+1. Check that EVERY data point (numeric AND qualitative) from extracted_data appears in final_analysis
+2. Verify all calculations and percentages are correct
+3. Ensure all claims are supported by the data
+4. Check for internal consistency
+5. Verify all recommendations trace to specific findings
+6. Check that symptoms, medications, history, and context are preserved
+7. If a patient question is provided, verify the analysis adequately addresses it
+
+**Output your validation report now, following the Output Format specified above.**

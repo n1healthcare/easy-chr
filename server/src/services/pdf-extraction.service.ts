@@ -17,6 +17,30 @@ import fs from 'fs';
 import { REALM_CONFIG } from '../config.js';
 
 // ============================================================================
+// Skill Loader
+// ============================================================================
+
+function loadPdfExtractorSkill(): string {
+  const skillPath = path.join(
+    process.cwd(),
+    '.gemini',
+    'skills',
+    'pdf-extractor',
+    'SKILL.md'
+  );
+
+  try {
+    const content = fs.readFileSync(skillPath, 'utf-8');
+    // Extract content after frontmatter
+    const match = content.match(/---[\s\S]*?---\n([\s\S]*)/);
+    return match ? match[1].trim() : content;
+  } catch (error) {
+    console.warn('[PDFExtraction] Could not load pdf-extractor SKILL.md, using fallback');
+    return 'You are a document OCR assistant. Analyze the document image and extract all content in clean Markdown format.';
+  }
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -58,12 +82,6 @@ interface InternalExtractionEvent {
 const PAGES_PER_BATCH = 5;
 const BATCH_DELAY_MS = 1000; // 1 second delay between batches to avoid rate limits
 
-const EXTRACTION_PROMPT = `You are a document OCR assistant. Analyze the document image and extract all content in clean Markdown format.
-
-- For text: Extract the text in the image.
-- For tables: Parse the table in the image into clean Markdown format.
-- For equations: Identify the formula in the image and represent it using LaTeX format.`;
-
 // ============================================================================
 // Service Implementation
 // ============================================================================
@@ -71,6 +89,7 @@ const EXTRACTION_PROMPT = `You are a document OCR assistant. Analyze the documen
 export class PDFExtractionService {
   private genai: GoogleGenAI;
   private model: string;
+  private extractionPrompt: string;
 
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -87,6 +106,7 @@ export class PDFExtractionService {
     });
 
     this.model = REALM_CONFIG.models.markdown;
+    this.extractionPrompt = loadPdfExtractorSkill();
     console.log(`[PDFExtraction] Initialized with model: ${this.model}`);
   }
 
@@ -300,7 +320,7 @@ export class PDFExtractionService {
                 },
               },
               {
-                text: EXTRACTION_PROMPT,
+                text: this.extractionPrompt,
               },
             ],
           },

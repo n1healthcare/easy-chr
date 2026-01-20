@@ -6,6 +6,10 @@ dist/
 build/
 out/
 
+# --- TypeScript Compiled Output ---
+server/src/**/*.js
+server/vendor/gemini-cli/packages/*/src/**/*.js
+
 # --- Environment & Secrets ---
 .env
 .env.local
