@@ -38,6 +38,20 @@ COPY --from=builder /app/.gemini ./.gemini
 # Create storage directories for temporary file processing
 RUN mkdir -p storage/input storage/realms
 
+
+# Use existing node user (UID 1000 in node:20-alpine) and set ownership
+RUN chown -R node:node /app
+
+# Switch to non-root user
+USER node
+
+# Expose port (not used in job mode, but kept for health checks if needed)
+EXPOSE 3000
+
+# Health check - verify node is working
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD node -e "process.exit(0)"
+
 # Environment variables expected from forge-sentinel:
 #
 # REQUIRED:
