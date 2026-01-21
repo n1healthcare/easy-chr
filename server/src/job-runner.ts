@@ -384,7 +384,7 @@ async function runJob() {
       // Build path: users/{userId}/chr/{chrId}/{filename}.html
       // Strip any existing extension (e.g., .pdf, .html) from chrFilename before adding .html
       const rawFilename = config.chrFilename || 'report';
-      const filename = rawFilename.replace(/\.[^/.]+$/, '');  // Remove extension if present
+      const filename = path.basename(rawFilename, path.extname(rawFilename)) || 'report';
       const gcsPath = `users/${config.userId}/chr/${config.chrId}/${filename}.html`;
       publicUrl = await gcsAdapter.uploadHtml(htmlContent, gcsPath);
 
