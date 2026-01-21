@@ -37,12 +37,11 @@ COPY --from=builder /app/tsconfig.json ./tsconfig.json
 # Create storage directories for temporary file processing
 RUN mkdir -p storage/input storage/realms
 
-# Create non-root user and set ownership
-RUN adduser -D -u 1000 appuser && \
-    chown -R appuser:appuser /app
+# Use existing node user (UID 1000 in node:20-alpine) and set ownership
+RUN chown -R node:node /app
 
 # Switch to non-root user
-USER appuser
+USER node
 
 # Expose port (not used in job mode, but kept for health checks if needed)
 EXPOSE 3000
