@@ -101,15 +101,19 @@ async function notifyProgress(
     return;
   }
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     report_id: config.chrId,
     user_id: config.userId,
     progress: update.progress,
-    status: step === 'failed' ? 'error' : 'processing',
+    status: step === 'failed' ? 'ERROR' : (step === 'completed' ? 'completed' : 'in_progress'),
     message: customMessage || update.message,
     progress_stage: update.stage,
-    error_details: errorDetails,
   };
+
+  // Only include error field when there's an error (matches n1_api_client contract)
+  if (errorDetails) {
+    payload.error = errorDetails;
+  }
 
   try {
     const response = await fetch(`${config.n1ApiBaseUrl}/reports/status`, {
@@ -184,7 +188,8 @@ function validateEnvironment(): JobConfig {
     userId: coreRequired.USER_ID!,
     chrId: coreRequired.CHR_ID!,
     prompt: process.env.PROMPT || 'Create a comprehensive health analysis and visualization of my medical records',
-    n1ApiBaseUrl: coreRequired.N1_API_BASE_URL!,
+    // Remove trailing slash to prevent double-slash URLs (e.g., /api//reports/status)
+    n1ApiBaseUrl: coreRequired.N1_API_BASE_URL!.replace(/\/+$/, ''),
     n1ApiKey: coreRequired.N1_API_KEY!,
     bucketName: gcsFields.BUCKET_NAME || undefined,
     projectId: gcsFields.PROJECT_ID || undefined,
