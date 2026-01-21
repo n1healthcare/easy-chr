@@ -24,7 +24,8 @@ export class N1ApiAdapter implements PDFFetcherPort {
       throw new Error('N1_API_KEY is required');
     }
 
-    this.baseUrl = baseUrl;
+    // Remove trailing slash to prevent double-slash URLs
+    this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.apiKey = apiKey;
   }
 
