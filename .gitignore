@@ -9,6 +9,7 @@ out/
 # --- TypeScript Compiled Output ---
 server/src/**/*.js
 server/vendor/gemini-cli/packages/*/src/**/*.js
+server/vendor/gemini-cli/packages/*/index.js
 # Exception: generated files needed at runtime
 !server/vendor/gemini-cli/packages/*/src/generated/*.js
 

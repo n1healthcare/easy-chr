@@ -81,6 +81,19 @@ const PROGRESS_MAP: Record<string, ProgressUpdate> = {
   failed:            { stage: 'Has Error',  progress: 0,   message: 'Report generation failed' },
 };
 
+// Map AgenticDoctorUseCase phase names to progress updates
+// These phases are yielded as { type: 'step', name: '...', status: 'running'|'completed'|'failed' }
+const PHASE_PROGRESS_MAP: Record<string, ProgressUpdate> = {
+  'Document Extraction':    { stage: 'Preparing',  progress: 20,  message: 'Extracting content from your documents...' },
+  'Medical Analysis':       { stage: 'Analyzing',  progress: 30,  message: 'Performing medical analysis...' },
+  'Cross-System Analysis':  { stage: 'Analyzing',  progress: 40,  message: 'Analyzing cross-system connections...' },
+  'Research':               { stage: 'Analyzing',  progress: 50,  message: 'Researching and validating claims...' },
+  'Synthesis':              { stage: 'Writing',    progress: 60,  message: 'Synthesizing your health report...' },
+  'Validation':             { stage: 'Checking',   progress: 70,  message: 'Validating analysis completeness...' },
+  'Data Structuring':       { stage: 'Writing',    progress: 80,  message: 'Structuring data for visualization...' },
+  'Realm Generation':       { stage: 'Finalizing', progress: 90,  message: 'Building your interactive health realm...' },
+};
+
 async function notifyProgress(
   config: { n1ApiBaseUrl: string; n1ApiKey: string; userId: string; chrId: string },
   step: keyof typeof PROGRESS_MAP,
@@ -114,6 +127,56 @@ async function notifyProgress(
   if (errorDetails) {
     payload.error = errorDetails;
   }
+
+  try {
+    const response = await fetch(`${config.n1ApiBaseUrl}/reports/status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'N1-Api-Key': config.n1ApiKey,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      console.warn(`[Progress] API call failed (${response.status}): ${await response.text()}`);
+    }
+  } catch (error) {
+    // Don't fail the job if progress update fails - just log it
+    console.warn(`[Progress] API error:`, error);
+  }
+}
+
+/**
+ * Send phase-specific progress update with granular percentage
+ * This supplements notifyProgress by using PHASE_PROGRESS_MAP values
+ */
+async function notifyPhaseProgress(
+  config: { n1ApiBaseUrl: string; n1ApiKey: string; userId: string; chrId: string },
+  phaseName: string
+): Promise<void> {
+  const update = PHASE_PROGRESS_MAP[phaseName];
+  if (!update) {
+    console.log(`[Progress] Unknown phase: ${phaseName}`);
+    return;
+  }
+
+  console.log(`[Progress] ${update.stage} (${update.progress}%): ${update.message}`);
+
+  // Skip API calls in development
+  if (SKIP_PROGRESS_TRACKING) {
+    console.log(`[Progress] Skipping API call (ENVIRONMENT=${ENVIRONMENT})`);
+    return;
+  }
+
+  const payload: Record<string, unknown> = {
+    report_id: config.chrId,
+    user_id: config.userId,
+    progress: update.progress,
+    status: 'in_progress',
+    message: update.message,
+    progress_stage: update.stage,
+  };
 
   try {
     const response = await fetch(`${config.n1ApiBaseUrl}/reports/status`, {
@@ -250,8 +313,24 @@ async function runJob() {
     const generator = fetchAndProcessUseCase.execute(config.userId, config.prompt);
 
     for await (const event of generator) {
-      if (event.type === 'thought') {
+      if (event.type === 'step') {
+        // Handle phase progress updates from AgenticDoctorUseCase
+        const phaseName = 'name' in event ? event.name : '';
+        const phaseStatus = 'status' in event ? event.status : '';
+
+        if (phaseStatus === 'running' && phaseName && PHASE_PROGRESS_MAP[phaseName]) {
+          console.log(`  📋 Phase: ${phaseName}`);
+          // Send granular progress update to N1 API
+          await notifyPhaseProgress(config, phaseName);
+        } else if (phaseStatus === 'completed') {
+          console.log(`  ✓ Phase completed: ${phaseName}`);
+        } else if (phaseStatus === 'failed') {
+          console.log(`  ✗ Phase failed: ${phaseName}`);
+        }
+      } else if (event.type === 'thought') {
         console.log(`  💭 ${'content' in event ? event.content : ''}`);
+      } else if (event.type === 'log') {
+        console.log(`  📝 ${'message' in event ? event.message : ''}`);
       } else if (event.type === 'result') {
         realmPath = 'url' in event ? event.url : '';
         console.log(`  ✓ Realm generated: ${realmPath}`);
