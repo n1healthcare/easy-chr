@@ -15,6 +15,7 @@ import { GoogleGenAI } from '@google/genai';
 import path from 'path';
 import fs from 'fs';
 import { REALM_CONFIG } from '../config.js';
+import { withRetry } from '../common/index.js';
 
 // ============================================================================
 // Skill Loader
@@ -307,25 +308,28 @@ export class PDFExtractionService {
     try {
       const base64Image = pageBuffer.toString('base64');
 
-      const response = await this.genai.models.generateContent({
-        model: this.model,
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                inlineData: {
-                  mimeType: 'image/png',
-                  data: base64Image,
+      const response = await withRetry(
+        () => this.genai.models.generateContent({
+          model: this.model,
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: 'image/png',
+                    data: base64Image,
+                  },
                 },
-              },
-              {
-                text: this.extractionPrompt,
-              },
-            ],
-          },
-        ],
-      });
+                {
+                  text: this.extractionPrompt,
+                },
+              ],
+            },
+          ],
+        }),
+        { ...REALM_CONFIG.retry.vision, operationName: `PDFExtraction.page${pageNumber}` }
+      );
 
       const markdown = response.text || '';
 
