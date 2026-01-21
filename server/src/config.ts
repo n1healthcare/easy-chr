@@ -7,13 +7,14 @@ dotenv.config({ path: path.join(process.cwd(), '.env') });
 
 export const REALM_CONFIG = {
   models: {
-    // Default to a known stable model if env var is missing, but prefer the user's env vars
-    markdown: process.env.MARKDOWN_MODEL || 'gemini-2.0-flash-exp',
-    intermediate: process.env.INTERMEDIATE_MODEL || 'gemini-2.0-pro-exp',
-    html: process.env.HTML_MODEL || 'gemini-2.0-pro-exp',
+    // Default to LiteLLM-compatible models
+    // In production, these are injected by forge-sentinel via env vars
+    markdown: process.env.MARKDOWN_MODEL || 'gemini-2.5-flash',
+    intermediate: process.env.INTERMEDIATE_MODEL || 'gemini-3-pro-preview',
+    html: process.env.HTML_MODEL || 'gemini-3-flash-preview',
     // Agentic Doctor model - uses the most capable model for complex medical analysis
     // Falls back to INTERMEDIATE_MODEL which is typically a capable model
-    doctor: process.env.DOCTOR_MODEL || process.env.INTERMEDIATE_MODEL || 'gemini-2.5-pro',
+    doctor: process.env.DOCTOR_MODEL || process.env.INTERMEDIATE_MODEL || 'gemini-3-pro-preview',
   },
   agenticLoop: {
     // Maximum iterations for the agentic loop (tool calls + refinements)

@@ -7,16 +7,20 @@
  *
  * Environment Variables (injected by forge-sentinel):
  * - USER_ID: User identifier for PDF fetching
- * - REPORT_ID: Unique identifier for this report generation
+ * - CHR_ID: Unique identifier for this report generation
  * - PROMPT: User's analysis prompt (optional, defaults to generic prompt)
  * - N1_API_BASE_URL: N1 API backend URL
  * - N1_API_KEY: Authentication key for N1 API
- * - OPENAI_API_KEY: LiteLLM API key (for Gemini access)
- * - OPENAI_BASE_URL: LiteLLM proxy URL
+ * - GEMINI_API_KEY: LiteLLM API key (for Gemini access)
+ * - GOOGLE_GEMINI_BASE_URL: LiteLLM proxy URL (no /v1 suffix)
  * - BUCKET_NAME: GCS bucket for output storage
  * - PROJECT_ID: GCP project ID
  * - GCS_SERVICE_ACCOUNT_JSON: Service account credentials (JSON string)
- * - MODEL: Model to use (e.g., "gemini-2.0-flash-exp")
+ *
+ * Environment-based feature flags:
+ * - ENVIRONMENT: 'development' | 'staging' | 'production' (default: production)
+ *   - development: Skips GCS upload and progress tracking
+ *   - staging/production: Full pipeline with uploads and tracking
  */
 
 import dotenv from 'dotenv';
@@ -27,6 +31,24 @@ import { FetchAndProcessPDFsUseCase } from './application/use-cases/fetch-and-pr
 import { GcsStorageAdapter } from './adapters/gcs/gcs-storage.adapter.js';
 import path from 'path';
 import fs from 'fs';
+
+// ============================================================================
+// Environment Configuration
+// ============================================================================
+
+type Environment = 'development' | 'staging' | 'production';
+
+function getEnvironment(): Environment {
+  const env = process.env.ENVIRONMENT?.toLowerCase();
+  if (env === 'development' || env === 'dev') return 'development';
+  if (env === 'staging') return 'staging';
+  return 'production';
+}
+
+const ENVIRONMENT = getEnvironment();
+const IS_DEVELOPMENT = ENVIRONMENT === 'development';
+const SKIP_UPLOADS = IS_DEVELOPMENT;
+const SKIP_PROGRESS_TRACKING = IS_DEVELOPMENT;
 
 // ============================================================================
 // Progress Notification via N1 API
@@ -60,7 +82,7 @@ const PROGRESS_MAP: Record<string, ProgressUpdate> = {
 };
 
 async function notifyProgress(
-  config: { n1ApiBaseUrl: string; n1ApiKey: string; userId: string; reportId: string },
+  config: { n1ApiBaseUrl: string; n1ApiKey: string; userId: string; chrId: string },
   step: keyof typeof PROGRESS_MAP,
   customMessage?: string,
   errorDetails?: string
@@ -71,8 +93,16 @@ async function notifyProgress(
     return;
   }
 
+  console.log(`[Progress] ${update.stage} (${update.progress}%): ${customMessage || update.message}`);
+
+  // Skip API calls in development
+  if (SKIP_PROGRESS_TRACKING) {
+    console.log(`[Progress] Skipping API call (ENVIRONMENT=${ENVIRONMENT})`);
+    return;
+  }
+
   const payload = {
-    report_id: config.reportId,
+    report_id: config.chrId,
     user_id: config.userId,
     progress: update.progress,
     status: step === 'failed' ? 'error' : 'processing',
@@ -80,8 +110,6 @@ async function notifyProgress(
     progress_stage: update.stage,
     error_details: errorDetails,
   };
-
-  console.log(`[Progress] ${update.stage} (${update.progress}%): ${payload.message}`);
 
   try {
     const response = await fetch(`${config.n1ApiBaseUrl}/reports/status`, {
@@ -106,43 +134,61 @@ dotenv.config();
 
 interface JobConfig {
   userId: string;
-  reportId: string;
+  chrId: string;
   prompt: string;
   n1ApiBaseUrl: string;
   n1ApiKey: string;
-  bucketName: string;
-  projectId: string;
-  gcsCredentials: string;
+  // GCS config - optional in development
+  bucketName?: string;
+  projectId?: string;
+  gcsCredentials?: string;
 }
 
 function validateEnvironment(): JobConfig {
-  const required = {
+  // Core required fields (always needed)
+  const coreRequired = {
     USER_ID: process.env.USER_ID,
-    REPORT_ID: process.env.REPORT_ID,
+    CHR_ID: process.env.CHR_ID,
     N1_API_BASE_URL: process.env.N1_API_BASE_URL,
     N1_API_KEY: process.env.N1_API_KEY,
+  };
+
+  // GCS fields - only required in staging/production
+  const gcsFields = {
     BUCKET_NAME: process.env.BUCKET_NAME,
     PROJECT_ID: process.env.PROJECT_ID,
     GCS_SERVICE_ACCOUNT_JSON: process.env.GCS_SERVICE_ACCOUNT_JSON,
   };
 
-  const missing = Object.entries(required)
+  // Check core required fields
+  const missingCore = Object.entries(coreRequired)
     .filter(([_, value]) => !value)
     .map(([key]) => key);
 
-  if (missing.length > 0) {
-    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  if (missingCore.length > 0) {
+    throw new Error(`Missing required environment variables: ${missingCore.join(', ')}`);
+  }
+
+  // Check GCS fields only if uploads are enabled
+  if (!SKIP_UPLOADS) {
+    const missingGcs = Object.entries(gcsFields)
+      .filter(([_, value]) => !value)
+      .map(([key]) => key);
+
+    if (missingGcs.length > 0) {
+      throw new Error(`Missing GCS environment variables (required for ${ENVIRONMENT}): ${missingGcs.join(', ')}`);
+    }
   }
 
   return {
-    userId: required.USER_ID!,
-    reportId: required.REPORT_ID!,
+    userId: coreRequired.USER_ID!,
+    chrId: coreRequired.CHR_ID!,
     prompt: process.env.PROMPT || 'Create a comprehensive health analysis and visualization of my medical records',
-    n1ApiBaseUrl: required.N1_API_BASE_URL!,
-    n1ApiKey: required.N1_API_KEY!,
-    bucketName: required.BUCKET_NAME!,
-    projectId: required.PROJECT_ID!,
-    gcsCredentials: required.GCS_SERVICE_ACCOUNT_JSON!,
+    n1ApiBaseUrl: coreRequired.N1_API_BASE_URL!,
+    n1ApiKey: coreRequired.N1_API_KEY!,
+    bucketName: gcsFields.BUCKET_NAME || undefined,
+    projectId: gcsFields.PROJECT_ID || undefined,
+    gcsCredentials: gcsFields.GCS_SERVICE_ACCOUNT_JSON || undefined,
   };
 }
 
@@ -151,6 +197,9 @@ async function runJob() {
   console.log('N1 Interface - Job Runner');
   console.log('================================================================================');
   console.log(`Started at: ${new Date().toISOString()}`);
+  console.log(`Environment: ${ENVIRONMENT}`);
+  console.log(`  Skip uploads: ${SKIP_UPLOADS}`);
+  console.log(`  Skip progress tracking: ${SKIP_PROGRESS_TRACKING}`);
   console.log('');
 
   let config: JobConfig;
@@ -158,7 +207,7 @@ async function runJob() {
     config = validateEnvironment();
     console.log(`✓ Environment validated`);
     console.log(`  User ID: ${config.userId}`);
-    console.log(`  Report ID: ${config.reportId}`);
+    console.log(`  CHR ID: ${config.chrId}`);
     console.log(`  Prompt: ${config.prompt.substring(0, 80)}...`);
     console.log('');
   } catch (error) {
@@ -216,15 +265,6 @@ async function runJob() {
     console.log('✓ Processing complete');
     console.log('');
 
-    // Step 5: Upload to GCS
-    await notifyProgress(config, 'uploading');
-    console.log('[5/5] Uploading result to Google Cloud Storage...');
-    const gcsAdapter = new GcsStorageAdapter(
-      config.bucketName,
-      config.projectId,
-      config.gcsCredentials
-    );
-
     // Extract the full path to the HTML file
     // realmPath format: "/realms/<uuid>/index.html"
     const realmDir = path.join(process.cwd(), 'storage', 'realms', path.dirname(realmPath.replace('/realms/', '')));
@@ -234,13 +274,29 @@ async function runJob() {
       throw new Error(`Generated HTML not found at: ${htmlFilePath}`);
     }
 
-    const htmlContent = fs.readFileSync(htmlFilePath, 'utf-8');
+    let publicUrl = htmlFilePath; // Default to local path
 
-    // Upload with report ID as filename
-    const gcsPath = `reports/${config.reportId}/index.html`;
-    const publicUrl = await gcsAdapter.uploadHtml(htmlContent, gcsPath);
+    // Step 5: Upload to GCS (skip in development)
+    if (SKIP_UPLOADS) {
+      console.log('[5/5] Skipping GCS upload (ENVIRONMENT=development)');
+      console.log(`  Local file: ${htmlFilePath}`);
+    } else {
+      await notifyProgress(config, 'uploading');
+      console.log('[5/5] Uploading result to Google Cloud Storage...');
+      const gcsAdapter = new GcsStorageAdapter(
+        config.bucketName!,
+        config.projectId!,
+        config.gcsCredentials!
+      );
 
-    console.log(`✓ Uploaded to GCS: ${publicUrl}`);
+      const htmlContent = fs.readFileSync(htmlFilePath, 'utf-8');
+
+      // Upload with CHR ID as filename
+      const gcsPath = `reports/${config.chrId}/index.html`;
+      publicUrl = await gcsAdapter.uploadHtml(htmlContent, gcsPath);
+
+      console.log(`✓ Uploaded to GCS: ${publicUrl}`);
+    }
     console.log('');
 
     // Success - notify completion
@@ -248,7 +304,7 @@ async function runJob() {
     console.log('================================================================================');
     console.log('Job completed successfully!');
     console.log(`Finished at: ${new Date().toISOString()}`);
-    console.log(`Output URL: ${publicUrl}`);
+    console.log(`Output: ${publicUrl}`);
     console.log('================================================================================');
 
     process.exit(0);
