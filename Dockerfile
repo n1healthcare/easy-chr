@@ -37,6 +37,13 @@ COPY --from=builder /app/tsconfig.json ./tsconfig.json
 # Create storage directories for temporary file processing
 RUN mkdir -p storage/input storage/realms
 
+# Create non-root user and set ownership
+RUN adduser -D -u 1000 appuser && \
+    chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
 # Expose port (not used in job mode, but kept for health checks if needed)
 EXPOSE 3000
 
