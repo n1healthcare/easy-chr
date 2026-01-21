@@ -8,6 +8,7 @@
  * Environment Variables (injected by forge-sentinel):
  * - USER_ID: User identifier for PDF fetching
  * - CHR_ID: Unique identifier for this report generation
+ * - CHR_FILENAME: User-specified filename for the report (optional, defaults to 'report')
  * - PROMPT: User's analysis prompt (optional, defaults to generic prompt)
  * - N1_API_BASE_URL: N1 API backend URL
  * - N1_API_KEY: Authentication key for N1 API
@@ -202,6 +203,7 @@ dotenv.config();
 interface JobConfig {
   userId: string;
   chrId: string;
+  chrFilename?: string;  // User-specified filename from UI
   prompt: string;
   n1ApiBaseUrl: string;
   n1ApiKey: string;
@@ -250,6 +252,7 @@ function validateEnvironment(): JobConfig {
   return {
     userId: coreRequired.USER_ID!,
     chrId: coreRequired.CHR_ID!,
+    chrFilename: process.env.CHR_FILENAME || undefined,
     prompt: process.env.PROMPT || 'Create a comprehensive health analysis and visualization of my medical records',
     // Remove trailing slash to prevent double-slash URLs (e.g., /api//reports/status)
     n1ApiBaseUrl: coreRequired.N1_API_BASE_URL!.replace(/\/+$/, ''),
@@ -276,6 +279,9 @@ async function runJob() {
     console.log(`✓ Environment validated`);
     console.log(`  User ID: ${config.userId}`);
     console.log(`  CHR ID: ${config.chrId}`);
+    if (config.chrFilename) {
+      console.log(`  CHR Filename: ${config.chrFilename}`);
+    }
     console.log(`  Prompt: ${config.prompt.substring(0, 80)}...`);
     console.log('');
   } catch (error) {
@@ -375,8 +381,11 @@ async function runJob() {
 
       const htmlContent = fs.readFileSync(htmlFilePath, 'utf-8');
 
-      // Upload with CHR ID as filename
-      const gcsPath = `reports/${config.chrId}/index.html`;
+      // Build path: users/{userId}/chr/{chrId}/{filename}.html
+      // Strip any existing extension (e.g., .pdf, .html) from chrFilename before adding .html
+      const rawFilename = config.chrFilename || 'report';
+      const filename = path.basename(rawFilename, path.extname(rawFilename)) || 'report';
+      const gcsPath = `users/${config.userId}/chr/${config.chrId}/${filename}.html`;
       publicUrl = await gcsAdapter.uploadHtml(htmlContent, gcsPath);
 
       console.log(`✓ Uploaded to GCS: ${publicUrl}`);
