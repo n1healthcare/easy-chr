@@ -110,8 +110,35 @@ function isRetryable(error: unknown): boolean {
 
   // Default: do NOT retry unknown errors to avoid masking bugs
   // If an error should be retried, add it to the retryablePatterns list
-  console.log(`[Retry] Unknown error type, not retrying: ${errorMessage.substring(0, 100)}`);
   return false;
+}
+
+// ============================================================================
+// Logging Helpers
+// ============================================================================
+
+/**
+ * Extracts a safe, non-sensitive error summary for logging.
+ * Only logs error type/category, not potentially sensitive message content.
+ */
+function getSafeErrorSummary(error: unknown): string {
+  if (error instanceof Error) {
+    // Only log the error name/type, not the full message which may contain sensitive data
+    const errorType = error.name || 'Error';
+    // Extract only generic error category indicators, not specific content
+    const message = error.message.toLowerCase();
+    if (message.includes('timeout')) return `${errorType}: timeout`;
+    if (message.includes('rate limit') || message.includes('429')) return `${errorType}: rate_limit`;
+    if (message.includes('network') || message.includes('econnrefused')) return `${errorType}: network_error`;
+    if (message.includes('500') || message.includes('internal server')) return `${errorType}: server_error_5xx`;
+    if (message.includes('401') || message.includes('unauthorized')) return `${errorType}: auth_error`;
+    if (message.includes('403') || message.includes('forbidden')) return `${errorType}: forbidden`;
+    if (message.includes('404')) return `${errorType}: not_found`;
+    if (message.includes('400') || message.includes('bad request')) return `${errorType}: bad_request`;
+    if (message.includes('quota')) return `${errorType}: quota_exceeded`;
+    return errorType;
+  }
+  return 'UnknownError';
 }
 
 // ============================================================================
@@ -158,30 +185,32 @@ export async function withRetry<T>(
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
 
+      const errorSummary = getSafeErrorSummary(error);
+
       // Check if this error is retryable
       if (!isRetryable(error)) {
-        console.log(`[Retry] ${operationName} failed with non-retryable error: ${lastError.message}`);
+        console.log(`[Retry] ${operationName} failed with non-retryable error: ${errorSummary}`);
         throw lastError;
       }
 
       // If we've exhausted retries, throw
       if (attempt >= config.maxRetries) {
-        console.log(`[Retry] ${operationName} exhausted all ${config.maxRetries} retries. Final error: ${lastError.message}`);
+        console.log(`[Retry] ${operationName} exhausted all ${config.maxRetries} retries. Final error: ${errorSummary}`);
         throw lastError;
       }
 
       // Calculate wait time and log
       const waitTime = calculateWaitTime(attempt, config);
       console.log(
-        `[Retry] ${operationName} attempt ${attempt + 1}/${config.maxRetries + 1} failed: ${lastError.message}. Retrying in ${waitTime.toFixed(1)}s...`
+        `[Retry] ${operationName} attempt ${attempt + 1}/${config.maxRetries + 1} failed: ${errorSummary}. Retrying in ${waitTime.toFixed(1)}s...`
       );
 
       await sleep(waitTime);
     }
   }
 
-  // This shouldn't be reached, but TypeScript needs it
-  throw lastError || new Error(`${operationName} failed after retries`);
+  // TypeScript requires this for type safety, though loop always returns or throws
+  throw lastError!;
 }
 
 // ============================================================================
