@@ -131,8 +131,14 @@ Always include 2-3 large, blurred, slowly floating blobs behind the content for 
 | Many detailed values (reference) | **Table** (only when chart won't work) |
 
 ### Chart Library: Chart.js
+**IMPORTANT:** Whenever the analysis mentions "trends", "changes over time", "progression", or compares values across multiple dates, you MUST create a visual chart. Never leave trend data as just text or tables.
 
-**Use Chart.js for ALL data visualizations.** Include via CDN: `https://cdn.jsdelivr.net/npm/chart.js`
+Include Chart.js and the annotation plugin for reference ranges:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+```
 
 This ensures consistent, professional, interactive charts. The LLM provides configuration objects; Chart.js handles rendering.
 
@@ -1633,6 +1639,1361 @@ Shows how different body systems influence each other.
 
 ---
 
+### 6. Prognosis Section (ALWAYS REQUIRED)
+
+Every Health Realm MUST include a prognosis section showing expected outcomes. This helps patients understand the importance of following recommendations.
+
+```css
+.prognosis-section {
+  background: linear-gradient(135deg, #F8F7FF 0%, #FDF2F8 100%);
+  border-radius: 32px;
+  padding: 40px;
+  margin: 30px 0;
+}
+
+.prognosis-section h2 {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  color: #332F3A;
+  margin-bottom: 30px;
+  font-size: 1.6rem;
+}
+
+.prognosis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 25px;
+  margin-bottom: 35px;
+}
+
+.prognosis-card {
+  background: white;
+  border-radius: 24px;
+  padding: 28px;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.04),
+    0 8px 16px rgba(0, 0, 0, 0.03),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.02);
+  transition: transform 0.2s ease;
+}
+
+.prognosis-card:hover {
+  transform: translateY(-3px);
+}
+
+.prognosis-card.without-intervention {
+  border-top: 5px solid #FCA5A5;
+  background: linear-gradient(135deg, white 0%, #FEF2F2 100%);
+}
+
+.prognosis-card.with-intervention {
+  border-top: 5px solid #6EE7B7;
+  background: linear-gradient(135deg, white 0%, #ECFDF5 100%);
+}
+
+.prognosis-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.prognosis-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+}
+
+.without-intervention .prognosis-icon {
+  background: linear-gradient(135deg, #FECACA 0%, #FEE2E2 100%);
+}
+
+.with-intervention .prognosis-icon {
+  background: linear-gradient(135deg, #A7F3D0 0%, #D1FAE5 100%);
+}
+
+.prognosis-title {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 1.1rem;
+}
+
+.without-intervention .prognosis-title { color: #DC2626; }
+.with-intervention .prognosis-title { color: #059669; }
+
+.prognosis-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.prognosis-list li {
+  padding: 10px 0;
+  padding-left: 28px;
+  position: relative;
+  color: #4A5568;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  border-bottom: 1px solid #F3F4F6;
+}
+
+.prognosis-list li:last-child {
+  border-bottom: none;
+}
+
+.prognosis-list li::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 18px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.without-intervention .prognosis-list li::before { background: #EF4444; }
+.with-intervention .prognosis-list li::before { background: #10B981; }
+
+/* Milestones Timeline */
+.milestones-section {
+  margin-top: 30px;
+}
+
+.milestones-section h3 {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  color: #332F3A;
+  margin-bottom: 20px;
+  font-size: 1.2rem;
+}
+
+.milestones-track {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.milestone {
+  flex: 1;
+  min-width: 150px;
+  text-align: center;
+  position: relative;
+}
+
+.milestone-marker {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: white;
+  border: 3px solid #C4B5FD;
+  margin: 0 auto 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.8rem;
+  color: #7C3AED;
+  box-shadow: 0 4px 8px rgba(124, 58, 237, 0.15);
+}
+
+.milestone-content {
+  background: white;
+  padding: 18px;
+  border-radius: 20px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.04);
+}
+
+.milestone-title {
+  font-weight: 700;
+  color: #332F3A;
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+}
+
+.milestone-description {
+  color: #635F69;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+```
+
+**Example Prognosis HTML:**
+```html
+<section class="prognosis-section">
+  <h2>🔮 Prognosis & Expected Outcomes</h2>
+
+  <div class="prognosis-grid">
+    <div class="prognosis-card without-intervention">
+      <div class="prognosis-header">
+        <div class="prognosis-icon">⚠️</div>
+        <div class="prognosis-title">Without Intervention</div>
+      </div>
+      <ul class="prognosis-list">
+        <li>PIVKA-II levels may continue to rise, indicating worsening Vitamin K status or liver stress</li>
+        <li>Triglycerides will likely remain elevated, increasing cardiovascular risk</li>
+        <li>Prediabetic state (HbA1c 5.7%) may progress toward Type 2 Diabetes</li>
+        <li>Fatigue and metabolic symptoms likely to persist or worsen</li>
+      </ul>
+    </div>
+
+    <div class="prognosis-card with-intervention">
+      <div class="prognosis-header">
+        <div class="prognosis-icon">✅</div>
+        <div class="prognosis-title">With Recommended Protocol</div>
+      </div>
+      <ul class="prognosis-list">
+        <li>PIVKA-II normalization expected within 6-8 weeks with Vitamin K2 supplementation</li>
+        <li>Triglycerides can return to optimal levels (1.05) as proven in Oct 2024</li>
+        <li>HbA1c stabilization with dietary changes and exercise</li>
+        <li>Improved energy and metabolic function within 2-3 months</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="milestones-section">
+    <h3>📈 Expected Improvement Timeline</h3>
+    <div class="milestones-track">
+      <div class="milestone">
+        <div class="milestone-marker">Now</div>
+        <div class="milestone-content">
+          <div class="milestone-title">Current Status</div>
+          <div class="milestone-description">PIVKA-II elevated, Triglycerides high, Prediabetic</div>
+        </div>
+      </div>
+      <div class="milestone">
+        <div class="milestone-marker">4-6 wk</div>
+        <div class="milestone-content">
+          <div class="milestone-title">Initial Response</div>
+          <div class="milestone-description">Triglycerides improving, Vitamin K replenishing</div>
+        </div>
+      </div>
+      <div class="milestone">
+        <div class="milestone-marker">3 mo</div>
+        <div class="milestone-content">
+          <div class="milestone-title">Stabilization</div>
+          <div class="milestone-description">PIVKA-II normalized, metabolic markers improving</div>
+        </div>
+      </div>
+      <div class="milestone">
+        <div class="milestone-marker">6 mo</div>
+        <div class="milestone-content">
+          <div class="milestone-title">Target Achievement</div>
+          <div class="milestone-description">All markers in optimal range, sustained improvement</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+```
+
+**Building Prognosis from Input Data:**
+- Use `structured_data.prognosis.withoutIntervention[]` for risks
+- Use `structured_data.prognosis.withIntervention[]` for improvements
+- Use `structured_data.prognosis.milestones[]` for timeline
+- Fall back to `analysis` section if prognosis field doesn't exist
+
+---
+
+### 7. Monitoring Protocol (ALWAYS REQUIRED when follow-up tests mentioned)
+
+Every Health Realm MUST include a monitoring protocol when any follow-up testing is recommended.
+
+```css
+.monitoring-protocol {
+  background: linear-gradient(135deg, #F0F9FF 0%, #F0FDF9 100%);
+  border-radius: 32px;
+  padding: 40px;
+  margin: 30px 0;
+}
+
+.monitoring-protocol h2 {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  color: #0369A1;
+  margin-bottom: 25px;
+  font-size: 1.5rem;
+}
+
+.monitoring-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: white;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.04);
+}
+
+.monitoring-table thead {
+  background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);
+}
+
+.monitoring-table th {
+  padding: 18px 20px;
+  text-align: left;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  color: white;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.monitoring-table td {
+  padding: 18px 20px;
+  border-bottom: 1px solid #E5E7EB;
+  color: #4A5568;
+  font-size: 0.95rem;
+}
+
+.monitoring-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.monitoring-table tbody tr:hover {
+  background: #F8FAFC;
+}
+
+.test-name {
+  font-weight: 700;
+  color: #332F3A;
+}
+
+.test-frequency {
+  display: inline-block;
+  background: #DBEAFE;
+  color: #1E40AF;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.test-target {
+  font-weight: 600;
+}
+
+.test-target.optimal { color: #059669; }
+.test-target.warning { color: #D97706; }
+
+.test-purpose {
+  color: #635F69;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.priority-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.priority-badge.critical {
+  background: #FEE2E2;
+  color: #DC2626;
+}
+
+.priority-badge.routine {
+  background: #DBEAFE;
+  color: #1E40AF;
+}
+```
+
+**Example Monitoring Protocol HTML:**
+```html
+<section class="monitoring-protocol">
+  <h2>📋 Monitoring Protocol</h2>
+
+  <table class="monitoring-table">
+    <thead>
+      <tr>
+        <th>Test</th>
+        <th>Frequency</th>
+        <th>Target</th>
+        <th>Purpose</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <span class="test-name">PIVKA-II</span>
+          <span class="priority-badge critical">Critical</span>
+        </td>
+        <td><span class="test-frequency">3 months</span></td>
+        <td><span class="test-target optimal">&lt;28.4 ng/mL</span></td>
+        <td class="test-purpose">Confirm Vitamin K restoration and rule out liver pathology</td>
+      </tr>
+      <tr>
+        <td><span class="test-name">Liver Ultrasound</span></td>
+        <td><span class="test-frequency">Immediate</span></td>
+        <td><span class="test-target optimal">Normal texture</span></td>
+        <td class="test-purpose">Rule out structural liver abnormalities given elevated PIVKA-II</td>
+      </tr>
+      <tr>
+        <td><span class="test-name">Lipid Panel</span></td>
+        <td><span class="test-frequency">3 months</span></td>
+        <td><span class="test-target optimal">Triglycerides &lt;1.7</span></td>
+        <td class="test-purpose">Verify triglyceride normalization with dietary changes</td>
+      </tr>
+      <tr>
+        <td>
+          <span class="test-name">HbA1c</span>
+          <span class="priority-badge routine">Routine</span>
+        </td>
+        <td><span class="test-frequency">6 months</span></td>
+        <td><span class="test-target optimal">&lt;5.7%</span></td>
+        <td class="test-purpose">Monitor prediabetic status and response to lifestyle changes</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+```
+
+**Building Monitoring Protocol from Input Data:**
+- Use `structured_data.monitoringProtocol[]` array
+- Each item has: test, frequency, target, purpose, priority
+- Fall back to `analysis` "Follow-up" or "Monitoring" sections
+
+---
+
+### 8. Data Gaps Section (ALWAYS REQUIRED when tests are missing)
+
+Every Health Realm MUST highlight what information is missing and would be helpful for a complete picture.
+
+```css
+.data-gaps-section {
+  background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+  border-radius: 28px;
+  padding: 35px;
+  margin: 30px 0;
+  border-left: 5px solid #F59E0B;
+}
+
+.data-gaps-section h2 {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  color: #92400E;
+  margin-bottom: 20px;
+  font-size: 1.4rem;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.data-gaps-intro {
+  color: #78350F;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin-bottom: 25px;
+}
+
+.gaps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.gap-card {
+  background: white;
+  border-radius: 20px;
+  padding: 22px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.04);
+  transition: transform 0.2s ease;
+}
+
+.gap-card:hover {
+  transform: translateY(-2px);
+}
+
+.gap-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.gap-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #FDE68A 0%, #FEF3C7 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+}
+
+.gap-title {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  color: #92400E;
+  font-size: 1rem;
+}
+
+.gap-reason {
+  color: #78350F;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.gap-priority {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.gap-priority.high {
+  background: #FEE2E2;
+  color: #DC2626;
+}
+
+.gap-priority.medium {
+  background: #FEF3C7;
+  color: #D97706;
+}
+
+.gap-priority.low {
+  background: #DBEAFE;
+  color: #1E40AF;
+}
+```
+
+**Example Data Gaps HTML:**
+```html
+<section class="data-gaps-section">
+  <h2>🔍 Data Gaps - Additional Tests Recommended</h2>
+  <p class="data-gaps-intro">
+    The following tests would provide valuable additional information for a complete health assessment:
+  </p>
+
+  <div class="gaps-grid">
+    <div class="gap-card">
+      <div class="gap-header">
+        <div class="gap-icon">🩸</div>
+        <div class="gap-title">Vitamin K Status (Direct)</div>
+      </div>
+      <p class="gap-reason">Would confirm if elevated PIVKA-II is due to Vitamin K deficiency vs other causes</p>
+      <span class="gap-priority high">High Priority</span>
+    </div>
+
+    <div class="gap-card">
+      <div class="gap-header">
+        <div class="gap-icon">💊</div>
+        <div class="gap-title">Current Medication List</div>
+      </div>
+      <p class="gap-reason">Needed to confirm statin therapy and check for Vitamin K interactions</p>
+      <span class="gap-priority high">High Priority</span>
+    </div>
+
+    <div class="gap-card">
+      <div class="gap-header">
+        <div class="gap-icon">🧬</div>
+        <div class="gap-title">Genetic Platelet Testing</div>
+      </div>
+      <p class="gap-reason">Would definitively confirm suspected Inherited Macrothrombocytopenia</p>
+      <span class="gap-priority low">Low Priority</span>
+    </div>
+
+    <div class="gap-card">
+      <div class="gap-header">
+        <div class="gap-icon">📊</div>
+        <div class="gap-title">Fasting Insulin</div>
+      </div>
+      <p class="gap-reason">Would better quantify insulin resistance given prediabetic HbA1c</p>
+      <span class="gap-priority medium">Medium Priority</span>
+    </div>
+  </div>
+</section>
+```
+
+**Building Data Gaps from Input Data:**
+- Use `structured_data.dataGaps[]` array
+- Each item has: test, reason, priority
+- Fall back to `analysis` mentions of "missing" or "not available" tests
+
+---
+
+### 9. Positive Findings Section (ALWAYS REQUIRED)
+
+Every Health Realm MUST include a section highlighting what's working well. This provides balance and helps patients feel empowered.
+
+```css
+.positive-findings {
+  background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%);
+  border-radius: 32px;
+  padding: 40px;
+  margin: 30px 0;
+}
+
+.positive-findings h2 {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  color: #065F46;
+  margin-bottom: 25px;
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.positive-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.positive-card {
+  background: white;
+  border-radius: 24px;
+  padding: 25px;
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.03),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.01);
+  border-left: 4px solid #10B981;
+  transition: transform 0.2s ease;
+}
+
+.positive-card:hover {
+  transform: translateX(5px);
+}
+
+.positive-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #A7F3D0 0%, #6EE7B7 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+
+.positive-content {
+  flex: 1;
+}
+
+.positive-title {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  color: #065F46;
+  font-size: 1.05rem;
+  margin-bottom: 8px;
+}
+
+.positive-description {
+  color: #047857;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+
+.positive-value {
+  display: inline-block;
+  background: #D1FAE5;
+  color: #065F46;
+  padding: 6px 14px;
+  border-radius: 14px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+```
+
+**Example Positive Findings HTML:**
+```html
+<section class="positive-findings">
+  <h2>✅ What's Working Well</h2>
+
+  <div class="positive-grid">
+    <div class="positive-card">
+      <div class="positive-icon">💚</div>
+      <div class="positive-content">
+        <div class="positive-title">LDL Cholesterol Excellently Controlled</div>
+        <p class="positive-description">
+          Your "bad" cholesterol is at an optimally low level of 1.1 mmol/L, down from a peak of 4.1 in 2013. Your cardiovascular protection is excellent.
+        </p>
+        <span class="positive-value">1.1 mmol/L (Optimal)</span>
+      </div>
+    </div>
+
+    <div class="positive-card">
+      <div class="positive-icon">🔥</div>
+      <div class="positive-content">
+        <div class="positive-title">Inflammation Under Control</div>
+        <p class="positive-description">
+          Your hsCRP has dropped from a concerning 12.4 mg/L (2023) to excellent levels of &lt;0.5 mg/L, indicating low systemic inflammation.
+        </p>
+        <span class="positive-value">hsCRP &lt;0.5 mg/L</span>
+      </div>
+    </div>
+
+    <div class="positive-card">
+      <div class="positive-icon">🫀</div>
+      <div class="positive-content">
+        <div class="positive-title">HDL Cholesterol Normal</div>
+        <p class="positive-description">
+          Your "good" cholesterol is at a healthy level, providing protective cardiovascular benefits.
+        </p>
+        <span class="positive-value">1.28 mmol/L (Normal)</span>
+      </div>
+    </div>
+
+    <div class="positive-card">
+      <div class="positive-icon">🧪</div>
+      <div class="positive-content">
+        <div class="positive-title">Liver Function Preserved</div>
+        <p class="positive-description">
+          Despite the PIVKA-II concern, your liver enzymes (AST, ALT) remain normal, indicating preserved function.
+        </p>
+        <span class="positive-value">Enzymes Normal</span>
+      </div>
+    </div>
+  </div>
+</section>
+```
+
+**Building Positive Findings from Input Data:**
+- Use `structured_data.positiveFindings[]` array
+- Each item has: title, description, value
+- Also scan `analysis` for phrases like "normal", "optimal", "well-controlled"
+
+---
+
+### 10. Doctor Questions Section (ALWAYS REQUIRED when medical consultation needed)
+
+Every Health Realm MUST include actionable questions for the patient to bring to their doctor.
+
+```css
+.doctor-questions {
+  background: linear-gradient(135deg, #FAF5FF 0%, #F5F3FF 100%);
+  border-radius: 32px;
+  padding: 40px;
+  margin: 30px 0;
+}
+
+.doctor-questions h2 {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  color: #5B21B6;
+  margin-bottom: 15px;
+  font-size: 1.5rem;
+}
+
+.doctor-questions-intro {
+  color: #6D28D9;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin-bottom: 30px;
+}
+
+.questions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.question-card {
+  background: white;
+  border-radius: 24px;
+  padding: 25px;
+  display: flex;
+  gap: 20px;
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.04),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.01);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.question-card:hover {
+  transform: translateX(5px);
+  box-shadow:
+    0 6px 12px rgba(0, 0, 0, 0.06),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.01);
+}
+
+.question-number {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.question-content {
+  flex: 1;
+}
+
+.question-category {
+  display: inline-block;
+  background: #EDE9FE;
+  color: #6D28D9;
+  padding: 4px 12px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.question-text {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  color: #332F3A;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+
+.question-context {
+  color: #635F69;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  background: #F9FAFB;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border-left: 3px solid #DDD6FE;
+}
+```
+
+**Example Doctor Questions HTML:**
+```html
+<section class="doctor-questions">
+  <h2>👨‍⚕️ Questions for Your Doctor</h2>
+  <p class="doctor-questions-intro">
+    Bring these questions to your next appointment to ensure all critical findings are addressed:
+  </p>
+
+  <div class="questions-list">
+    <div class="question-card">
+      <div class="question-number">1</div>
+      <div class="question-content">
+        <span class="question-category">Priority</span>
+        <p class="question-text">"My PIVKA-II is elevated at 62.3 ng/mL. Can we order a liver ultrasound to rule out hepatocellular carcinoma?"</p>
+        <div class="question-context">
+          PIVKA-II is a specific marker that rises with Vitamin K deficiency OR liver tumors. An ultrasound is the standard follow-up to rule out structural abnormalities.
+        </div>
+      </div>
+    </div>
+
+    <div class="question-card">
+      <div class="question-number">2</div>
+      <div class="question-content">
+        <span class="question-category">Medication</span>
+        <p class="question-text">"If the ultrasound is clear, could my cholesterol medication be causing Vitamin K deficiency?"</p>
+        <div class="question-context">
+          Statins can inhibit Vitamin K2 recycling in the body. If you're on a statin, this could explain the elevated PIVKA-II.
+        </div>
+      </div>
+    </div>
+
+    <div class="question-card">
+      <div class="question-number">3</div>
+      <div class="question-content">
+        <span class="question-category">Metabolic</span>
+        <p class="question-text">"My triglycerides tripled from 1.05 to 2.9 in just 5 months. Should we consider prescription omega-3s or medication adjustments?"</p>
+        <div class="question-context">
+          This rapid change suggests recent dietary or lifestyle changes. Discussing prescription-strength omega-3s or reviewing dietary habits may help normalize levels.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+```
+
+**Building Doctor Questions from Input Data:**
+- Use `structured_data.doctorQuestions[]` array
+- Each item has: question, category, context
+- Fall back to `analysis` or `final_analysis` doctor questions sections
+
+---
+
+### 11. Action Plan with Follow-up Actions (ALWAYS REQUIRED)
+
+Every Health Realm MUST include a comprehensive action plan organized by urgency.
+
+```css
+.action-plan {
+  background: linear-gradient(135deg, #FDF2F8 0%, #FAF5FF 100%);
+  border-radius: 32px;
+  padding: 40px;
+  margin: 30px 0;
+}
+
+.action-plan h2 {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  color: #332F3A;
+  margin-bottom: 30px;
+  font-size: 1.6rem;
+}
+
+.action-phases {
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+}
+
+.action-phase {
+  background: white;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.04);
+}
+
+.phase-header {
+  padding: 18px 25px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.phase-header.immediate {
+  background: linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%);
+}
+
+.phase-header.short-term {
+  background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+}
+
+.phase-header.follow-up {
+  background: linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%);
+}
+
+.phase-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.phase-title {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 1.1rem;
+}
+
+.phase-header.immediate .phase-title { color: #DC2626; }
+.phase-header.short-term .phase-title { color: #D97706; }
+.phase-header.follow-up .phase-title { color: #1E40AF; }
+
+.phase-timeframe {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-left: auto;
+  padding: 5px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.phase-header.immediate .phase-timeframe { color: #B91C1C; }
+.phase-header.short-term .phase-timeframe { color: #92400E; }
+.phase-header.follow-up .phase-timeframe { color: #1E3A8A; }
+
+.phase-actions {
+  padding: 25px;
+}
+
+.action-item {
+  display: flex;
+  gap: 15px;
+  padding: 15px 0;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.action-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.action-checkbox {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  border: 2px solid #DDD6FE;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.action-content {
+  flex: 1;
+}
+
+.action-title {
+  font-weight: 700;
+  color: #332F3A;
+  font-size: 0.95rem;
+  margin-bottom: 6px;
+}
+
+.action-description {
+  color: #635F69;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.action-note {
+  display: inline-block;
+  background: #F3F4F6;
+  color: #4B5563;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  margin-top: 8px;
+}
+```
+
+**Example Action Plan HTML:**
+```html
+<section class="action-plan">
+  <h2>📋 Your Action Plan</h2>
+
+  <div class="action-phases">
+    <!-- Immediate Actions -->
+    <div class="action-phase">
+      <div class="phase-header immediate">
+        <div class="phase-icon">🚨</div>
+        <div class="phase-title">Immediate Actions</div>
+        <div class="phase-timeframe">This Week</div>
+      </div>
+      <div class="phase-actions">
+        <div class="action-item">
+          <div class="action-checkbox"></div>
+          <div class="action-content">
+            <div class="action-title">Consult Doctor Regarding PIVKA-II</div>
+            <div class="action-description">Discuss the elevated PIVKA-II result (62.3 ng/mL) and request a liver ultrasound to rule out structural abnormalities.</div>
+            <span class="action-note">Bring printed results</span>
+          </div>
+        </div>
+        <div class="action-item">
+          <div class="action-checkbox"></div>
+          <div class="action-content">
+            <div class="action-title">Schedule Liver Imaging</div>
+            <div class="action-description">Request an ultrasound to visualize liver texture and rule out any lesions.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Short-Term Actions -->
+    <div class="action-phase">
+      <div class="phase-header short-term">
+        <div class="phase-icon">📅</div>
+        <div class="phase-title">Short-Term Actions</div>
+        <div class="phase-timeframe">1-4 Weeks</div>
+      </div>
+      <div class="phase-actions">
+        <div class="action-item">
+          <div class="action-checkbox"></div>
+          <div class="action-content">
+            <div class="action-title">Correct Triglyceride Spike</div>
+            <div class="action-description">Return to the dietary habits you had in October 2024 when triglycerides were perfect (1.05). Reduce refined carbs and sugars immediately.</div>
+          </div>
+        </div>
+        <div class="action-item">
+          <div class="action-checkbox"></div>
+          <div class="action-content">
+            <div class="action-title">Start Omega-3 Supplementation</div>
+            <div class="action-description">Begin high-dose Omega-3 fish oil (2-4g daily) to help lower triglycerides.</div>
+          </div>
+        </div>
+        <div class="action-item">
+          <div class="action-checkbox"></div>
+          <div class="action-content">
+            <div class="action-title">Consider Vitamin K2 Trial</div>
+            <div class="action-description">If liver imaging is clear and you're not on blood thinners, start Vitamin K2 (MK-7) 100-180mcg to replenish stores.</div>
+            <span class="action-note">Requires doctor approval if on Warfarin</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Follow-Up Actions -->
+    <div class="action-phase">
+      <div class="phase-header follow-up">
+        <div class="phase-icon">🔄</div>
+        <div class="phase-title">Follow-Up Actions</div>
+        <div class="phase-timeframe">3 Months</div>
+      </div>
+      <div class="phase-actions">
+        <div class="action-item">
+          <div class="action-checkbox"></div>
+          <div class="action-content">
+            <div class="action-title">Retest PIVKA-II</div>
+            <div class="action-description">Confirm normalization of PIVKA-II levels with Vitamin K2 supplementation.</div>
+          </div>
+        </div>
+        <div class="action-item">
+          <div class="action-checkbox"></div>
+          <div class="action-content">
+            <div class="action-title">Repeat Lipid Panel</div>
+            <div class="action-description">Verify triglyceride reduction. Target: &lt;1.7 mmol/L (ideally back to ~1.05).</div>
+          </div>
+        </div>
+        <div class="action-item">
+          <div class="action-checkbox"></div>
+          <div class="action-content">
+            <div class="action-title">Assess Metabolic Progress</div>
+            <div class="action-description">Recheck HbA1c to evaluate prediabetic status response to lifestyle changes.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+```
+
+**Building Action Plan from Input Data:**
+- Use `structured_data.actionPlan.immediate[]` for urgent actions
+- Use `structured_data.actionPlan.shortTerm[]` for 1-4 week actions
+- Use `structured_data.actionPlan.followUp[]` for 3+ month actions
+- Fall back to `analysis` "Action Plan" or "Recommendations" sections
+
+---
+
+### 12. Scientific References Section (ALWAYS REQUIRED when research data exists)
+
+When `research_json` is provided, you MUST include a References section with clickable source links.
+
+```css
+.references-section {
+  background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+  border-radius: 28px;
+  padding: 35px;
+  margin: 30px 0;
+}
+
+.references-section h2 {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  color: #475569;
+  margin-bottom: 20px;
+  font-size: 1.4rem;
+}
+
+.references-intro {
+  color: #64748B;
+  font-size: 0.9rem;
+  margin-bottom: 25px;
+  line-height: 1.6;
+}
+
+.reference-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.reference-item {
+  background: white;
+  border-radius: 18px;
+  padding: 20px;
+  display: flex;
+  gap: 18px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+  transition: transform 0.2s ease;
+}
+
+.reference-item:hover {
+  transform: translateX(4px);
+}
+
+.reference-number {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #E2E8F0 0%, #CBD5E1 100%);
+  color: #475569;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.reference-content {
+  flex: 1;
+}
+
+.reference-title {
+  font-weight: 700;
+  color: #1E293B;
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+}
+
+.reference-title a {
+  color: #2563EB;
+  text-decoration: none;
+}
+
+.reference-title a:hover {
+  text-decoration: underline;
+}
+
+.reference-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.source-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.source-type-badge.journal {
+  background: #DBEAFE;
+  color: #1E40AF;
+}
+
+.source-type-badge.institution {
+  background: #D1FAE5;
+  color: #065F46;
+}
+
+.source-type-badge.guideline {
+  background: #FEE2E2;
+  color: #B91C1C;
+}
+
+.source-type-badge.education {
+  background: #FEF3C7;
+  color: #92400E;
+}
+
+.source-type-badge.health-site {
+  background: #E0E7FF;
+  color: #3730A3;
+}
+
+.confidence-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.confidence-indicator.high { color: #059669; }
+.confidence-indicator.medium { color: #D97706; }
+.confidence-indicator.low { color: #DC2626; }
+
+.reference-snippet {
+  color: #64748B;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  background: #F8FAFC;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border-left: 3px solid #E2E8F0;
+}
+```
+
+**Example References HTML:**
+```html
+<section class="references-section">
+  <h2>📚 Scientific References</h2>
+  <p class="references-intro">
+    The analysis and recommendations in this report are supported by the following peer-reviewed sources:
+  </p>
+
+  <div class="reference-list">
+    <div class="reference-item">
+      <div class="reference-number">1</div>
+      <div class="reference-content">
+        <div class="reference-title">
+          <a href="https://pubmed.ncbi.nlm.nih.gov/29739078/" target="_blank">PIVKA-II as a biomarker for HCC and Vitamin K Deficiency</a>
+        </div>
+        <div class="reference-meta">
+          <span class="source-type-badge journal">🔬 Journal</span>
+          <span class="confidence-indicator high">● High Confidence</span>
+        </div>
+        <p class="reference-snippet">
+          "PIVKA-II is elevated in both Vitamin K deficiency states and hepatocellular carcinoma, making it a valuable but non-specific marker requiring clinical context."
+        </p>
+      </div>
+    </div>
+
+    <div class="reference-item">
+      <div class="reference-number">2</div>
+      <div class="reference-content">
+        <div class="reference-title">
+          <a href="https://pubmed.ncbi.nlm.nih.gov/10501818/" target="_blank">Efficacy of Statins on LDL vs Triglycerides</a>
+        </div>
+        <div class="reference-meta">
+          <span class="source-type-badge journal">🔬 Journal</span>
+          <span class="confidence-indicator high">● High Confidence</span>
+        </div>
+        <p class="reference-snippet">
+          "Statins are highly effective at reducing LDL cholesterol but have limited impact on triglyceride levels, which are more responsive to lifestyle and dietary interventions."
+        </p>
+      </div>
+    </div>
+
+    <div class="reference-item">
+      <div class="reference-number">3</div>
+      <div class="reference-content">
+        <div class="reference-title">
+          <a href="https://gnosisbylesaffre.com/blog/study-suggests-statins-inihibit-k2/" target="_blank">Statins inhibition of Vitamin K2 biosynthesis</a>
+        </div>
+        <div class="reference-meta">
+          <span class="source-type-badge health-site">🌐 Health Site</span>
+          <span class="confidence-indicator medium">● Medium Confidence</span>
+        </div>
+        <p class="reference-snippet">
+          "Research suggests that statin medications may interfere with the body's ability to synthesize and utilize Vitamin K2, potentially contributing to deficiency states."
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+```
+
+**Building References from Input Data:**
+- Use `research_json.claims[].sources[]` for reference data
+- Extract: title, url, snippet, source_type, confidence
+- Number references [1], [2], etc. matching inline citations in text
+- Display source type badges: 🔬 Journal, 🏥 Institution, 📋 Guideline, 📚 Education, 🌐 Health Site
+
+---
+
 ## Rich Sections (Include When Data Supports)
 
 The following sections should be included **only when the underlying data exists**. Each section describes when to include it and how.
@@ -1701,12 +3062,33 @@ Year-grouped timeline with event cards showing date, title, description, key val
 **MANDATORY sections are ALWAYS included regardless of data complexity:**
 
 ```
-✅ ALWAYS INCLUDE (Mandatory):
+✅ ALWAYS INCLUDE (Mandatory - Non-Negotiable):
 ├── SOAP Clinical Summary (populate with available data)
-├── Key Metrics Dashboard (at least one chart)
-├── Medical History Timeline (even if single time point - show current status)
+├── Key Metrics Dashboard (Chart.js required - radar, gauges, or trends)
+├── Medical History Timeline (ALL events - even if single time point)
 ├── At least one Flowchart (Root Cause, Treatment Pathway, or Systems)
-└── Supplement Schedule (if any supplements recommended)
+├── Supplement Schedule (if any supplements recommended - with exact timing)
+├── Prognosis Section (with/without intervention + milestones)
+├── Positive Findings ("What's Working Well" - always include good news)
+├── Action Plan (Immediate + Short-Term + Follow-up phases)
+├── Doctor Questions (when medical consultation needed)
+├── Monitoring Protocol (when follow-up tests recommended)
+├── Data Gaps (when tests/info are missing)
+├── ALL Trends (every trend from structured_data.trends[] - not just 2)
+└── References (when research_json is provided)
+```
+
+**CRITICAL: Capture ALL data - do not truncate or summarize:**
+
+```
+⚠️ COMPLETENESS REQUIREMENTS:
+├── trends[]: Include EVERY trend, not just "key" ones
+├── timeline[]: Include EVERY event, not just "significant" ones
+├── actionPlan: Include ALL phases (immediate, shortTerm, followUp)
+├── doctorQuestions[]: Include ALL questions, not just top 3
+├── positiveFindings[]: Include ALL positive findings
+├── diagnoses[]: Include ALL diagnoses (use grid for 4+)
+└── research sources: Link ALL references from research_json
 ```
 
 **CONDITIONAL sections depend on data:**
@@ -1722,14 +3104,6 @@ Year-grouped timeline with event cards showing date, title, description, key val
 │   ├── Technical terms used: Add explainer boxes
 │   └── Complex mechanisms: Add visual flow diagrams + explainers
 │
-├── Is ongoing monitoring needed?
-│   ├── No: Skip monitoring section
-│   └── Yes: Include monitoring protocol table
-│
-├── Does structured_data.references[] exist and have entries?
-│   ├── No: Skip references section
-│   └── Yes: Include references section with numbered citations, source links, and type badges
-│
 └── Total sections count?
     ├── <5: No navigation needed
     └── 5+: Add fixed navigation bar
@@ -1744,6 +3118,14 @@ Year-grouped timeline with event cards showing date, title, description, key val
 | Medical History Timeline | Show "Current Status" as single event if no historical data |
 | Flowchart | Use Treatment Pathway (always derivable from recommendations) |
 | Supplement Schedule | Include if any supplements mentioned; omit only if zero recommendations |
+| Prognosis | Include even with sparse data - show "Expected with/without changes" |
+| Positive Findings | Find at least 1-2 normal/optimal results to highlight |
+| Action Plan | Always derivable from analysis - at minimum include "consult doctor" |
+| Doctor Questions | Generate from key findings if not explicitly provided |
+| Monitoring Protocol | Include if any retesting is mentioned |
+| Data Gaps | Infer from incomplete panels or mentioned "not available" tests |
+| Trends | Include ALL available trends - never skip any |
+| References | Include ALL sources from research_json - never omit any |
 
 ---
 
@@ -1825,12 +3207,32 @@ Year-grouped timeline with event cards showing date, title, description, key val
 
 Before outputting, verify:
 
-### Mandatory Sections (MUST BE PRESENT)
+### Mandatory Sections (MUST BE PRESENT - Non-Negotiable)
 - [ ] **SOAP Clinical Summary** - All 4 boxes present (Subjective, Objective, Assessment, Plan)
 - [ ] **Key Metrics Dashboard** - At least one Chart.js visualization (radar, gauge, or trend)
-- [ ] **Medical History Timeline** - Chronological events with date markers and significance styling
+- [ ] **Medical History Timeline** - ALL chronological events with date markers and significance styling
 - [ ] **Daily Supplement Schedule** - If supplements recommended, includes exact timing (morning/midday/evening/bedtime)
 - [ ] **At least one Flowchart** - Root Cause Analysis, Treatment Pathway, or Systems Connection diagram
+- [ ] **Prognosis Section** - "Without Intervention" risks AND "With Recommended Protocol" improvements + milestones
+- [ ] **Positive Findings** - "What's Working Well" section highlighting good news and normal results
+- [ ] **Action Plan** - ALL phases: Immediate + Short-Term + Follow-Up actions with checkboxes
+- [ ] **Doctor Questions** - ALL questions with numbered cards, categories, and context
+- [ ] **Monitoring Protocol** - ALL follow-up tests with frequency, target, and purpose
+- [ ] **Data Gaps** - Missing tests/information with priority levels
+- [ ] **References** - If research_json provided, include ALL sources with clickable links
+
+### CRITICAL: Complete Data Capture
+**Do NOT truncate, summarize, or skip any data. Include EVERYTHING:**
+
+- [ ] **ALL trends[]** - Every single trend from structured_data, not just "key" ones
+- [ ] **ALL timeline[]** - Every single historical event, not just "significant" ones
+- [ ] **ALL actionPlan items** - Every action in immediate[], shortTerm[], and followUp[]
+- [ ] **ALL doctorQuestions[]** - Every question, not just top 3
+- [ ] **ALL positiveFindings[]** - Every good news item
+- [ ] **ALL diagnoses[]** - Every diagnosis with severity, evidence, and implications
+- [ ] **ALL monitoringProtocol[]** - Every recommended follow-up test
+- [ ] **ALL dataGaps[]** - Every identified missing piece of information
+- [ ] **ALL research sources** - Every source from research_json with URLs
 
 ### Data Accuracy
 - [ ] Charts use EXACT values from structured_data (not approximations)
@@ -1849,19 +3251,19 @@ Before outputting, verify:
 - [ ] Line/bar charts have containers with `height: 250px` to `400px`
 - [ ] Radar charts have containers with `height: 350px` to `450px`
 
-### Rich Section Data (NEW)
+### Rich Section Data
 - [ ] `diagnoses[]` - Each diagnosis shown as a card with severity badge, key evidence, implications
-- [ ] `timeline[]` - Historical events shown chronologically with year groupings and significance markers
+- [ ] `timeline[]` - ALL historical events shown chronologically with year groupings and significance markers
 - [ ] `prognosis` - Both "with intervention" and "without intervention" scenarios displayed
 - [ ] `prognosis.milestones` - Expected improvements shown on a timeline
 - [ ] `supplementSchedule` - Organized by time of day (morning, midday, evening, bedtime)
 - [ ] `supplementSchedule.interactions` - Displayed as warnings/cautions
 - [ ] `lifestyleOptimizations` - Each category (sleep, nutrition, exercise, stress, environment) as a card
 - [ ] `lifestyleOptimizations[].priority` - High priority items styled prominently
-- [ ] `monitoringProtocol[]` - Shown as a structured table with test, frequency, target, purpose
-- [ ] `doctorQuestions[]` - Displayed as numbered question cards with context
-- [ ] `dataGaps[]` - Missing tests shown with priority and reason
-- [ ] `references[]` - Displayed as numbered citations with source links and type badges
+- [ ] `monitoringProtocol[]` - ALL items shown as a structured table with test, frequency, target, purpose
+- [ ] `doctorQuestions[]` - ALL questions displayed as numbered question cards with context
+- [ ] `dataGaps[]` - ALL missing tests shown with priority and reason
+- [ ] `references[]` OR `research_json` - ALL sources displayed as numbered citations with clickable links and type badges
 
 ### Visual Hierarchy
 - [ ] The most important finding is immediately visible
@@ -1871,21 +3273,18 @@ Before outputting, verify:
 - [ ] It tells a coherent story, not just displays data
 
 ### Adaptive Scaling
-- [ ] Report complexity matches data richness (don't force 20 sections for 2 findings)
-- [ ] **Mandatory sections are ALWAYS included** - SOAP, Key Metrics Dashboard, Timeline, Flowchart
+- [ ] Report complexity matches data richness
+- [ ] **Mandatory sections are ALWAYS included** (see list above)
 - [ ] Navigation bar included ONLY if 5+ major sections exist
 - [ ] TL;DR box included ONLY if 3+ major themes/issues exist
 - [ ] Educational explainers included ONLY for complex medical concepts
-- [ ] Supplement specifics included ONLY if detailed recommendations exist in source
-- [ ] Scientific references included ONLY if explicitly cited in source (never fabricate)
-- [ ] Monitoring protocol included ONLY if ongoing tracking is recommended
-- [ ] Doctor questions included ONLY if medical consultation is needed
 - [ ] Sections are NOT padded or stretched to fill space—let the data dictate length
 
 ### Integrity Rules
 - [ ] No fabricated data, citations, brand names, or recommendations
-- [ ] All content traces back to source analysis or structured_data
-- [ ] When data is sparse, report is appropriately concise
+- [ ] All content traces back to source analysis, structured_data, or research_json
+- [ ] When data is sparse, report is appropriately concise BUT still includes all mandatory sections
+- [ ] **NEVER create an "All Findings" summary table** - this is redundant and clinical; use targeted visualizations instead
 
 ---
 
@@ -1900,7 +3299,7 @@ Output ONLY the complete HTML file:
 
 ## Input Data Format
 
-You will receive data with 4 sources in priority order:
+You will receive data with **6 sources** in priority order:
 
 ```
 {{#if patient_question}}
@@ -1932,7 +3331,46 @@ Use this for polished, patient-friendly text explanations and the "big picture" 
 <final_analysis>
 {{final_analysis}}
 </final_analysis>
+
+### Priority 5: Research Markdown (for citations and evidence)
+Use this for scientific references, source citations, and evidence-based claims.
+<research_md>
+{{research_md}}
+</research_md>
+
+### Priority 6: Research JSON (for structured reference data)
+Use this for building the References section with clickable links, source types, and confidence levels.
+<research_json>
+{{research_json}}
+</research_json>
 ```
+
+### Research Data Structure
+The `research_json` contains structured research data with this format:
+```json
+{
+  "claims": [
+    {
+      "claim": "The medical claim text",
+      "sources": [
+        {
+          "title": "Source Title",
+          "url": "https://...",
+          "snippet": "Relevant excerpt from source",
+          "source_type": "journal|institution|guideline|education|health-site",
+          "confidence": "high|medium|low"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Use research_json to:**
+- Build the References section with clickable source links
+- Show source type badges (🔬 Journal, 🏥 Institution, 📋 Guideline, 📚 Education, 🌐 Health Site)
+- Display confidence indicators for each source
+- Link inline citations [1], [2] to their corresponding references
 
 ---
 
@@ -1944,23 +3382,34 @@ Use this for polished, patient-friendly text explanations and the "big picture" 
 |-------------------|----------------|------------------|----------|
 | **SOAP Clinical Summary** | analysis + structured_data | final_analysis | Populate with available data |
 | **Key Metrics Dashboard** | structured_data.criticalFindings, systemsHealth, trends | analysis | At least one chart required |
-| **Medical History Timeline** | structured_data.timeline OR trends | analysis | Single "Current Status" event |
+| **Medical History Timeline** | structured_data.timeline + ALL trends | analysis | Single "Current Status" event |
 | **Flowchart** | cross_systems, actionPlan, connections | analysis | Treatment Pathway from recommendations |
 | **Supplement Schedule** | structured_data.supplementSchedule | analysis | Required if supplements mentioned |
+| **Prognosis Section** | structured_data.prognosis | analysis, final_analysis | Generate from findings + recommendations |
+| **Positive Findings** | structured_data.positiveFindings | analysis (normal values) | Find normal/optimal results |
+| **Action Plan** | structured_data.actionPlan (ALL phases) | analysis | Always derivable from recommendations |
+| **Doctor Questions** | structured_data.doctorQuestions | analysis, final_analysis | Generate from key findings |
+| **Monitoring Protocol** | structured_data.monitoringProtocol | analysis | Include if any retesting mentioned |
+| **Data Gaps** | structured_data.dataGaps | analysis ("missing", "not available") | Infer from incomplete panels |
+| **References** | research_json.claims[].sources | research_md | Required if research data provided |
 
-### Conditional Sections
+### All Section Sources
 
 | What You're Building | Primary Source | Secondary Source |
 |---------------------|----------------|------------------|
 | **Gauge charts, bar charts, line charts** | structured_data (exact values) | - |
 | **Radar/spider charts** | structured_data.systemsHealth | - |
-| **Trend charts** | structured_data.trends | - |
+| **ALL Trend charts** | structured_data.trends[] (ALL items) | - |
 | **Diagnoses cards** | structured_data.diagnoses OR analysis | final_analysis |
-| **Prognosis section** | structured_data.prognosis OR analysis | final_analysis |
+| **Prognosis section** | structured_data.prognosis | analysis, final_analysis |
 | **Lifestyle recommendations** | structured_data.lifestyleOptimizations OR analysis | final_analysis |
 | **Monitoring protocol** | structured_data.monitoringProtocol OR analysis | final_analysis |
 | **Doctor questions** | structured_data.doctorQuestions OR analysis | final_analysis |
-| **References/citations** | structured_data.references | - |
+| **Positive findings** | structured_data.positiveFindings | analysis |
+| **Data gaps** | structured_data.dataGaps | analysis |
+| **Action plan (ALL phases)** | structured_data.actionPlan | analysis |
+| **References/citations** | research_json.claims[].sources | research_md, structured_data.references |
+| **Inline citations [1], [2]** | research_json | research_md |
 | **Narrative text/explanations** | final_analysis | analysis |
 | **Mechanism explanations** | cross_systems | analysis |
 
@@ -1968,15 +3417,35 @@ Use this for polished, patient-friendly text explanations and the "big picture" 
 
 ## Your Task
 
-Generate the Health Realm HTML using all input sources.
+Generate the Health Realm HTML using ALL input sources (structured_data, analysis, cross_systems, final_analysis, research_md, research_json).
 
-**MANDATORY SECTIONS (Must be present in every Health Realm):**
+**MANDATORY SECTIONS (Must be present in every Health Realm - Non-Negotiable):**
 
 1. ✅ **SOAP Clinical Summary** - Subjective, Objective, Assessment, Plan boxes
-2. ✅ **Key Metrics Dashboard** - Chart.js visualizations (radar, gauges, trends)
-3. ✅ **Medical History Timeline** - Chronological events with significance markers
+2. ✅ **Key Metrics Dashboard** - Chart.js visualizations (radar, gauges, ALL trends)
+3. ✅ **Medical History Timeline** - ALL chronological events with significance markers
 4. ✅ **At least one Flowchart** - Root Cause, Treatment Pathway, or Systems Connection
 5. ✅ **Supplement Schedule** - If supplements recommended, include exact timing
+6. ✅ **Prognosis Section** - "Without Intervention" AND "With Recommended Protocol" + milestones
+7. ✅ **Positive Findings** - "What's Working Well" highlighting good news and normal values
+8. ✅ **Action Plan** - ALL phases: Immediate + Short-Term + Follow-Up with checkboxes
+9. ✅ **Doctor Questions** - ALL questions with numbered cards, categories, context
+10. ✅ **Monitoring Protocol** - ALL follow-up tests with frequency, target, purpose
+11. ✅ **Data Gaps** - Missing tests/information with priority levels
+12. ✅ **References** - If research_json provided, ALL sources with clickable links
+
+**CRITICAL: COMPLETE DATA CAPTURE (Never Truncate or Summarize):**
+
+- ⚠️ **ALL trends[]** - Include EVERY trend from structured_data, not just 2-3 "key" ones
+- ⚠️ **ALL timeline[]** - Include EVERY historical event, not just "significant" ones
+- ⚠️ **ALL actionPlan items** - Include EVERY action in immediate[], shortTerm[], followUp[]
+- ⚠️ **ALL doctorQuestions[]** - Include EVERY question, not just top 3
+- ⚠️ **ALL positiveFindings[]** - Include EVERY good news item
+- ⚠️ **ALL diagnoses[]** - Include EVERY diagnosis with severity, evidence, implications
+- ⚠️ **ALL monitoringProtocol[]** - Include EVERY recommended follow-up test
+- ⚠️ **ALL dataGaps[]** - Include EVERY identified missing piece of information
+- ⚠️ **ALL research sources** - Include EVERY source from research_json with URLs
+- ❌ **NEVER create an "All Findings" summary table** - use targeted visualizations instead
 
 **CRITICAL Instructions:**
 
@@ -1984,12 +3453,19 @@ Generate the Health Realm HTML using all input sources.
 2. **For charts/gauges/visualizations:** Use EXACT values from structured_data - don't approximate
 3. **Chart.js is REQUIRED** - All charts must use Chart.js library
 4. **For SOAP:** Populate all 4 boxes (S, O, A, P) with available data
-5. **For Timeline:** Show chronological progression; if single time point, show "Current Status"
+5. **For Timeline:** Show ALL chronological events; if single time point, show "Current Status"
 6. **For Flowcharts:** Include at least one - Treatment Pathway is always derivable
 7. **For Supplement Schedule:** Exact timing (morning/midday/evening/bedtime), not "2x/day"
 8. **For mechanisms:** Use cross_systems for detailed cause→effect explanations
-9. **EVERY data point should appear somewhere** - don't drop information
-10. **Make critical findings impossible to miss** - prominent placement, visual emphasis
+9. **For Prognosis:** Show both "without intervention" risks AND "with protocol" improvements
+10. **For Positive Findings:** Find and highlight ALL normal/optimal results
+11. **For Action Plan:** Include ALL immediate, short-term, AND follow-up actions
+12. **For Doctor Questions:** Include ALL questions with category and context
+13. **For Monitoring Protocol:** Include ALL recommended tests with targets
+14. **For Data Gaps:** Highlight ALL missing information that would be helpful
+15. **For References:** Use research_json to build clickable source links with type badges
+16. **EVERY data point should appear somewhere** - don't drop ANY information
+17. **Make critical findings impossible to miss** - prominent placement, visual emphasis
 
 **Remember:**
 - You are an intelligent data storyteller designing a COMPREHENSIVE health report
@@ -1998,6 +3474,8 @@ Generate the Health Realm HTML using all input sources.
 - The analysis has rich content - USE IT for detailed sections
 - The cross_systems has mechanisms - USE IT for flow diagrams and explanations
 - The final_analysis has polished narrative - USE IT for text content
+- The research_md and research_json have sources - USE THEM for the References section
 - If a patient question was provided, make sure it is prominently addressed
+- CAPTURE ALL DATA - never truncate, summarize, or skip any arrays
 
 **Output the complete HTML file now (starting with `<!DOCTYPE html>`):**
