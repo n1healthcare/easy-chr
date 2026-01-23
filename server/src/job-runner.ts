@@ -12,11 +12,14 @@
  * - PROMPT: User's analysis prompt (optional, defaults to generic prompt)
  * - N1_API_BASE_URL: N1 API backend URL
  * - N1_API_KEY: Authentication key for N1 API
- * - GEMINI_API_KEY: LiteLLM API key (for Gemini access)
- * - GOOGLE_GEMINI_BASE_URL: LiteLLM proxy URL (no /v1 suffix)
+ * - OPENAI_API_KEY: LiteLLM API key (converted to GEMINI_API_KEY internally)
+ * - OPENAI_BASE_URL: LiteLLM proxy URL (converted to GOOGLE_GEMINI_BASE_URL internally)
  * - BUCKET_NAME: GCS bucket for output storage
  * - PROJECT_ID: GCP project ID
  * - GCS_SERVICE_ACCOUNT_JSON: Service account credentials (JSON string)
+ *
+ * Note: OPENAI_API_KEY and OPENAI_BASE_URL are automatically converted to
+ * GEMINI_API_KEY and GOOGLE_GEMINI_BASE_URL at startup for compatibility.
  *
  * Environment-based feature flags:
  * - ENVIRONMENT: 'development' | 'staging' | 'production' (default: production)
@@ -25,6 +28,30 @@
  */
 
 import dotenv from 'dotenv';
+
+// Load environment variables from .env file (if present)
+dotenv.config();
+
+// Convert standard OPENAI env vars to Gemini-specific ones
+// This allows forge-sentinel to be agnostic about Gemini
+// OPENAI_API_KEY takes priority - if present, it overwrites GEMINI_API_KEY
+if (process.env.OPENAI_API_KEY) {
+  process.env.GEMINI_API_KEY = process.env.OPENAI_API_KEY;
+} else if (!process.env.GEMINI_API_KEY) {
+  // Neither is set - let the service throw the error
+  console.warn('Warning: Neither OPENAI_API_KEY nor GEMINI_API_KEY is set');
+}
+
+// OPENAI_BASE_URL takes priority - if present, it overwrites GOOGLE_GEMINI_BASE_URL
+if (process.env.OPENAI_BASE_URL) {
+  // Strip /v1 suffix for Gemini
+  const baseUrl = process.env.OPENAI_BASE_URL.replace(/\/+$/, '').replace(/\/v1$/, '');
+  process.env.GOOGLE_GEMINI_BASE_URL = baseUrl;
+} else if (!process.env.GOOGLE_GEMINI_BASE_URL) {
+  // Neither is set - let the service throw the error
+  console.warn('Warning: Neither OPENAI_BASE_URL nor GOOGLE_GEMINI_BASE_URL is set');
+}
+
 import { GeminiAdapter } from './adapters/gemini/gemini.adapter.js';
 import { N1ApiAdapter } from './adapters/n1-api/n1-api.adapter.js';
 import { AgenticDoctorUseCase } from './application/use-cases/agentic-doctor.use-case.js';
