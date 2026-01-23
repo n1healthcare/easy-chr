@@ -18,6 +18,10 @@ import { GoogleGenAI, Type } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 import { REALM_CONFIG } from '../config.js';
+import {
+  createGoogleGenAI,
+  type BillingContext,
+} from '../utils/genai-factory.js';
 
 // ============================================================================
 // Skill Loader
@@ -441,19 +445,8 @@ export class AgenticMedicalAnalyst {
   private genai: GoogleGenAI;
   private model: string;
 
-  constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY environment variable is required');
-    }
-
-    const baseUrl = process.env.GOOGLE_GEMINI_BASE_URL;
-
-    this.genai = new GoogleGenAI({
-      apiKey,
-      ...(baseUrl && { baseURL: baseUrl }),
-    });
-
+  constructor(billingContext?: BillingContext) {
+    this.genai = createGoogleGenAI(billingContext);
     this.model = REALM_CONFIG.models.doctor;
     console.log(`[AgenticAnalyst] Initialized with model: ${this.model}`);
   }

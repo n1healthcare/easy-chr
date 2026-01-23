@@ -15,6 +15,10 @@ import { GoogleGenAI } from '@google/genai';
 import path from 'path';
 import fs from 'fs';
 import { REALM_CONFIG } from '../config.js';
+import {
+  createGoogleGenAI,
+  type BillingContext,
+} from '../utils/genai-factory.js';
 
 // ============================================================================
 // Skill Loader
@@ -91,20 +95,8 @@ export class PDFExtractionService {
   private model: string;
   private extractionPrompt: string;
 
-  constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY environment variable is required');
-    }
-
-    // Support custom base URL for proxy
-    const baseUrl = process.env.GOOGLE_GEMINI_BASE_URL;
-
-    this.genai = new GoogleGenAI({
-      apiKey,
-      ...(baseUrl && { baseURL: baseUrl }),
-    });
-
+  constructor(billingContext?: BillingContext) {
+    this.genai = createGoogleGenAI(billingContext);
     this.model = REALM_CONFIG.models.markdown;
     this.extractionPrompt = loadPdfExtractorSkill();
     console.log(`[PDFExtraction] Initialized with model: ${this.model}`);

@@ -23,6 +23,7 @@ import { AgenticMedicalAnalyst, type AnalystEvent } from '../../services/agentic
 import { researchClaims, formatResearchAsMarkdown, type ResearchOutput, type ResearchEvent } from '../../services/research-agent.service.js';
 import { REALM_CONFIG } from '../../config.js';
 import type { RealmGenerationEvent } from '../../domain/types.js';
+import type { BillingContext } from '../../utils/billing.js';
 
 export type { RealmGenerationEvent };
 
@@ -106,7 +107,17 @@ function stripThinkingText(content: string, marker: string | RegExp): string {
 // ============================================================================
 
 export class AgenticDoctorUseCase {
+  private billingContext?: BillingContext;
+
   constructor(private readonly llmClient: LLMClientPort) {}
+
+  /**
+   * Set billing context for LiteLLM cost tracking.
+   * Headers will be added to all LLM calls for billing attribution.
+   */
+  setBillingContext(context: BillingContext): void {
+    this.billingContext = context;
+  }
 
   async initialize(): Promise<void> {
     // No initialization needed for now
@@ -153,7 +164,7 @@ export class AgenticDoctorUseCase {
     if (pdfFiles.length > 0) {
       yield { type: 'log', message: `Extracting ${pdfFiles.length} PDF(s) using Gemini Vision...` };
 
-      const pdfExtractor = new PDFExtractionService();
+      const pdfExtractor = new PDFExtractionService(this.billingContext);
 
       try {
         for await (const event of pdfExtractor.extractPDFs(pdfFiles, storageDir)) {
@@ -247,7 +258,7 @@ export class AgenticDoctorUseCase {
     let analysisContent = '';
 
     try {
-      const agenticAnalyst = new AgenticMedicalAnalyst();
+      const agenticAnalyst = new AgenticMedicalAnalyst(this.billingContext);
 
       yield { type: 'log', message: 'Agent is exploring the medical data...' };
 
