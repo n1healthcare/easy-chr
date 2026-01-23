@@ -52,18 +52,6 @@ if (process.env.OPENAI_BASE_URL) {
   console.warn('Warning: Neither OPENAI_BASE_URL nor GOOGLE_GEMINI_BASE_URL is set');
 }
 
-// Set billing headers for LiteLLM cost tracking via vendored gemini-cli
-// Format: "Header1:Value1,Header2:Value2" (comma-separated)
-// These headers are extracted by the n1-litellm billing callback
-if (process.env.USER_ID) {
-  const billingHeaders = [
-    `x-subject-user-id:${process.env.USER_ID}`,
-    `x-chr-id:${process.env.CHR_ID || ''}`,
-    `x-service-name:workflow-easy-chr`,
-  ].join(',');
-  process.env.GEMINI_CLI_CUSTOM_HEADERS = billingHeaders;
-}
-
 import { GeminiAdapter } from './adapters/gemini/gemini.adapter.js';
 import { N1ApiAdapter } from './adapters/n1-api/n1-api.adapter.js';
 import { AgenticDoctorUseCase } from './application/use-cases/agentic-doctor.use-case.js';
@@ -342,10 +330,6 @@ async function runJob() {
     // Step 2: Initialize Agentic Doctor
     console.log('[2/5] Initializing Agentic Doctor pipeline...');
     const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter);
-    agenticDoctorUseCase.setBillingContext({
-      userId: config.userId,
-      chrId: config.chrId,
-    });
     await agenticDoctorUseCase.initialize();
     console.log('✓ Agentic Doctor ready');
     console.log('');
