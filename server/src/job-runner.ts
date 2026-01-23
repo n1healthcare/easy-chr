@@ -8,14 +8,18 @@
  * Environment Variables (injected by forge-sentinel):
  * - USER_ID: User identifier for PDF fetching
  * - CHR_ID: Unique identifier for this report generation
+ * - CHR_FILENAME: User-specified filename for the report (optional, defaults to 'report')
  * - PROMPT: User's analysis prompt (optional, defaults to generic prompt)
  * - N1_API_BASE_URL: N1 API backend URL
  * - N1_API_KEY: Authentication key for N1 API
- * - GEMINI_API_KEY: LiteLLM API key (for Gemini access)
- * - GOOGLE_GEMINI_BASE_URL: LiteLLM proxy URL (no /v1 suffix)
+ * - OPENAI_API_KEY: LiteLLM API key (converted to GEMINI_API_KEY internally)
+ * - OPENAI_BASE_URL: LiteLLM proxy URL (converted to GOOGLE_GEMINI_BASE_URL internally)
  * - BUCKET_NAME: GCS bucket for output storage
  * - PROJECT_ID: GCP project ID
  * - GCS_SERVICE_ACCOUNT_JSON: Service account credentials (JSON string)
+ *
+ * Note: OPENAI_API_KEY and OPENAI_BASE_URL are automatically converted to
+ * GEMINI_API_KEY and GOOGLE_GEMINI_BASE_URL at startup for compatibility.
  *
  * Environment-based feature flags:
  * - ENVIRONMENT: 'development' | 'staging' | 'production' (default: production)
@@ -24,6 +28,30 @@
  */
 
 import dotenv from 'dotenv';
+
+// Load environment variables from .env file (if present)
+dotenv.config();
+
+// Convert standard OPENAI env vars to Gemini-specific ones
+// This allows forge-sentinel to be agnostic about Gemini
+// OPENAI_API_KEY takes priority - if present, it overwrites GEMINI_API_KEY
+if (process.env.OPENAI_API_KEY) {
+  process.env.GEMINI_API_KEY = process.env.OPENAI_API_KEY;
+} else if (!process.env.GEMINI_API_KEY) {
+  // Neither is set - let the service throw the error
+  console.warn('Warning: Neither OPENAI_API_KEY nor GEMINI_API_KEY is set');
+}
+
+// OPENAI_BASE_URL takes priority - if present, it overwrites GOOGLE_GEMINI_BASE_URL
+if (process.env.OPENAI_BASE_URL) {
+  // Strip /v1 suffix for Gemini
+  const baseUrl = process.env.OPENAI_BASE_URL.replace(/\/+$/, '').replace(/\/v1$/, '');
+  process.env.GOOGLE_GEMINI_BASE_URL = baseUrl;
+} else if (!process.env.GOOGLE_GEMINI_BASE_URL) {
+  // Neither is set - let the service throw the error
+  console.warn('Warning: Neither OPENAI_BASE_URL nor GOOGLE_GEMINI_BASE_URL is set');
+}
+
 import { GeminiAdapter } from './adapters/gemini/gemini.adapter.js';
 import { N1ApiAdapter } from './adapters/n1-api/n1-api.adapter.js';
 import { AgenticDoctorUseCase } from './application/use-cases/agentic-doctor.use-case.js';
@@ -81,6 +109,19 @@ const PROGRESS_MAP: Record<string, ProgressUpdate> = {
   failed:            { stage: 'Has Error',  progress: 0,   message: 'Report generation failed' },
 };
 
+// Map AgenticDoctorUseCase phase names to progress updates
+// These phases are yielded as { type: 'step', name: '...', status: 'running'|'completed'|'failed' }
+const PHASE_PROGRESS_MAP: Record<string, ProgressUpdate> = {
+  'Document Extraction':    { stage: 'Preparing',  progress: 20,  message: 'Extracting content from your documents...' },
+  'Medical Analysis':       { stage: 'Analyzing',  progress: 30,  message: 'Performing medical analysis...' },
+  'Cross-System Analysis':  { stage: 'Analyzing',  progress: 40,  message: 'Analyzing cross-system connections...' },
+  'Research':               { stage: 'Analyzing',  progress: 50,  message: 'Researching and validating claims...' },
+  'Synthesis':              { stage: 'Writing',    progress: 60,  message: 'Synthesizing your health report...' },
+  'Validation':             { stage: 'Checking',   progress: 70,  message: 'Validating analysis completeness...' },
+  'Data Structuring':       { stage: 'Writing',    progress: 80,  message: 'Structuring data for visualization...' },
+  'Realm Generation':       { stage: 'Finalizing', progress: 90,  message: 'Building your interactive health realm...' },
+};
+
 async function notifyProgress(
   config: { n1ApiBaseUrl: string; n1ApiKey: string; userId: string; chrId: string },
   step: keyof typeof PROGRESS_MAP,
@@ -101,14 +142,68 @@ async function notifyProgress(
     return;
   }
 
-  const payload = {
+  const payload: Record<string, unknown> = {
     report_id: config.chrId,
     user_id: config.userId,
     progress: update.progress,
-    status: step === 'failed' ? 'error' : 'processing',
+    status: step === 'failed' ? 'ERROR' : (step === 'completed' ? 'completed' : 'in_progress'),
     message: customMessage || update.message,
     progress_stage: update.stage,
-    error_details: errorDetails,
+  };
+
+  // Only include error field when there's an error (matches n1_api_client contract)
+  if (errorDetails) {
+    payload.error = errorDetails;
+  }
+
+  try {
+    const response = await fetch(`${config.n1ApiBaseUrl}/reports/status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'N1-Api-Key': config.n1ApiKey,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      console.warn(`[Progress] API call failed (${response.status}): ${await response.text()}`);
+    }
+  } catch (error) {
+    // Don't fail the job if progress update fails - just log it
+    console.warn(`[Progress] API error:`, error);
+  }
+}
+
+/**
+ * Send phase-specific progress update with granular percentage
+ * This supplements notifyProgress by using PHASE_PROGRESS_MAP values
+ */
+async function notifyPhaseProgress(
+  config: { n1ApiBaseUrl: string; n1ApiKey: string; userId: string; chrId: string },
+  phaseName: string
+): Promise<void> {
+  const update = PHASE_PROGRESS_MAP[phaseName];
+  if (!update) {
+    console.log(`[Progress] Unknown phase: ${phaseName}`);
+    return;
+  }
+
+  console.log(`[Progress] ${update.stage} (${update.progress}%): ${update.message}`);
+
+  // Skip API calls in development
+  if (SKIP_PROGRESS_TRACKING) {
+    console.log(`[Progress] Skipping API call (ENVIRONMENT=${ENVIRONMENT})`);
+    return;
+  }
+
+  const payload: Record<string, unknown> = {
+    report_id: config.chrId,
+    user_id: config.userId,
+    progress: update.progress,
+    status: 'in_progress',
+    message: update.message,
+    progress_stage: update.stage,
   };
 
   try {
@@ -135,6 +230,7 @@ dotenv.config();
 interface JobConfig {
   userId: string;
   chrId: string;
+  chrFilename?: string;  // User-specified filename from UI
   prompt: string;
   n1ApiBaseUrl: string;
   n1ApiKey: string;
@@ -183,8 +279,10 @@ function validateEnvironment(): JobConfig {
   return {
     userId: coreRequired.USER_ID!,
     chrId: coreRequired.CHR_ID!,
+    chrFilename: process.env.CHR_FILENAME || undefined,
     prompt: process.env.PROMPT || 'Create a comprehensive health analysis and visualization of my medical records',
-    n1ApiBaseUrl: coreRequired.N1_API_BASE_URL!,
+    // Remove trailing slash to prevent double-slash URLs (e.g., /api//reports/status)
+    n1ApiBaseUrl: coreRequired.N1_API_BASE_URL!.replace(/\/+$/, ''),
     n1ApiKey: coreRequired.N1_API_KEY!,
     bucketName: gcsFields.BUCKET_NAME || undefined,
     projectId: gcsFields.PROJECT_ID || undefined,
@@ -208,6 +306,9 @@ async function runJob() {
     console.log(`✓ Environment validated`);
     console.log(`  User ID: ${config.userId}`);
     console.log(`  CHR ID: ${config.chrId}`);
+    if (config.chrFilename) {
+      console.log(`  CHR Filename: ${config.chrFilename}`);
+    }
     console.log(`  Prompt: ${config.prompt.substring(0, 80)}...`);
     console.log('');
   } catch (error) {
@@ -245,8 +346,24 @@ async function runJob() {
     const generator = fetchAndProcessUseCase.execute(config.userId, config.prompt);
 
     for await (const event of generator) {
-      if (event.type === 'thought') {
+      if (event.type === 'step') {
+        // Handle phase progress updates from AgenticDoctorUseCase
+        const phaseName = 'name' in event ? event.name : '';
+        const phaseStatus = 'status' in event ? event.status : '';
+
+        if (phaseStatus === 'running' && phaseName && PHASE_PROGRESS_MAP[phaseName]) {
+          console.log(`  📋 Phase: ${phaseName}`);
+          // Send granular progress update to N1 API
+          await notifyPhaseProgress(config, phaseName);
+        } else if (phaseStatus === 'completed') {
+          console.log(`  ✓ Phase completed: ${phaseName}`);
+        } else if (phaseStatus === 'failed') {
+          console.log(`  ✗ Phase failed: ${phaseName}`);
+        }
+      } else if (event.type === 'thought') {
         console.log(`  💭 ${'content' in event ? event.content : ''}`);
+      } else if (event.type === 'log') {
+        console.log(`  📝 ${'message' in event ? event.message : ''}`);
       } else if (event.type === 'result') {
         realmPath = 'url' in event ? event.url : '';
         console.log(`  ✓ Realm generated: ${realmPath}`);
@@ -291,8 +408,11 @@ async function runJob() {
 
       const htmlContent = fs.readFileSync(htmlFilePath, 'utf-8');
 
-      // Upload with CHR ID as filename
-      const gcsPath = `reports/${config.chrId}/index.html`;
+      // Build path: users/{userId}/chr/{chrId}/{filename}.html
+      // Strip any existing extension (e.g., .pdf, .html) from chrFilename before adding .html
+      const rawFilename = config.chrFilename || 'report';
+      const filename = path.basename(rawFilename, path.extname(rawFilename)) || 'report';
+      const gcsPath = `users/${config.userId}/chr/${config.chrId}/${filename}.html`;
       publicUrl = await gcsAdapter.uploadHtml(htmlContent, gcsPath);
 
       console.log(`✓ Uploaded to GCS: ${publicUrl}`);

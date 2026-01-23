@@ -62,7 +62,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # - BUCKET_NAME: GCS bucket name
 # - PROJECT_ID: GCP project ID
 # - GCS_SERVICE_ACCOUNT_JSON: GCS credentials (JSON string)
-# - GEMINI_API_KEY: Google Gemini API key (required for LLM operations)
+# - OPENAI_API_KEY: LiteLLM API key (internally converted to GEMINI_API_KEY)
+# - OPENAI_BASE_URL: LiteLLM proxy URL (internally converted to GOOGLE_GEMINI_BASE_URL)
 #
 # OPTIONAL:
 # - PROMPT: Analysis prompt (defaults to generic health analysis)
@@ -72,6 +73,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # - DOCTOR_MODEL: Model for medical analysis (default: gemini-2.5-pro)
 # - MAX_AGENTIC_ITERATIONS: Max iterations for agentic loop (default: 10)
 # - ENABLE_WEB_SEARCH: Enable web search for research (default: true)
+#
+# Note: The job automatically converts OPENAI_API_KEY to GEMINI_API_KEY and
+# OPENAI_BASE_URL to GOOGLE_GEMINI_BASE_URL at startup for compatibility with forge-sentinel.
 #
 # Progress updates are sent via N1 API (POST /reports/status)
 

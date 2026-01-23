@@ -46,7 +46,7 @@ export class GcsStorageAdapter implements StoragePort {
    * Upload HTML content to GCS
    * @param content - HTML content to upload
    * @param destinationPath - Path in bucket (e.g., "reports/abc123/index.html")
-   * @returns Public URL of uploaded file
+   * @returns Signed URL for the uploaded file (valid for 7 days)
    */
   async uploadHtml(content: string, destinationPath: string): Promise<string> {
     const bucket = this.storage.bucket(this.bucketName);
@@ -61,12 +61,16 @@ export class GcsStorageAdapter implements StoragePort {
       },
     });
 
-    // Make file publicly accessible
-    await file.makePublic();
+    // Generate signed URL (bucket uses uniform bucket-level access, no per-object ACLs)
+    // Matches workflow-generative-sequential approach
+    const [signedUrl] = await file.getSignedUrl({
+      version: 'v4',
+      action: 'read',
+      expires: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
 
-    // Return public URL
-    const publicUrl = `https://storage.googleapis.com/${this.bucketName}/${destinationPath}`;
+    console.log(`  ✓ Generated signed URL (expires in 7 days)`);
 
-    return publicUrl;
+    return signedUrl;
   }
 }
