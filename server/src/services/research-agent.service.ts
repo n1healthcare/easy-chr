@@ -10,6 +10,7 @@ import fs from 'fs';
 import { Config } from '../../vendor/gemini-cli/packages/core/src/config/config.js';
 import { webSearch, type WebSearchResult } from './web-search.service.js';
 import { REALM_CONFIG } from '../config.js';
+import { retryLLM, retryAPI } from '../common/index.js';
 
 // ============================================================================
 // URL Resolution (Google redirect → actual URL)
@@ -185,10 +186,13 @@ async function extractClaimsFromAnalysis(
     .replace(/\{\{analysis\}\}/g, analysisContent)
     .replace(/\{\{cross_systems\}\}/g, crossSystemsContent);
 
-  const response = await geminiClient.generateContent(
-    { model: REALM_CONFIG.models.doctor },
-    [{ role: 'user', parts: [{ text: prompt }] }],
-    new AbortController().signal
+  const response = await retryLLM(
+    () => geminiClient.generateContent(
+      { model: REALM_CONFIG.models.doctor },
+      [{ role: 'user', parts: [{ text: prompt }] }],
+      new AbortController().signal
+    ),
+    { operationName: 'ResearchAgent.extractClaims' }
   );
 
   // Extract non-thought text parts (skip reasoning/thinking content)
@@ -383,7 +387,10 @@ export async function* researchClaims(
     };
 
     try {
-      const searchResult = await webSearch(config, claim.searchQuery);
+      const searchResult = await retryAPI(
+        () => webSearch(config, claim.searchQuery),
+        { operationName: `ResearchAgent.webSearch.claim${i + 1}` }
+      );
 
       if (searchResult.text && searchResult.sources.length > 0) {
         // Resolve redirect URLs and validate sources in parallel

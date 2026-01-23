@@ -5,6 +5,13 @@ import path from 'path';
 // Note: In this monorepo structure, CWD is often root, but we should be safe
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
+// Retry configuration type (matches common/retry.ts RetryConfig without operationName)
+interface RetryPreset {
+  maxRetries: number;
+  baseMultiplier: number; // seconds
+  minWait: number; // seconds
+}
+
 export const REALM_CONFIG = {
   models: {
     // Default to LiteLLM-compatible models
@@ -21,5 +28,25 @@ export const REALM_CONFIG = {
     maxIterations: parseInt(process.env.MAX_AGENTIC_ITERATIONS || '10'),
     // Enable/disable web search for medical knowledge
     enableWebSearch: process.env.ENABLE_WEB_SEARCH !== 'false',
+  },
+  retry: {
+    // LLM calls: generous retries for expensive operations
+    llm: {
+      maxRetries: 8,
+      baseMultiplier: 10, // seconds
+      minWait: 0.5, // seconds
+    } satisfies RetryPreset,
+    // API calls: moderate retries
+    api: {
+      maxRetries: 3,
+      baseMultiplier: 5,
+      minWait: 0.5,
+    } satisfies RetryPreset,
+    // Vision API calls: balance between LLM and API
+    vision: {
+      maxRetries: 5,
+      baseMultiplier: 5,
+      minWait: 0.5,
+    } satisfies RetryPreset,
   },
 };

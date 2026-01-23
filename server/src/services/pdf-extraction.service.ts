@@ -15,6 +15,11 @@ import { GoogleGenAI } from '@google/genai';
 import path from 'path';
 import fs from 'fs';
 import { REALM_CONFIG } from '../config.js';
+import { withRetry } from '../common/index.js';
+import {
+  createGoogleGenAI,
+  type BillingContext,
+} from '../utils/genai-factory.js';
 
 // ============================================================================
 // Skill Loader
@@ -91,20 +96,8 @@ export class PDFExtractionService {
   private model: string;
   private extractionPrompt: string;
 
-  constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error('GEMINI_API_KEY environment variable is required');
-    }
-
-    // Support custom base URL for proxy
-    const baseUrl = process.env.GOOGLE_GEMINI_BASE_URL;
-
-    this.genai = new GoogleGenAI({
-      apiKey,
-      ...(baseUrl && { baseURL: baseUrl }),
-    });
-
+  constructor(billingContext?: BillingContext) {
+    this.genai = createGoogleGenAI(billingContext);
     this.model = REALM_CONFIG.models.markdown;
     this.extractionPrompt = loadPdfExtractorSkill();
     console.log(`[PDFExtraction] Initialized with model: ${this.model}`);
@@ -307,25 +300,28 @@ export class PDFExtractionService {
     try {
       const base64Image = pageBuffer.toString('base64');
 
-      const response = await this.genai.models.generateContent({
-        model: this.model,
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                inlineData: {
-                  mimeType: 'image/png',
-                  data: base64Image,
+      const response = await withRetry(
+        () => this.genai.models.generateContent({
+          model: this.model,
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: 'image/png',
+                    data: base64Image,
+                  },
                 },
-              },
-              {
-                text: this.extractionPrompt,
-              },
-            ],
-          },
-        ],
-      });
+                {
+                  text: this.extractionPrompt,
+                },
+              ],
+            },
+          ],
+        }),
+        { ...REALM_CONFIG.retry.vision, operationName: `PDFExtraction.page${pageNumber}` }
+      );
 
       const markdown = response.text || '';
 
