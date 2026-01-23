@@ -5,6 +5,7 @@ import { DEFAULT_GEMINI_MODEL } from '../../../vendor/gemini-cli/packages/core/s
 import { AuthType } from '../../../vendor/gemini-cli/packages/core/src/core/contentGenerator.js';
 import path from 'path';
 import fs from 'fs';
+import { retryLLM } from '../../common/index.js';
 
 export class GeminiAdapter implements LLMClientPort {
   private config: Config | null = null;
@@ -109,11 +110,9 @@ export class GeminiAdapter implements LLMClientPort {
       }
     }
 
-    const stream = await chat.sendMessageStream(
-      modelConfigKey,
-      parts,
-      'user-prompt-id',
-      controller.signal
+    const stream = await retryLLM(
+      () => chat.sendMessageStream(modelConfigKey, parts, 'user-prompt-id', controller.signal),
+      { operationName: 'GeminiAdapter.sendMessageStream' }
     );
 
     async function* generator() {

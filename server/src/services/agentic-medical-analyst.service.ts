@@ -18,6 +18,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 import { REALM_CONFIG } from '../config.js';
+import { retryLLM } from '../common/index.js';
 
 // ============================================================================
 // Skill Loader
@@ -505,13 +506,16 @@ export class AgenticMedicalAnalyst {
 
       try {
         // Call the model with tools
-        const response = await this.genai.models.generateContent({
-          model: this.model,
-          contents: conversationHistory,
-          config: {
-            tools: [{ functionDeclarations: ANALYST_TOOLS }],
-          },
-        });
+        const response = await retryLLM(
+          () => this.genai.models.generateContent({
+            model: this.model,
+            contents: conversationHistory,
+            config: {
+              tools: [{ functionDeclarations: ANALYST_TOOLS }],
+            },
+          }),
+          { operationName: 'AgenticAnalyst.generateContent' }
+        );
 
         // Check for function calls
         // Access parts directly from candidates to get thoughtSignature (sibling to functionCall)

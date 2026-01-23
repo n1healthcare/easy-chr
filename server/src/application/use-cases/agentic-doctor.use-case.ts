@@ -23,6 +23,8 @@ import { AgenticMedicalAnalyst, type AnalystEvent } from '../../services/agentic
 import { researchClaims, formatResearchAsMarkdown, type ResearchOutput, type ResearchEvent } from '../../services/research-agent.service.js';
 import { REALM_CONFIG } from '../../config.js';
 import type { RealmGenerationEvent } from '../../domain/types.js';
+// Note: Retry logic is handled at the adapter level (GeminiAdapter.sendMessageStream)
+// No need to wrap LLM calls here - they are already protected by retryLLM in the adapter
 
 export type { RealmGenerationEvent };
 
@@ -883,7 +885,7 @@ ${finalAnalysisContent}
       console.error('[AgenticDoctor] HTML generation failed:', errorMessage);
       yield { type: 'log', message: `Realm generation failed: ${errorMessage}` };
       yield { type: 'step', name: 'Realm Generation', status: 'failed' };
-      yield { type: 'result', url: finalAnalysisPath };
+      yield { type: 'error', content: `HTML realm generation failed: ${errorMessage}` };
     }
   }
 }
