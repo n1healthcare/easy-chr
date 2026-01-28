@@ -80,8 +80,8 @@ function isRetryable(error: unknown): boolean {
     // Timeouts
     'timeout', 'timed out', 'etimedout', 'deadline exceeded',
     // Network errors
-    'econnreset', 'econnrefused', 'socket hang up', 'network error',
-    'connection refused', 'connection reset', 'epipe', 'enotfound',
+    'fetch failed', 'econnreset', 'econnrefused', 'socket hang up', 'network error',
+    'connection refused', 'connection reset', 'epipe', 'enotfound', 'eai_again',
     // Server errors
     '500', '502', '503', '504',
     'internal server error', 'bad gateway', 'service unavailable', 'gateway timeout',
