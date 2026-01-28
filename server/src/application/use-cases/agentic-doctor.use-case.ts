@@ -512,6 +512,9 @@ ${analysisContent}
 ${crossSystemsContent}
 </cross_systems>${researchSection}`;
 
+      // Log payload size for debugging network issues
+      console.log(`[AgenticDoctor] Synthesis prompt payload: ${Math.round(synthesisPrompt.length / 1024)}KB`);
+
       const synthesisStream = await this.llmClient.sendMessageStream(
         synthesisPrompt,
         `${sessionId}-synthesis`,
@@ -576,6 +579,9 @@ ${allExtractedContent}
 <final_analysis>
 ${finalAnalysisContent}
 </final_analysis>`;
+
+        // Log payload size for debugging network issues
+        console.log(`[AgenticDoctor] Validation prompt payload: ${Math.round(validationPrompt.length / 1024)}KB`);
 
         let validationContent = '';
         const validationStream = await this.llmClient.sendMessageStream(
@@ -724,6 +730,9 @@ ${finalAnalysisContent}
 ${allExtractedContent}
 </extracted_data>`;
 
+      // Log payload size for debugging network issues
+      console.log(`[AgenticDoctor] Data structuring prompt payload: ${Math.round(structurePrompt.length / 1024)}KB`);
+
       const structureStream = await this.llmClient.sendMessageStream(
         structurePrompt,
         `${sessionId}-structure`,
@@ -840,7 +849,10 @@ ${crossSystemsContent}
 ${finalAnalysisContent}
 </final_analysis>`;
 
-      yield { type: 'log', message: 'Generating interactive HTML experience...' };
+      // Log payload size for debugging network issues
+      const payloadSizeKB = Math.round(htmlPrompt.length / 1024);
+      console.log(`[AgenticDoctor] HTML prompt payload: ${payloadSizeKB}KB (${htmlPrompt.length} chars)`);
+      yield { type: 'log', message: `Generating interactive HTML experience (${payloadSizeKB}KB payload)...` };
 
       let htmlContent = '';
       const htmlStream = await this.llmClient.sendMessageStream(
