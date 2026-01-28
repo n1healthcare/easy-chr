@@ -138,6 +138,7 @@ export class AgenticDoctorUseCase {
     }
 
     console.log(`[AgenticDoctor] Session ${sessionId}: Processing ${uploadedFilePaths.length} files...`);
+    console.log(`[AgenticDoctor] User prompt: "${prompt ? prompt.substring(0, 100) : '(empty)'}"${prompt && prompt.length > 100 ? '...' : ''}`);
 
     // ========================================================================
     // Phase 1: Document Extraction
