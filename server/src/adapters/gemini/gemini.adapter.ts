@@ -32,6 +32,7 @@ export class GeminiAdapter implements LLMClientPort {
       cwd: process.cwd(),
       debugMode: true,
       model: model,
+      retryFetchErrors: true, // Enable retry on "fetch failed" network errors
     };
 
     this.config = new Config(configParams);
