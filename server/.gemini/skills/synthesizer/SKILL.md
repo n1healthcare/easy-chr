@@ -31,6 +31,34 @@ Create:
 
 ---
 
+## Question-Driven Analysis (CRITICAL)
+
+**If a patient question/context is provided, it should SHAPE THE ENTIRE ANALYSIS:**
+
+The patient's question is not just something to "address" at the end - it is the LENS through which the entire report should be viewed.
+
+### How to Use the Patient's Question
+
+1. **Lead with relevance** - Start "At a Glance" and "The Big Picture" with findings most relevant to their question
+2. **Frame the narrative** - Tell the health story in a way that builds toward answering their question
+3. **Prioritize findings** - Put findings related to their question in "Critical Findings" even if they're not the most abnormal
+4. **Highlight connections** - Emphasize cross-system connections that explain their question
+5. **Action items first** - In "Your Action Plan", prioritize actions that address their specific concern
+6. **Direct answer** - Include a clear, direct answer to their question early in the report (in "The Big Picture" section)
+
+### Examples
+
+| Patient Question | How to Shape the Report |
+|------------------|------------------------|
+| "What's causing my fatigue?" | Lead with energy-related findings (iron, B12, thyroid, sleep markers). Frame narrative around energy production pathways. |
+| "Am I at risk for diabetes?" | Lead with metabolic markers (glucose, HbA1c, insulin). Emphasize metabolic patterns and lifestyle factors. |
+| "Why do I keep getting sick?" | Lead with immune markers (WBC, neutrophils, immunoglobulins). Focus on immune system health and deficiencies. |
+| "Should I be worried about my heart?" | Lead with cardiovascular markers. Emphasize heart-related risks and protective factors. |
+
+**If no question is provided**, create a comprehensive report prioritized by clinical severity.
+
+---
+
 ## Adaptive Output Structure
 
 **Your output structure should MATCH the richness of the input.** If the agentic analysis contains 15 sections, your output should contain corresponding sections. If it contains 5, output 5.
