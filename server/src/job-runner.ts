@@ -333,7 +333,7 @@ async function runJob() {
 
   try {
     // Step 1: Initialize Gemini adapter
-    await notifyProgress(config, 'initializing');
+    await notifyProgress(config, 'initializing', `Setting up AI pipeline for report id ${config.chrId}`);
     console.log('[1/5] Initializing Gemini adapter...');
     const geminiAdapter = new GeminiAdapter();
     await geminiAdapter.initialize();
