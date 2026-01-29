@@ -9,7 +9,7 @@
  * - USER_ID: User identifier for PDF fetching
  * - CHR_ID: Unique identifier for this report generation
  * - CHR_FILENAME: User-specified filename for the report (optional, defaults to 'report')
- * - PROMPT: User's analysis prompt (optional, defaults to generic prompt)
+ * - REPORT_PROMPT: User's analysis prompt (optional, defaults to generic prompt)
  * - N1_API_BASE_URL: N1 API backend URL
  * - N1_API_KEY: Authentication key for N1 API
  * - OPENAI_API_KEY: LiteLLM API key (converted to GEMINI_API_KEY internally)
@@ -292,7 +292,8 @@ function validateEnvironment(): JobConfig {
     userId: coreRequired.USER_ID!,
     chrId: coreRequired.CHR_ID!,
     chrFilename: process.env.CHR_FILENAME || undefined,
-    prompt: process.env.PROMPT || 'Create a comprehensive health analysis and visualization of my medical records',
+    // Accept REPORT_PROMPT (forge-sentinel uses report_prompt parameter)
+    prompt: process.env.REPORT_PROMPT || 'Create a comprehensive health analysis and visualization of my medical records',
     // Remove trailing slash to prevent double-slash URLs (e.g., /api//reports/status)
     n1ApiBaseUrl: coreRequired.N1_API_BASE_URL!.replace(/\/+$/, ''),
     n1ApiKey: coreRequired.N1_API_KEY!,
