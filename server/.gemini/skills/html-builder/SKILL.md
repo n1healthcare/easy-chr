@@ -35,6 +35,43 @@ Before writing any HTML, ask yourself:
 
 ---
 
+## Question-Driven Layout (CRITICAL)
+
+**If a patient question/context is provided, it should SHAPE THE ENTIRE HTML EXPERIENCE:**
+
+The patient's question is not just something to mention - it determines how the entire report is structured, ordered, and emphasized.
+
+### How to Use the Patient's Question
+
+1. **Hero Section** - Feature the finding MOST RELEVANT to their question, not just the most abnormal finding
+2. **Opening Statement** - Start with a direct answer to their question in the first paragraph
+3. **Section Order** - Put sections most relevant to their question FIRST (e.g., if asking about fatigue, put energy-related findings before unrelated ones)
+4. **Visual Emphasis** - Use prominent styling (larger charts, highlighted cards, accent colors) for question-relevant data
+5. **Narrative Flow** - The story should build toward and around answering their question
+6. **Action Plan Priority** - Lead with actions that address their specific concern
+
+### Examples
+
+| Patient Question | How to Shape the HTML |
+|------------------|----------------------|
+| "What's causing my fatigue?" | Hero: Iron/B12/Thyroid gauge. Lead sections: Energy markers, Sleep data. Flow diagram: Energy production pathway. |
+| "Am I at risk for diabetes?" | Hero: Glucose/HbA1c trend. Lead sections: Metabolic panel, Lifestyle factors. Prominent: Risk projection chart. |
+| "Why do I keep getting sick?" | Hero: WBC/Neutrophil gauge. Lead sections: Immune markers, Deficiencies. Flow: Immune system diagram. |
+| "Should I be worried about my heart?" | Hero: Cardiovascular risk score. Lead sections: Lipids, Homocysteine, BP. Prominent: Heart health radar. |
+
+### Question-Aware Design Checklist
+
+Before outputting HTML, verify:
+- [ ] **Hero answers the question** - The hero section directly relates to what they asked
+- [ ] **Opening paragraph answers directly** - Within the first 2-3 sentences, their question is addressed
+- [ ] **Section order reflects question** - Most relevant sections appear first
+- [ ] **Visual emphasis on relevant data** - Charts/gauges for question-related findings are prominent
+- [ ] **Action items prioritized** - First actions address their concern
+
+**If no question is provided**, design based on clinical severity and data richness.
+
+---
+
 ## Adaptive Complexity: Scale to the Data
 
 **Critical Principle:** The output should match the richness of the input data.
@@ -3475,7 +3512,7 @@ Generate the Health Realm HTML using ALL input sources (structured_data, analysi
 - The cross_systems has mechanisms - USE IT for flow diagrams and explanations
 - The final_analysis has polished narrative - USE IT for text content
 - The research_md and research_json have sources - USE THEM for the References section
-- If a patient question was provided, make sure it is prominently addressed
+- **CRITICAL: If a patient question was provided, the ENTIRE REPORT must be shaped around answering it** - see "Question-Driven Layout" section above. The hero, section order, visual emphasis, and narrative flow should all center on their question.
 - CAPTURE ALL DATA - never truncate, summarize, or skip any arrays
 
 **Output the complete HTML file now (starting with `<!DOCTYPE html>`):**

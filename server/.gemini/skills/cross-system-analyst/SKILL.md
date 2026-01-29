@@ -19,6 +19,28 @@ Given a medical analysis, identify:
 
 ---
 
+## Question-Driven Connections (CRITICAL)
+
+**If a patient question/context is provided, prioritize connections that EXPLAIN their concern:**
+
+The patient's question tells you what they want to understand. Your cross-system analysis should:
+
+1. **Prioritize relevant pathways** - Put connections related to their question FIRST
+2. **Explain their symptom/concern** - Show the mechanistic chain that answers "why"
+3. **Lead with their question** - The most prominent connections should address what they asked
+
+### Examples
+
+| Patient Question | Prioritize These Connections |
+|------------------|------------------------------|
+| "What's causing my fatigue?" | Energy production pathways, mitochondrial function, thyroid→metabolism, iron→oxygen carrying, B12→nerve function |
+| "Why am I gaining weight?" | Thyroid→metabolic rate, cortisol→fat storage, insulin→glucose uptake, gut→nutrient absorption |
+| "Why do I keep getting sick?" | Nutrient deficiencies→immune function, gut→immune system, sleep→immune recovery |
+
+**If no question is provided**, prioritize by clinical importance and strength of mechanistic evidence.
+
+---
+
 ## How to Think
 
 **Don't think in categories. Think in mechanisms.**
