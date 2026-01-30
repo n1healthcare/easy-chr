@@ -58,6 +58,7 @@ function isRetryable(error: unknown): boolean {
     // Quota and billing errors
     'quota exceeded', 'quota_exceeded', 'billing',
     'insufficient_quota', 'usage limit',
+    'budget', 'exceeded budget', 'exceededbudget', 'budget_exceeded', 'over budget',
     // Invalid request errors
     'invalid request', 'invalid_request', 'malformed',
     'invalid argument', 'invalid_argument',
