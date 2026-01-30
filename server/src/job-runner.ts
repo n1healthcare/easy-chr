@@ -122,6 +122,16 @@ const PROGRESS_MAP: Record<string, ProgressUpdate> = {
   failed:            { stage: 'Has Error',  progress: 0,   message: 'Report generation failed' },
 };
 
+const OPERATION_BY_STEP: Record<keyof typeof PROGRESS_MAP, string> = {
+  initializing: 'internal',
+  fetching_records: 'data_fetch',
+  analyzing: 'analysis',
+  generating_report: 'report_generation',
+  uploading: 'file_upload',
+  completed: 'report_generation',
+  failed: 'report_generation',
+};
+
 // Map AgenticDoctorUseCase phase names to progress updates
 // These phases are yielded as { type: 'step', name: '...', status: 'running'|'completed'|'failed' }
 const PHASE_PROGRESS_MAP: Record<string, ProgressUpdate> = {
@@ -157,16 +167,7 @@ async function notifyProgress(
   }
 
   const isError = step === 'failed';
-  const operationByStep: Record<keyof typeof PROGRESS_MAP, string> = {
-    initializing: 'internal',
-    fetching_records: 'data_fetch',
-    analyzing: 'analysis',
-    generating_report: 'report_generation',
-    uploading: 'file_upload',
-    completed: 'report_generation',
-    failed: 'report_generation',
-  };
-  const derivedErrorCode = `${operationByStep[step] || 'report_generation'}:unknown`;
+  const derivedErrorCode = `${OPERATION_BY_STEP[step]}:unknown`;
 
   const payload: Record<string, unknown> = {
     report_id: config.chrId,
