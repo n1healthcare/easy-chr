@@ -49,4 +49,24 @@ export const REALM_CONFIG = {
       minWait: 0.5,
     } satisfies RetryPreset,
   },
+  throttle: {
+    // PDF page extraction: process pages with rate limiting
+    pdfExtraction: {
+      maxConcurrent: parseInt(process.env.PDF_BATCH_SIZE || '4'),
+      delayBetweenBatchesMs: parseInt(process.env.PDF_BATCH_DELAY_MS || '500'),
+      delayBetweenRequestsMs: parseInt(process.env.PDF_REQUEST_DELAY_MS || '100'),
+    },
+    // Web search: rate limit search requests
+    webSearch: {
+      maxConcurrent: parseInt(process.env.SEARCH_BATCH_SIZE || '3'),
+      delayBetweenBatchesMs: parseInt(process.env.SEARCH_BATCH_DELAY_MS || '500'),
+      delayBetweenRequestsMs: parseInt(process.env.SEARCH_REQUEST_DELAY_MS || '250'),
+    },
+    // General LLM calls: default throttle for any batched LLM operations
+    llm: {
+      maxConcurrent: parseInt(process.env.LLM_BATCH_SIZE || '3'),
+      delayBetweenBatchesMs: parseInt(process.env.LLM_BATCH_DELAY_MS || '800'),
+      delayBetweenRequestsMs: parseInt(process.env.LLM_REQUEST_DELAY_MS || '150'),
+    },
+  },
 };

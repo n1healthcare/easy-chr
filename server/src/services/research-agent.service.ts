@@ -10,7 +10,7 @@ import fs from 'fs';
 import { Config } from '../../vendor/gemini-cli/packages/core/src/config/config.js';
 import { webSearch, type WebSearchResult } from './web-search.service.js';
 import { REALM_CONFIG } from '../config.js';
-import { retryLLM, retryAPI } from '../common/index.js';
+import { retryLLM, retryAPI, sleep } from '../common/index.js';
 
 // ============================================================================
 // URL Resolution (Google redirect → actual URL)
@@ -491,6 +491,12 @@ export async function* researchClaims(
           message: `Search failed: ${errorMessage}`
         }
       };
+    }
+
+    // Add delay between claims to avoid overwhelming the API
+    const throttle = REALM_CONFIG.throttle.webSearch;
+    if (i < claims.length - 1 && throttle.delayBetweenRequestsMs > 0) {
+      await sleep(throttle.delayBetweenRequestsMs);
     }
   }
 
