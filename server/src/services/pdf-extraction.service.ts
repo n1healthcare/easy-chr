@@ -15,7 +15,7 @@ import { GoogleGenAI } from '@google/genai';
 import path from 'path';
 import fs from 'fs';
 import { REALM_CONFIG } from '../config.js';
-import { withRetry } from '../common/index.js';
+import { withRetry, sleep } from '../common/index.js';
 import {
   createGoogleGenAI,
   type BillingContext,
@@ -81,11 +81,11 @@ interface InternalExtractionEvent {
 }
 
 // ============================================================================
-// Constants
+// Constants (now using config for throttle settings)
 // ============================================================================
 
-const PAGES_PER_BATCH = 5;
-const BATCH_DELAY_MS = 1000; // 1 second delay between batches to avoid rate limits
+// Legacy constants - now driven by REALM_CONFIG.throttle.pdfExtraction
+const getThrottleConfig = () => REALM_CONFIG.throttle.pdfExtraction;
 
 // ============================================================================
 // Service Implementation
@@ -239,25 +239,31 @@ export class PDFExtractionService {
       }
     };
 
-    // Process pages in batches of 5 (parallel within batch)
+    // Process pages in batches with rate limiting from config
     const results: PageExtractionResult[] = [];
+    const throttle = getThrottleConfig();
+    const batchSize = throttle.maxConcurrent;
 
-    for (let batchStart = 0; batchStart < totalPages; batchStart += PAGES_PER_BATCH) {
-      const batchEnd = Math.min(batchStart + PAGES_PER_BATCH, totalPages);
+    for (let batchStart = 0; batchStart < totalPages; batchStart += batchSize) {
+      const batchEnd = Math.min(batchStart + batchSize, totalPages);
       const batchPages = pages.slice(batchStart, batchEnd);
-      const batchNumber = Math.floor(batchStart / PAGES_PER_BATCH) + 1;
-      const totalBatches = Math.ceil(totalPages / PAGES_PER_BATCH);
+      const batchNumber = Math.floor(batchStart / batchSize) + 1;
+      const totalBatches = Math.ceil(totalPages / batchSize);
 
       yield {
         type: 'log',
         data: {
           fileName,
-          message: `Processing batch ${batchNumber}/${totalBatches} (pages ${batchStart + 1}-${batchEnd})`
+          message: `Processing batch ${batchNumber}/${totalBatches} (pages ${batchStart + 1}-${batchEnd}) [${batchSize} concurrent, ${throttle.delayBetweenBatchesMs}ms delay]`
         }
       };
 
-      // Process batch pages in parallel
-      const batchPromises = batchPages.map((pageBuffer, indexInBatch) => {
+      // Process batch pages with staggered delays to avoid hammering API
+      const batchPromises = batchPages.map(async (pageBuffer, indexInBatch) => {
+        // Stagger requests within batch
+        if (throttle.delayBetweenRequestsMs > 0 && indexInBatch > 0) {
+          await sleep(throttle.delayBetweenRequestsMs * indexInBatch);
+        }
         const pageNumber = batchStart + indexInBatch + 1;
         return this.extractPageContent(pageBuffer, fileName, pageNumber);
       });
@@ -283,8 +289,8 @@ export class PDFExtractionService {
       }
 
       // Add delay between batches to avoid rate limits (except for last batch)
-      if (batchEnd < totalPages) {
-        await this.delay(BATCH_DELAY_MS);
+      if (batchEnd < totalPages && throttle.delayBetweenBatchesMs > 0) {
+        await sleep(throttle.delayBetweenBatchesMs);
       }
     }
   }
