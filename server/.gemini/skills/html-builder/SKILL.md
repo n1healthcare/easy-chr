@@ -1429,6 +1429,112 @@ Shows how symptoms/findings trace back to underlying root causes.
 </section>
 ```
 
+#### CRITICAL: Every Flowchart MUST Have Explanatory Prose
+
+**Visualization without explanation is incomplete.** Each flowchart MUST be followed by a "Mechanism Explained" section that provides:
+
+1. **The "Why" Behind Each Connection** - Don't just show arrows; explain WHY A leads to B
+2. **Confidence Levels** - Include confidence (High/Medium/Low) for each hypothesis
+3. **The Biochemistry/Physiology** - Explain the actual biological mechanism
+4. **Clinical Implications** - What this means for the patient
+
+**⚠️ IMPORTANT: The HTML below shows FORMAT/STRUCTURE only. Replace all content with data from `cross_systems` input.**
+
+```html
+<!-- REQUIRED: Prose explanation AFTER every flowchart -->
+<!-- ⚠️ THIS IS A FORMAT TEMPLATE - Use actual data from cross_systems "Key Connections" section -->
+<div class="mechanism-explained">
+  <h3>🧬 How This Works</h3>
+
+  <!-- Repeat this card for EACH connection from cross_systems -->
+  <div class="mechanism-card">
+    <div class="mechanism-header">
+      <!-- Pull from: cross_systems → "Connection X: [TITLE]" -->
+      <span class="mechanism-title">[CONNECTION TITLE from cross_systems]</span>
+      <!-- Pull from: cross_systems → "Confidence: High/Medium/Low" -->
+      <span class="confidence-badge high|medium|low">[CONFIDENCE] Confidence</span>
+    </div>
+    <div class="mechanism-body">
+      <!-- Pull from: cross_systems → "Mechanism:" section -->
+      <p><strong>What's happening:</strong> [MECHANISM EXPLANATION from cross_systems]</p>
+      <p><strong>Why it matters:</strong> [WHY IT MATTERS from cross_systems]</p>
+      <!-- Include numbered points if cross_systems has them -->
+      <ol>
+        <li><strong>[EFFECT 1 NAME]:</strong> [EFFECT 1 EXPLANATION]</li>
+        <li><strong>[EFFECT 2 NAME]:</strong> [EFFECT 2 EXPLANATION]</li>
+      </ol>
+      <!-- Pull from: cross_systems → "Clinical implication:" -->
+      <p><strong>Clinical implication:</strong> [CLINICAL IMPLICATION from cross_systems]</p>
+    </div>
+  </div>
+</div>
+```
+
+```css
+.mechanism-explained {
+  background: white;
+  border-radius: 24px;
+  padding: 30px;
+  margin-top: 25px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.04), 0 10px 20px rgba(0, 0, 0, 0.03);
+}
+
+.mechanism-explained h3 {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  color: #332F3A;
+  margin-bottom: 20px;
+}
+
+.mechanism-card {
+  background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 15px;
+  border-left: 4px solid #7C3AED;
+}
+
+.mechanism-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.mechanism-title {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: #1E293B;
+}
+
+.confidence-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.confidence-badge.high { background: #D1FAE5; color: #065F46; }
+.confidence-badge.medium { background: #FEF3C7; color: #92400E; }
+.confidence-badge.low { background: #FEE2E2; color: #991B1B; }
+
+.mechanism-body {
+  color: #475569;
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.mechanism-body p { margin-bottom: 12px; }
+.mechanism-body ol, .mechanism-body ul { margin: 12px 0; padding-left: 24px; }
+.mechanism-body li { margin-bottom: 8px; }
+.mechanism-body strong { color: #1E293B; }
+```
+
 #### B. Treatment Pathway Flowchart (Required when treatment plan exists)
 
 Shows the sequence of interventions over time.
@@ -1676,7 +1782,303 @@ Shows how different body systems influence each other.
 
 ---
 
-### 6. Prognosis Section (ALWAYS REQUIRED)
+### 6. Clinical Reasoning Section (ALWAYS REQUIRED)
+
+Every Health Realm MUST include a Clinical Reasoning section that explains the **thought process** behind the diagnosis. This is where cross_systems content becomes prose, not just arrows.
+
+**This section answers:** "Why do we think this is happening?"
+
+```css
+.clinical-reasoning {
+  background: linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 100%);
+  border-radius: 32px;
+  padding: 40px;
+  margin: 30px 0;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.03), 0 10px 30px rgba(124, 58, 237, 0.06);
+}
+
+.clinical-reasoning h2 {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  color: #4338CA;
+  margin-bottom: 30px;
+}
+
+.hypothesis-card {
+  background: white;
+  border-radius: 24px;
+  padding: 25px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.04);
+  border-left: 5px solid #7C3AED;
+}
+
+.hypothesis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.hypothesis-title {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 1.2rem;
+  color: #1E293B;
+}
+
+.hypothesis-confidence {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.confidence-label {
+  font-size: 0.8rem;
+  color: #64748B;
+  font-weight: 600;
+}
+
+.confidence-indicator {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.confidence-indicator.high { background: #D1FAE5; color: #065F46; }
+.confidence-indicator.medium { background: #FEF3C7; color: #92400E; }
+.confidence-indicator.low { background: #E0E7FF; color: #3730A3; }
+
+.hypothesis-body { color: #475569; line-height: 1.7; }
+
+.evidence-section {
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid #E2E8F0;
+}
+
+.evidence-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #059669;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.evidence-against-label {
+  color: #DC2626;
+}
+
+.evidence-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.evidence-list li {
+  padding: 6px 0 6px 20px;
+  position: relative;
+  font-size: 0.9rem;
+  color: #64748B;
+}
+
+.evidence-list li::before {
+  content: "→";
+  position: absolute;
+  left: 0;
+  color: #10B981;
+  font-weight: bold;
+}
+
+.evidence-against .evidence-list li::before {
+  content: "✕";
+  color: #EF4444;
+}
+```
+
+**⚠️ IMPORTANT: The HTML below shows FORMAT/STRUCTURE only. Replace all content with data from `cross_systems` → "Root Cause Hypotheses" section.**
+
+```html
+<!-- ⚠️ THIS IS A FORMAT TEMPLATE - Use actual data from cross_systems -->
+<section class="clinical-reasoning">
+  <h2>🧠 Clinical Reasoning</h2>
+
+  <!-- Repeat this card for EACH hypothesis from cross_systems "Root Cause Hypotheses" -->
+  <div class="hypothesis-card">
+    <div class="hypothesis-header">
+      <!-- Pull from: cross_systems → "Hypothesis X: [TITLE]" -->
+      <div class="hypothesis-title">[HYPOTHESIS TITLE from cross_systems]</div>
+      <div class="hypothesis-confidence">
+        <span class="confidence-label">Confidence:</span>
+        <!-- Pull from: cross_systems → "Probability: High/Medium/Low" -->
+        <span class="confidence-indicator high|medium|low">[CONFIDENCE LEVEL]</span>
+      </div>
+    </div>
+    <div class="hypothesis-body">
+      <!-- Pull from: cross_systems → hypothesis description -->
+      <p><strong>What we think is happening:</strong> [HYPOTHESIS EXPLANATION from cross_systems]</p>
+
+      <div class="evidence-section">
+        <div class="evidence-label">✓ Evidence Supporting</div>
+        <!-- Pull from: cross_systems → "Evidence supporting:" list -->
+        <ul class="evidence-list">
+          <li>[EVIDENCE ITEM 1 from cross_systems]</li>
+          <li>[EVIDENCE ITEM 2 from cross_systems]</li>
+          <!-- Include ALL evidence items -->
+        </ul>
+      </div>
+
+      <div class="evidence-section evidence-against">
+        <div class="evidence-label evidence-against-label">✕ Evidence Against</div>
+        <!-- Pull from: cross_systems → "Evidence against:" list -->
+        <ul class="evidence-list">
+          <li>[COUNTER-EVIDENCE from cross_systems]</li>
+        </ul>
+      </div>
+
+      <!-- Pull from: cross_systems → "If true, would explain:" -->
+      <p style="margin-top: 15px;"><strong>If true, would explain:</strong> [EXPLANATION from cross_systems]</p>
+    </div>
+  </div>
+
+  <!-- Repeat for ALL hypotheses in cross_systems -->
+</section>
+```
+
+**Content Source:** Pull ALL hypotheses from `cross_systems` → "Root Cause Hypotheses" section. Include EVERY hypothesis with their confidence levels, evidence FOR, and evidence AGAINST. Do NOT use the example content above.
+
+---
+
+### 7. What We Ruled Out Section (ALWAYS REQUIRED)
+
+Every Health Realm MUST include a section explaining what diagnoses were **considered but excluded**. This is clinically important because it shows thoroughness and reassures patients about what they DON'T have.
+
+**This section answers:** "What ISN'T causing this?"
+
+```css
+.ruled-out-section {
+  background: linear-gradient(135deg, #ECFDF5 0%, #F0FDF9 100%);
+  border-radius: 32px;
+  padding: 40px;
+  margin: 30px 0;
+  border: 2px solid #A7F3D0;
+}
+
+.ruled-out-section h2 {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  color: #065F46;
+  margin-bottom: 10px;
+}
+
+.ruled-out-subtitle {
+  color: #047857;
+  font-size: 1rem;
+  margin-bottom: 25px;
+}
+
+.ruled-out-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.ruled-out-card {
+  background: white;
+  border-radius: 20px;
+  padding: 22px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.04);
+  border-left: 4px solid #10B981;
+}
+
+.ruled-out-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.ruled-out-icon {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+.ruled-out-title {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #065F46;
+}
+
+.ruled-out-reason {
+  color: #475569;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.ruled-out-evidence {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #F0FDF4;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  color: #047857;
+}
+
+.ruled-out-evidence strong {
+  color: #065F46;
+}
+```
+
+**⚠️ IMPORTANT: The HTML below shows FORMAT/STRUCTURE only. Replace all content with data from `cross_systems` → "Connections NOT Found" section.**
+
+```html
+<!-- ⚠️ THIS IS A FORMAT TEMPLATE - Use actual data from cross_systems -->
+<section class="ruled-out-section">
+  <h2>✅ What We Ruled Out</h2>
+  <p class="ruled-out-subtitle">These conditions were considered but the evidence doesn't support them</p>
+
+  <div class="ruled-out-grid">
+    <!-- Repeat this card for EACH item from cross_systems "Connections NOT Found" section -->
+    <div class="ruled-out-card">
+      <div class="ruled-out-header">
+        <!-- Choose appropriate emoji for the body system -->
+        <div class="ruled-out-icon">[EMOJI]</div>
+        <!-- Pull from: cross_systems → ruled out condition title -->
+        <div class="ruled-out-title">[CONDITION TITLE from cross_systems]</div>
+      </div>
+      <!-- Pull from: cross_systems → explanation of why ruled out -->
+      <p class="ruled-out-reason">
+        [EXPLANATION from cross_systems about why this condition was ruled out]
+      </p>
+      <!-- Pull from: cross_systems → specific lab values/evidence -->
+      <div class="ruled-out-evidence">
+        <strong>Evidence:</strong> [SPECIFIC VALUES from cross_systems that rule this out]
+      </div>
+    </div>
+
+    <!-- Repeat for ALL items in "Connections NOT Found" -->
+  </div>
+</section>
+```
+
+**Content Source:** Pull ALL ruled-out conditions from `cross_systems` → "Connections NOT Found" section. Transform EACH into a reassuring card. Do NOT use the example content - use actual patient data.
+
+---
+
+### 8. Prognosis Section (ALWAYS REQUIRED)
 
 Every Health Realm MUST include a prognosis section showing expected outcomes. This helps patients understand the importance of following recommendations.
 
@@ -3103,7 +3505,9 @@ Year-grouped timeline with event cards showing date, title, description, key val
 ├── SOAP Clinical Summary (populate with available data)
 ├── Key Metrics Dashboard (Chart.js required - radar, gauges, or trends)
 ├── Medical History Timeline (ALL events - even if single time point)
-├── At least one Flowchart (Root Cause, Treatment Pathway, or Systems)
+├── At least one Flowchart WITH Mechanism Prose (visual + explanation together)
+├── Clinical Reasoning Section (root cause hypotheses with confidence levels)
+├── What We Ruled Out (differential diagnosis - what was considered and excluded)
 ├── Supplement Schedule (if any supplements recommended - with exact timing)
 ├── Prognosis Section (with/without intervention + milestones)
 ├── Positive Findings ("What's Working Well" - always include good news)
@@ -3153,7 +3557,9 @@ Year-grouped timeline with event cards showing date, title, description, key val
 | SOAP Summary | Populate what's available; mark missing components as "Data not available" |
 | Key Metrics Dashboard | Show available biomarkers; include at least a systems radar with available data |
 | Medical History Timeline | Show "Current Status" as single event if no historical data |
-| Flowchart | Use Treatment Pathway (always derivable from recommendations) |
+| Flowchart + Mechanism Prose | Use Treatment Pathway (always derivable); include at least basic explanation of why it works |
+| Clinical Reasoning | Use cross_systems hypotheses; if none, derive from analysis diagnoses with confidence levels |
+| What We Ruled Out | Use cross_systems "Connections NOT Found"; if none, state what normal values rule out |
 | Supplement Schedule | Include if any supplements mentioned; omit only if zero recommendations |
 | Prognosis | Include even with sparse data - show "Expected with/without changes" |
 | Positive Findings | Find at least 1-2 normal/optimal results to highlight |
@@ -3249,7 +3655,9 @@ Before outputting, verify:
 - [ ] **Key Metrics Dashboard** - At least one Chart.js visualization (radar, gauge, or trend)
 - [ ] **Medical History Timeline** - ALL chronological events with date markers and significance styling
 - [ ] **Daily Supplement Schedule** - If supplements recommended, includes exact timing (morning/midday/evening/bedtime)
-- [ ] **At least one Flowchart** - Root Cause Analysis, Treatment Pathway, or Systems Connection diagram
+- [ ] **Flowchart WITH Mechanism Prose** - Visual diagram PLUS explanatory text with confidence levels and biochemistry
+- [ ] **Clinical Reasoning Section** - Root cause hypotheses with evidence FOR and AGAINST, confidence levels
+- [ ] **What We Ruled Out** - Differential diagnosis showing what was considered and excluded with evidence
 - [ ] **Prognosis Section** - "Without Intervention" risks AND "With Recommended Protocol" improvements + milestones
 - [ ] **Positive Findings** - "What's Working Well" section highlighting good news and normal results
 - [ ] **Action Plan** - ALL phases: Immediate + Short-Term + Follow-Up actions with checkboxes
@@ -3448,7 +3856,10 @@ The `research_json` contains structured research data with this format:
 | **References/citations** | research_json.claims[].sources | research_md, structured_data.references |
 | **Inline citations [1], [2]** | research_json | research_md |
 | **Narrative text/explanations** | final_analysis | analysis |
-| **Mechanism explanations** | cross_systems | analysis |
+| **Mechanism explanations (prose)** | cross_systems "Key Connections" | analysis |
+| **Clinical Reasoning / Hypotheses** | cross_systems "Root Cause Hypotheses" | analysis diagnoses |
+| **What We Ruled Out** | cross_systems "Connections NOT Found" | derive from normal values |
+| **Confidence levels** | cross_systems (High/Medium/Low on each hypothesis) | infer from evidence strength |
 
 ---
 
@@ -3461,15 +3872,17 @@ Generate the Health Realm HTML using ALL input sources (structured_data, analysi
 1. ✅ **SOAP Clinical Summary** - Subjective, Objective, Assessment, Plan boxes
 2. ✅ **Key Metrics Dashboard** - Chart.js visualizations (radar, gauges, ALL trends)
 3. ✅ **Medical History Timeline** - ALL chronological events with significance markers
-4. ✅ **At least one Flowchart** - Root Cause, Treatment Pathway, or Systems Connection
-5. ✅ **Supplement Schedule** - If supplements recommended, include exact timing
-6. ✅ **Prognosis Section** - "Without Intervention" AND "With Recommended Protocol" + milestones
-7. ✅ **Positive Findings** - "What's Working Well" highlighting good news and normal values
-8. ✅ **Action Plan** - ALL phases: Immediate + Short-Term + Follow-Up with checkboxes
-9. ✅ **Doctor Questions** - ALL questions with numbered cards, categories, context
-10. ✅ **Monitoring Protocol** - ALL follow-up tests with frequency, target, purpose
-11. ✅ **Data Gaps** - Missing tests/information with priority levels
-12. ✅ **References** - If research_json provided, ALL sources with clickable links
+4. ✅ **Flowchart WITH Mechanism Prose** - Visual diagram PLUS explanatory text beneath (not just arrows)
+5. ✅ **Clinical Reasoning Section** - Root cause hypotheses with confidence levels and evidence FOR/AGAINST
+6. ✅ **What We Ruled Out** - Differential diagnosis showing conditions considered but excluded
+7. ✅ **Supplement Schedule** - If supplements recommended, include exact timing
+8. ✅ **Prognosis Section** - "Without Intervention" AND "With Recommended Protocol" + milestones
+9. ✅ **Positive Findings** - "What's Working Well" highlighting good news and normal values
+10. ✅ **Action Plan** - ALL phases: Immediate + Short-Term + Follow-Up with checkboxes
+11. ✅ **Doctor Questions** - ALL questions with numbered cards, categories, context
+12. ✅ **Monitoring Protocol** - ALL follow-up tests with frequency, target, purpose
+13. ✅ **Data Gaps** - Missing tests/information with priority levels
+14. ✅ **References** - If research_json provided, ALL sources with clickable links
 
 **CRITICAL: COMPLETE DATA CAPTURE (Never Truncate or Summarize):**
 
@@ -3491,9 +3904,11 @@ Generate the Health Realm HTML using ALL input sources (structured_data, analysi
 3. **Chart.js is REQUIRED** - All charts must use Chart.js library
 4. **For SOAP:** Populate all 4 boxes (S, O, A, P) with available data
 5. **For Timeline:** Show ALL chronological events; if single time point, show "Current Status"
-6. **For Flowcharts:** Include at least one - Treatment Pathway is always derivable
-7. **For Supplement Schedule:** Exact timing (morning/midday/evening/bedtime), not "2x/day"
-8. **For mechanisms:** Use cross_systems for detailed cause→effect explanations
+6. **For Flowcharts:** Include visual diagram PLUS prose explanation (not just arrows - explain WHY)
+7. **For Clinical Reasoning:** Use cross_systems "Root Cause Hypotheses" - include confidence levels and evidence
+8. **For What We Ruled Out:** Use cross_systems "Connections NOT Found" - transform into reassuring cards
+9. **For Supplement Schedule:** Exact timing (morning/midday/evening/bedtime), not "2x/day"
+10. **For mechanisms:** Use cross_systems for detailed cause→effect prose explanations
 9. **For Prognosis:** Show both "without intervention" risks AND "with protocol" improvements
 10. **For Positive Findings:** Find and highlight ALL normal/optimal results
 11. **For Action Plan:** Include ALL immediate, short-term, AND follow-up actions
