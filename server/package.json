@@ -8,7 +8,8 @@
     "start": "tsx src/index.ts",
     "job": "tsx src/job-runner.ts",
     "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "regen-html": "tsx scripts/regenerate-html.ts"
   },
   "keywords": [],
   "author": "",
