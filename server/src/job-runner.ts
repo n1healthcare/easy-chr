@@ -107,7 +107,8 @@ interface ProgressUpdate {
   stage: ProgressStage;
   progress: number;  // 0-100
   message: string;
-  errorDetails?: string;
+  errorDetails?: string; // user-facing error message
+  errorCode?: string; // structured error code (operation:transport_error)
 }
 
 // Map our pipeline steps to N1 API progress stages
@@ -137,8 +138,9 @@ const PHASE_PROGRESS_MAP: Record<string, ProgressUpdate> = {
 async function notifyProgress(
   config: { n1ApiBaseUrl: string; n1ApiKey: string; userId: string; chrId: string },
   step: keyof typeof PROGRESS_MAP,
-  customMessage?: string,
-  errorDetails?: string
+  technicalMessage?: string,
+  errorDetails?: string,
+  errorCode?: string
 ): Promise<void> {
   const update = PROGRESS_MAP[step];
   if (!update) {
@@ -146,7 +148,7 @@ async function notifyProgress(
     return;
   }
 
-  console.log(`[Progress] ${update.stage} (${update.progress}%): ${customMessage || update.message}`);
+  console.log(`[Progress] ${update.stage} (${update.progress}%): ${technicalMessage || update.message}`);
 
   // Skip API calls in development
   if (SKIP_PROGRESS_TRACKING) {
@@ -154,18 +156,30 @@ async function notifyProgress(
     return;
   }
 
+  const isError = step === 'failed';
+  const operationByStep: Record<keyof typeof PROGRESS_MAP, string> = {
+    initializing: 'internal',
+    fetching_records: 'data_fetch',
+    analyzing: 'analysis',
+    generating_report: 'report_generation',
+    uploading: 'file_upload',
+    completed: 'report_generation',
+    failed: 'report_generation',
+  };
+  const derivedErrorCode = `${operationByStep[step] || 'report_generation'}:unknown`;
+
   const payload: Record<string, unknown> = {
     report_id: config.chrId,
     user_id: config.userId,
     progress: update.progress,
-    status: step === 'failed' ? 'ERROR' : (step === 'completed' ? 'completed' : 'in_progress'),
-    message: customMessage || update.message,
+    status: isError ? 'error' : (step === 'completed' ? 'completed' : 'in_progress'),
+    message: technicalMessage || update.message,
     progress_stage: update.stage,
   };
 
-  // Only include error field when there's an error (matches n1_api_client contract)
-  if (errorDetails) {
-    payload.error = errorDetails;
+  if (isError) {
+    payload.error = errorCode || derivedErrorCode;
+    payload.error_details = errorDetails || update.message;
   }
 
   try {
@@ -449,7 +463,12 @@ async function runJob() {
   } catch (error) {
     // Notify failure
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    await notifyProgress(config, 'failed', undefined, errorMessage);
+    await notifyProgress(
+      config,
+      'failed',
+      errorMessage,
+      PROGRESS_MAP.failed.message
+    );
 
     console.error('');
     console.error('================================================================================');
