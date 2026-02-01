@@ -69,6 +69,7 @@ import { N1ApiAdapter } from './adapters/n1-api/n1-api.adapter.js';
 import { AgenticDoctorUseCase } from './application/use-cases/agentic-doctor.use-case.js';
 import { FetchAndProcessPDFsUseCase } from './application/use-cases/fetch-and-process-pdfs.use-case.js';
 import { GcsStorageAdapter } from './adapters/gcs/gcs-storage.adapter.js';
+import { RetryableError, ValidationError } from './common/exceptions.js';
 import path from 'path';
 import fs from 'fs';
 
@@ -192,6 +193,26 @@ function classifyError(error: Error): ErrorInfo {
     return undefined;
   })();
 
+  if (error instanceof ValidationError) {
+    return {
+      exitCode: WorkflowExitCode.VALIDATION_ERROR,
+      errorCode: 'validation:invalid_input',
+      message: error.message,
+      retryable: false,
+      userMessage: 'Invalid input or configuration detected.',
+    };
+  }
+
+  if (error instanceof RetryableError) {
+    return {
+      exitCode: WorkflowExitCode.RETRYABLE,
+      errorCode: 'internal:unknown',
+      message: error.message,
+      retryable: true,
+      userMessage: 'A temporary error occurred. Please try again.',
+    };
+  }
+
   // Rate limiting
   if (errorName.includes('RateLimit') || errorMessage.includes('rate limit') || errorMessage.includes('429')) {
     return {
@@ -226,7 +247,7 @@ function classifyError(error: Error): ErrorInfo {
       errorCode: 'validation:invalid_input',
       message: error.message,
       retryable: false,
-      userMessage: error.message,
+      userMessage: 'Invalid input or configuration detected.',
     };
   }
 
@@ -237,7 +258,7 @@ function classifyError(error: Error): ErrorInfo {
       errorCode: 'data_validation:insufficient_data',
       message: error.message,
       retryable: false,
-      userMessage: error.message,
+      userMessage: 'Insufficient data provided for analysis.',
     };
   }
 
@@ -581,13 +602,13 @@ async function runJob() {
 
   } catch (error) {
     // Notify failure
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const errorInfo = classifyError(error as Error);
+    const progressMessage = errorInfo.userMessage || 'An unexpected error occurred.';
 
     await notifyProgress(
       config,
       'failed',
-      errorMessage,
+      progressMessage,
       errorInfo.userMessage,
       errorInfo.errorCode
     );
