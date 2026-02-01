@@ -169,6 +169,28 @@ interface ErrorInfo {
 function classifyError(error: Error): ErrorInfo {
   const errorName = error.constructor.name;
   const errorMessage = error.message.toLowerCase();
+  const statusCode = (() => {
+    const statusCandidate = (error as { status?: unknown }).status
+      ?? (error as { statusCode?: unknown }).statusCode
+      ?? (error as { response?: { status?: unknown } }).response?.status;
+
+    if (typeof statusCandidate === 'number') {
+      return statusCandidate;
+    }
+    if (typeof statusCandidate === 'string') {
+      const parsed = Number(statusCandidate);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+
+    const match = errorMessage.match(/(?:status[:\s]*|\()(\d{3})\b/);
+    if (match) {
+      return Number(match[1]);
+    }
+
+    return undefined;
+  })();
 
   // Rate limiting
   if (errorName.includes('RateLimit') || errorMessage.includes('rate limit') || errorMessage.includes('429')) {
@@ -182,7 +204,7 @@ function classifyError(error: Error): ErrorInfo {
   }
 
   // Billing / insufficient funds
-  if (errorMessage.includes('insufficient') && errorMessage.includes('fund')) {
+  if (statusCode === 402 || (errorMessage.includes('insufficient') && errorMessage.includes('fund'))) {
     return {
       exitCode: WorkflowExitCode.BILLING_ERROR,
       errorCode: 'billing:insufficient_funds',
