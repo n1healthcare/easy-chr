@@ -145,6 +145,101 @@ const PHASE_PROGRESS_MAP: Record<string, ProgressUpdate> = {
   'Realm Generation':       { stage: 'Finalizing', progress: 90,  message: 'Building your interactive health realm...' },
 };
 
+// ============================================================================
+// Exit Codes + Error Classification
+// ============================================================================
+
+enum WorkflowExitCode {
+  SUCCESS = 0,
+  RETRYABLE = 1,
+  NON_RETRYABLE = 2,
+  INSUFFICIENT_DATA = 3,
+  BILLING_ERROR = 5,
+  VALIDATION_ERROR = 7,
+}
+
+interface ErrorInfo {
+  exitCode: WorkflowExitCode;
+  errorCode: string;
+  message: string;
+  retryable: boolean;
+  userMessage: string;
+}
+
+function classifyError(error: Error): ErrorInfo {
+  const errorName = error.constructor.name;
+  const errorMessage = error.message.toLowerCase();
+
+  // Rate limiting
+  if (errorName.includes('RateLimit') || errorMessage.includes('rate limit') || errorMessage.includes('429')) {
+    return {
+      exitCode: WorkflowExitCode.RETRYABLE,
+      errorCode: 'llm_service:rate_limited',
+      message: 'Service is busy, will retry',
+      retryable: true,
+      userMessage: 'Service is busy, please try again shortly.',
+    };
+  }
+
+  // Billing / insufficient funds
+  if (errorMessage.includes('insufficient') && errorMessage.includes('fund')) {
+    return {
+      exitCode: WorkflowExitCode.BILLING_ERROR,
+      errorCode: 'billing:insufficient_funds',
+      message: error.message,
+      retryable: true,
+      userMessage: 'Billing issue detected. Please add credits and try again.',
+    };
+  }
+
+  // Validation
+  if (
+    errorMessage.includes('validation') ||
+    errorMessage.includes('invalid') ||
+    errorMessage.includes('missing required environment variables') ||
+    errorMessage.includes('missing gcs environment variables')
+  ) {
+    return {
+      exitCode: WorkflowExitCode.VALIDATION_ERROR,
+      errorCode: 'validation:invalid_input',
+      message: error.message,
+      retryable: false,
+      userMessage: error.message,
+    };
+  }
+
+  // Insufficient data
+  if (errorMessage.includes('insufficient') && errorMessage.includes('data')) {
+    return {
+      exitCode: WorkflowExitCode.INSUFFICIENT_DATA,
+      errorCode: 'data_validation:insufficient_data',
+      message: error.message,
+      retryable: false,
+      userMessage: error.message,
+    };
+  }
+
+  // Timeout
+  if (errorName.includes('Timeout') || errorMessage.includes('timeout')) {
+    return {
+      exitCode: WorkflowExitCode.RETRYABLE,
+      errorCode: 'llm_service:timeout',
+      message: 'Request timed out, will retry',
+      retryable: true,
+      userMessage: 'Request timed out. Please try again.',
+    };
+  }
+
+  // Default: retryable
+  return {
+    exitCode: WorkflowExitCode.RETRYABLE,
+    errorCode: 'internal:unknown',
+    message: error.message,
+    retryable: true,
+    userMessage: 'An unexpected error occurred. Please try again.',
+  };
+}
+
 async function notifyProgress(
   config: { n1ApiBaseUrl: string; n1ApiKey: string; userId: string; chrId: string },
   step: keyof typeof PROGRESS_MAP,
@@ -340,8 +435,9 @@ async function runJob() {
     console.log(`  Prompt: ${config.prompt.substring(0, 80)}...`);
     console.log('');
   } catch (error) {
+    const errorInfo = classifyError(error as Error);
     console.error('✗ Environment validation failed:', error);
-    process.exit(1);
+    process.exit(errorInfo.exitCode);
   }
 
   let realmPath: string | null = null;
@@ -464,11 +560,14 @@ async function runJob() {
   } catch (error) {
     // Notify failure
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorInfo = classifyError(error as Error);
+
     await notifyProgress(
       config,
       'failed',
       errorMessage,
-      PROGRESS_MAP.failed.message
+      errorInfo.userMessage,
+      errorInfo.errorCode
     );
 
     console.error('');
@@ -478,7 +577,7 @@ async function runJob() {
     console.error('Error:', error);
     console.error('================================================================================');
 
-    process.exit(1);
+    process.exit(errorInfo.exitCode);
   }
 }
 
