@@ -230,7 +230,7 @@ function classifyError(error: Error): ErrorInfo {
       exitCode: WorkflowExitCode.BILLING_ERROR,
       errorCode: 'billing:insufficient_funds',
       message: error.message,
-      retryable: true,
+      retryable: false,
       userMessage: 'Billing issue detected. Please add credits and try again.',
     };
   }
