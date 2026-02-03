@@ -599,102 +599,252 @@ Elements should feel alive:
 
 ---
 
-## Gauge Design (SVG REQUIRED)
+## Icon Consistency (REQUIRED)
 
-**All gauges MUST use SVG.** Do NOT use Chart.js doughnut for gauges - they render inconsistently.
+**All icons in a report MUST be consistent.** Choose ONE icon style and use it throughout:
 
-### SVG Gauge Implementation (REQUIRED)
+### Option 1: Emoji Icons (Recommended for Health Realms)
+Use colorful, expressive emojis for a friendly feel:
+```
+🫀 Heart/Cardiac     🧠 Brain/Neuro      🫁 Lungs/Respiratory
+🩸 Blood             🦴 Bones            🧬 Genetics/DNA
+💊 Medications       🥗 Nutrition        🏃 Exercise
+⚠️ Warning           ✅ Good/Normal      ❌ Critical
+🔬 Lab/Tests         📊 Metrics          📋 Summary
+🩺 Clinical          💡 Insight          🎯 Target/Goal
+```
 
+### Option 2: SVG Icon Library
+If using SVG icons, use a consistent set like Heroicons or Lucide:
 ```html
-<div class="gauge-container">
-  <svg viewBox="0 0 120 70" class="modern-gauge">
-    <!-- Background arc (gray track) -->
-    <path
-      d="M 15 60 A 45 45 0 0 1 105 60"
-      fill="none"
-      stroke="#E5E7EB"
-      stroke-width="12"
-      stroke-linecap="round"/>
-    <!-- Value arc - adjust end point based on percentage -->
-    <!-- 0% = stays at start, 50% = top center, 100% = full arc -->
-    <path
-      d="M 15 60 A 45 45 0 0 1 [CALCULATED_X] [CALCULATED_Y]"
-      fill="none"
-      stroke="[SEMANTIC_COLOR]"
-      stroke-width="12"
-      stroke-linecap="round"/>
-  </svg>
-  <div class="gauge-value">[VALUE]</div>
-  <div class="gauge-label">[LABEL]</div>
-  <div class="gauge-status [status-class]">[STATUS TEXT]</div>
+<!-- Include at top of HTML -->
+<script src="https://unpkg.com/lucide@latest"></script>
+```
+
+### DO NOT MIX
+❌ Don't use emoji in one section and SVG icons in another
+❌ Don't use different emoji styles (Apple vs Google vs text)
+❌ Don't use random Unicode symbols mixed with emoji
+
+### Icon Cards Example
+```html
+<div class="insight-card">
+  <div class="insight-icon">🫀</div>
+  <div class="insight-content">
+    <div class="insight-title">Cardiovascular Health</div>
+    <div class="insight-value">Excellent</div>
+    <p class="insight-description">Your heart markers are within optimal range.</p>
+  </div>
 </div>
 ```
 
-### SVG Arc Calculation
-
-To calculate the value arc endpoint for a percentage:
-```javascript
-// For a 180-degree arc from (15,60) to (105,60) with center (60,60) and radius 45
-function getArcEndpoint(percentage) {
-  const angle = Math.PI * (1 - percentage); // 0% = PI (left), 100% = 0 (right)
-  const x = 60 + 45 * Math.cos(angle);
-  const y = 60 - 45 * Math.sin(angle);
-  return { x: x.toFixed(1), y: y.toFixed(1) };
+```css
+.insight-icon {
+  font-size: 2.5rem;
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-bg);
+  border-radius: 16px;
+  flex-shrink: 0;
 }
-// Example: 75% → angle = 0.25π → x ≈ 91.8, y ≈ 28.2
+
+.insight-card {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  padding: 24px;
+  background: white;
+  border-radius: 24px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.08),
+    0 4px 12px rgba(0, 0, 0, 0.04),
+    inset 0 2px 4px rgba(255, 255, 255, 0.8);
+}
+```
+
+---
+
+## Gauge Design (SVG Arc with Thick Rounded Strokes)
+
+**Use SVG arc gauges with THICK strokes and rounded ends.** This creates the modern, premium look.
+
+### Pre-Calculated Arc Paths (USE THESE EXACTLY)
+
+**DO NOT calculate arc paths yourself.** Copy the path for the percentage you need:
+
+```
+BACKGROUND (always the same):
+d="M 20 80 A 60 60 0 0 1 140 80"
+
+VALUE ARCS BY PERCENTAGE:
+10%:  d="M 20 80 A 60 60 0 0 1 32 50"
+20%:  d="M 20 80 A 60 60 0 0 1 44 28"
+25%:  d="M 20 80 A 60 60 0 0 1 50 23"
+30%:  d="M 20 80 A 60 60 0 0 1 57 20"
+40%:  d="M 20 80 A 60 60 0 0 1 71 20"
+50%:  d="M 20 80 A 60 60 0 0 1 80 20"
+60%:  d="M 20 80 A 60 60 0 0 1 89 20"
+70%:  d="M 20 80 A 60 60 0 0 1 103 23"
+75%:  d="M 20 80 A 60 60 0 0 1 110 28"
+80%:  d="M 20 80 A 60 60 0 0 1 116 35"
+90%:  d="M 20 80 A 60 60 0 0 1 128 50"
+100%: d="M 20 80 A 60 60 0 0 1 140 80"
+```
+
+### Complete Gauge HTML (Copy This Pattern)
+
+```html
+<div class="gauge-card">
+  <div class="gauge-title">Total WBC (Immune Stress)</div>
+  <svg viewBox="0 0 160 100" class="gauge-svg">
+    <!-- Gray background track -->
+    <path
+      d="M 20 80 A 60 60 0 0 1 140 80"
+      fill="none"
+      stroke="#E2E8F0"
+      stroke-width="18"
+      stroke-linecap="round"
+    />
+    <!-- Colored value arc - pick path from table above -->
+    <path
+      d="M 20 80 A 60 60 0 0 1 50 23"
+      fill="none"
+      stroke="var(--success)"
+      stroke-width="18"
+      stroke-linecap="round"
+    />
+  </svg>
+  <div class="gauge-value">4.3</div>
+  <div class="gauge-status-text">Low-Normal (Calm)</div>
+  <p class="gauge-description">A low-normal WBC suggests no acute "storm" or massive inflammation.</p>
+</div>
 ```
 
 ### Gauge CSS
 
 ```css
-.gauge-container {
-  text-align: center;
-  padding: 20px;
-  background: white;
-  border-radius: 24px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.04);
+.gauges-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+  margin: 30px 0;
 }
 
-.modern-gauge {
+.gauge-card {
+  background: linear-gradient(135deg, #FFFFFF 0%, #FAFAFA 100%);
+  border-radius: 28px;
+  padding: 30px;
+  text-align: center;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.08),
+    0 4px 12px rgba(0, 0, 0, 0.04),
+    inset 0 2px 4px rgba(255, 255, 255, 0.8),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.gauge-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text-main);
+  margin-bottom: 16px;
+}
+
+.gauge-svg {
   width: 100%;
-  max-width: 160px;
+  max-width: 200px;
   height: auto;
+  margin: 0 auto;
+  display: block;
 }
 
 .gauge-value {
+  font-size: 2.5rem;
   font-weight: 800;
-  font-size: 1.8rem;
+  color: var(--text-main);
   margin-top: 8px;
+  line-height: 1;
 }
 
-.gauge-label {
-  font-size: 0.85rem;
-  color: #64748B;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.gauge-status {
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.75rem;
+.gauge-status-text {
+  font-size: 0.95rem;
   font-weight: 700;
-  text-transform: uppercase;
   margin-top: 8px;
+  /* Color should match the arc color */
+}
+
+.gauge-description {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-top: 12px;
+  line-height: 1.5;
 }
 ```
 
-### Semantic Colors for Gauges (Guidance, Not Hardcoded)
+### CRITICAL SVG Properties
 
-Choose colors that convey meaning:
-- **Danger/Critical**: Reds, deep oranges (e.g., var(--danger-dark), var(--danger), #EA580C)
-- **Warning/Attention**: Ambers, yellows (e.g., var(--warning-dark), var(--warning), #EAB308)
-- **Optimal/Normal**: Greens, teals (e.g., var(--success-dark), var(--success), #14B8A6)
-- **Informational/Neutral**: Blues, slates (e.g., var(--info-dark), var(--info), #64748B)
+These properties create the thick, rounded, modern look:
 
-**Match gauge status colors to your chosen palette - don't use different colors than the rest of the report.**
+```css
+stroke-width="18"        /* THICK - at least 16-20 */
+stroke-linecap="round"   /* ROUNDED ends - REQUIRED */
+```
+
+### Example: Side-by-Side Gauges
+
+```html
+<div class="gauges-grid">
+  <!-- Gauge 1: Good/Normal -->
+  <div class="gauge-card">
+    <div class="gauge-title">Total WBC (Immune Stress)</div>
+    <svg viewBox="0 0 160 100" class="gauge-svg">
+      <path d="M 20 80 A 60 60 0 0 1 140 80" fill="none" stroke="#E2E8F0" stroke-width="18" stroke-linecap="round"/>
+      <path d="M 20 80 A 60 60 0 0 1 50 23" fill="none" stroke="var(--success)" stroke-width="18" stroke-linecap="round"/>
+    </svg>
+    <div class="gauge-value" style="color: var(--success);">4.3</div>
+    <div class="gauge-status-text" style="color: var(--success);">Low-Normal (Calm)</div>
+    <p class="gauge-description">A low-normal WBC suggests no acute "storm" or massive inflammation.</p>
+  </div>
+
+  <!-- Gauge 2: Warning/Borderline -->
+  <div class="gauge-card">
+    <div class="gauge-title">Platelets (Clotting)</div>
+    <svg viewBox="0 0 160 100" class="gauge-svg">
+      <path d="M 20 80 A 60 60 0 0 1 140 80" fill="none" stroke="#E2E8F0" stroke-width="18" stroke-linecap="round"/>
+      <path d="M 20 80 A 60 60 0 0 1 57 20" fill="none" stroke="var(--warning)" stroke-width="18" stroke-linecap="round"/>
+    </svg>
+    <div class="gauge-value" style="color: var(--warning);">159</div>
+    <div class="gauge-status-text" style="color: var(--warning);">Borderline Low</div>
+    <p class="gauge-description">Technically normal (>150), but on the floor of the range. Likely a genetic baseline.</p>
+  </div>
+
+  <!-- Gauge 3: Critical -->
+  <div class="gauge-card">
+    <div class="gauge-title">Insulin (Metabolic)</div>
+    <svg viewBox="0 0 160 100" class="gauge-svg">
+      <path d="M 20 80 A 60 60 0 0 1 140 80" fill="none" stroke="#E2E8F0" stroke-width="18" stroke-linecap="round"/>
+      <path d="M 20 80 A 60 60 0 0 1 128 50" fill="none" stroke="var(--danger)" stroke-width="18" stroke-linecap="round"/>
+    </svg>
+    <div class="gauge-value" style="color: var(--danger);">30.2</div>
+    <div class="gauge-status-text" style="color: var(--danger);">Critical High</div>
+    <p class="gauge-description">Significantly elevated insulin indicates metabolic stress and insulin resistance.</p>
+  </div>
+</div>
+```
+
+### Matching Arc Percentage to Health Status
+
+| Health Status | Arc Percentage | Which Path |
+|--------------|----------------|------------|
+| Very Low (dangerous) | 10% | `d="M 20 80 A 60 60 0 0 1 32 50"` |
+| Low-Normal | 25% | `d="M 20 80 A 60 60 0 0 1 50 23"` |
+| Borderline Low | 30% | `d="M 20 80 A 60 60 0 0 1 57 20"` |
+| Optimal/Normal | 50% | `d="M 20 80 A 60 60 0 0 1 80 20"` |
+| Borderline High | 70% | `d="M 20 80 A 60 60 0 0 1 103 23"` |
+| High | 80% | `d="M 20 80 A 60 60 0 0 1 116 35"` |
+| Critical | 90% | `d="M 20 80 A 60 60 0 0 1 128 50"` |
 
 ---
 
@@ -973,8 +1123,19 @@ The hero features the MOST IMPORTANT finding. If a patient question was provided
 
 Include these sections ONLY when the relevant data exists in the inputs.
 
-### 5. Patient Question Section
-See dedicated section above - REQUIRED when patient question provided.
+### 5. Patient Question Section (TIER 1.5 - MANDATORY WHEN TRIGGERED)
+
+**TRIGGER CHECK:** Was a patient question/prompt provided in the input?
+**IF YES → THIS SECTION IS MANDATORY. DO NOT SKIP.**
+
+See the detailed "Patient Question Section (CRITICAL)" above for full CSS and HTML templates.
+
+This section MUST include:
+- The patient's question displayed prominently
+- A brief direct answer (2-3 sentences)
+- Mini gauges showing key evidence values
+- A flow diagram for the mechanism
+- Brief mechanism explanation with confidence badge
 
 ### 6. Medical History Timeline
 
@@ -1892,8 +2053,10 @@ Before outputting, verify:
 - [ ] **Animated background blobs** with palette colors
 - [ ] Colors have semantic meaning (warm=danger, cool=positive)
 - [ ] Hover states with transform and enhanced shadows
-- [ ] All gauges use SVG (NOT Chart.js doughnut)
-- [ ] SVG gauges have `stroke-linecap: round`
+- [ ] All gauges use SVG arcs with stroke-width="18" and stroke-linecap="round"
+- [ ] Gauge arc paths copied from pre-calculated table (NOT calculated)
+- [ ] Gauge cards have claymorphism shadows and description text
+- [ ] Icons are consistent throughout (all emoji OR all SVG icons, not mixed)
 
 ### Prose Preservation
 - [ ] Mechanism explanations match `cross_systems` prose
