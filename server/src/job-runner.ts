@@ -69,6 +69,7 @@ import { N1ApiAdapter } from './adapters/n1-api/n1-api.adapter.js';
 import { AgenticDoctorUseCase } from './application/use-cases/agentic-doctor.use-case.js';
 import { FetchAndProcessPDFsUseCase } from './application/use-cases/fetch-and-process-pdfs.use-case.js';
 import { GcsStorageAdapter } from './adapters/gcs/gcs-storage.adapter.js';
+import { RetryableError, ValidationError } from './common/exceptions.js';
 import path from 'path';
 import fs from 'fs';
 
@@ -144,6 +145,143 @@ const PHASE_PROGRESS_MAP: Record<string, ProgressUpdate> = {
   'Data Structuring':       { stage: 'Writing',    progress: 80,  message: 'Structuring data for visualization...' },
   'Realm Generation':       { stage: 'Finalizing', progress: 90,  message: 'Building your interactive health realm...' },
 };
+
+// ============================================================================
+// Exit Codes + Error Classification
+// ============================================================================
+
+enum WorkflowExitCode {
+  SUCCESS = 0,
+  RETRYABLE = 1,
+  NON_RETRYABLE = 2,
+  INSUFFICIENT_DATA = 3,
+  BILLING_ERROR = 5,
+  VALIDATION_ERROR = 7,
+}
+
+interface ErrorInfo {
+  exitCode: WorkflowExitCode;
+  errorCode: string;
+  message: string;
+  retryable: boolean;
+  userMessage: string;
+}
+
+function classifyError(error: Error): ErrorInfo {
+  const errorName = error.constructor.name;
+  const errorMessage = error.message.toLowerCase();
+  const statusCode = (() => {
+    const statusCandidate = (error as { status?: unknown }).status
+      ?? (error as { statusCode?: unknown }).statusCode
+      ?? (error as { response?: { status?: unknown } }).response?.status;
+
+    if (typeof statusCandidate === 'number') {
+      return statusCandidate;
+    }
+    if (typeof statusCandidate === 'string') {
+      const parsed = Number(statusCandidate);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+
+    const match = errorMessage.match(/(?:status[:\s]*|\()(\d{3})\b/);
+    if (match) {
+      return Number(match[1]);
+    }
+
+    return undefined;
+  })();
+
+  if (error instanceof ValidationError) {
+    return {
+      exitCode: WorkflowExitCode.VALIDATION_ERROR,
+      errorCode: 'validation:invalid_input',
+      message: error.message,
+      retryable: false,
+      userMessage: 'Invalid input or configuration detected.',
+    };
+  }
+
+  if (error instanceof RetryableError) {
+    return {
+      exitCode: WorkflowExitCode.RETRYABLE,
+      errorCode: 'internal:unknown',
+      message: error.message,
+      retryable: true,
+      userMessage: 'A temporary error occurred. Please try again.',
+    };
+  }
+
+  // Rate limiting
+  if (errorName.includes('RateLimit') || errorMessage.includes('rate limit') || errorMessage.includes('429')) {
+    return {
+      exitCode: WorkflowExitCode.RETRYABLE,
+      errorCode: 'llm_service:rate_limited',
+      message: 'Service is busy, will retry',
+      retryable: true,
+      userMessage: 'Service is busy, please try again shortly.',
+    };
+  }
+
+  // Billing / insufficient funds
+  if (statusCode === 402 || (errorMessage.includes('insufficient') && errorMessage.includes('fund'))) {
+    return {
+      exitCode: WorkflowExitCode.BILLING_ERROR,
+      errorCode: 'billing:insufficient_funds',
+      message: error.message,
+      retryable: false,
+      userMessage: 'Billing issue detected. Please add credits and try again.',
+    };
+  }
+
+  // Validation
+  if (
+    errorMessage.includes('validation') ||
+    errorMessage.includes('invalid') ||
+    errorMessage.includes('missing required environment variables') ||
+    errorMessage.includes('missing gcs environment variables')
+  ) {
+    return {
+      exitCode: WorkflowExitCode.VALIDATION_ERROR,
+      errorCode: 'validation:invalid_input',
+      message: error.message,
+      retryable: false,
+      userMessage: 'Invalid input or configuration detected.',
+    };
+  }
+
+  // Insufficient data
+  if (errorMessage.includes('insufficient') && errorMessage.includes('data')) {
+    return {
+      exitCode: WorkflowExitCode.INSUFFICIENT_DATA,
+      errorCode: 'data_validation:insufficient_data',
+      message: error.message,
+      retryable: false,
+      userMessage: 'Insufficient data provided for analysis.',
+    };
+  }
+
+  // Timeout
+  if (errorName.includes('Timeout') || errorMessage.includes('timeout')) {
+    return {
+      exitCode: WorkflowExitCode.RETRYABLE,
+      errorCode: 'llm_service:timeout',
+      message: 'Request timed out, will retry',
+      retryable: true,
+      userMessage: 'Request timed out. Please try again.',
+    };
+  }
+
+  // Default: retryable
+  return {
+    exitCode: WorkflowExitCode.RETRYABLE,
+    errorCode: 'internal:unknown',
+    message: error.message,
+    retryable: true,
+    userMessage: 'An unexpected error occurred. Please try again.',
+  };
+}
 
 async function notifyProgress(
   config: { n1ApiBaseUrl: string; n1ApiKey: string; userId: string; chrId: string },
@@ -340,8 +478,9 @@ async function runJob() {
     console.log(`  Prompt: ${config.prompt.substring(0, 80)}...`);
     console.log('');
   } catch (error) {
+    const errorInfo = classifyError(error as Error);
     console.error('✗ Environment validation failed:', error);
-    process.exit(1);
+    process.exit(errorInfo.exitCode);
   }
 
   let realmPath: string | null = null;
@@ -463,12 +602,15 @@ async function runJob() {
 
   } catch (error) {
     // Notify failure
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorInfo = classifyError(error as Error);
+    const progressMessage = errorInfo.userMessage || 'An unexpected error occurred.';
+
     await notifyProgress(
       config,
       'failed',
-      errorMessage,
-      PROGRESS_MAP.failed.message
+      progressMessage,
+      errorInfo.userMessage,
+      errorInfo.errorCode
     );
 
     console.error('');
@@ -478,7 +620,7 @@ async function runJob() {
     console.error('Error:', error);
     console.error('================================================================================');
 
-    process.exit(1);
+    process.exit(errorInfo.exitCode);
   }
 }
 
