@@ -1,7 +1,7 @@
 /**
  * AgenticDoctorUseCase - Medical Document Analysis Pipeline
  *
- * 8-Phase Pipeline:
+ * 10-Phase Pipeline:
  * Phase 1: Document Extraction - PDFs via Vision OCR, text files directly → extracted.md
  * Phase 2: Medical Analysis - LLM with medical-analysis skill → analysis.md
  * Phase 3: Cross-System Analysis - LLM identifies connections between systems → cross_systems.md
@@ -10,6 +10,8 @@
  * Phase 6: Validation - LLM validates completeness and accuracy → validation.md (with correction loop)
  * Phase 7: Data Structuring - LLM extracts chart-ready JSON → structured_data.json
  * Phase 8: Realm Generation - LLM with html-builder skill → interactive Health Realm (index.html)
+ * Phase 9: Content Review - LLM compares final_analysis.md vs index.html for gaps → content_review.json
+ * Phase 10: HTML Patching - If gaps found, LLM patches HTML with missing content
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -81,6 +83,11 @@ const loadHTMLBuilderSkill = () => loadSkill(
 const loadDataStructurerSkill = () => loadSkill(
   'data-structurer',
   'You are a data extraction specialist. Extract structured JSON from medical analysis for chart visualization.'
+);
+
+const loadContentReviewerSkill = () => loadSkill(
+  'content-reviewer',
+  'You are a QA agent. Compare final_analysis.md against index.html to identify information loss.'
 );
 
 // ============================================================================
@@ -896,11 +903,319 @@ ${finalAnalysisContent}
       await fs.promises.writeFile(htmlPath, htmlContent, 'utf-8');
       console.log(`[AgenticDoctor] HTML Realm: ${htmlContent.length} chars`);
 
+      yield { type: 'log', message: 'Initial HTML generation complete.' };
+      yield { type: 'step', name: 'Realm Generation', status: 'completed' };
+
+      // ========================================================================
+      // Phase 9: Content Review
+      // Compares final_analysis.md against index.html to identify information loss
+      // ========================================================================
+      yield { type: 'step', name: 'Content Review', status: 'running' };
+      yield { type: 'log', message: 'Reviewing HTML for completeness...' };
+
+      const contentReviewPath = path.join(storageDir, 'content_review.json');
+      let contentReviewResult: {
+        user_question_addressed?: {
+          passed: boolean;
+          user_question: string;
+          question_answered: boolean;
+          answer_prominent: boolean;
+          findings_connected: boolean;
+          narrative_framed: boolean;
+          issues: Array<{
+            type: string;
+            description: string;
+            fix_instruction: string;
+          }>;
+        };
+        detail_fidelity?: {
+          passed: boolean;
+          issues: Array<{
+            type: string;
+            severity: string;
+            source_content: string;
+            html_found: string;
+            fix_instruction: string;
+          }>;
+        };
+        content_completeness?: {
+          passed: boolean;
+          present_categories: string[];
+          missing_categories: Array<{
+            category: string;
+            source_had: string;
+            importance: string;
+            fix_instruction: string;
+          }>;
+        };
+        visual_design?: {
+          score: string;
+          strengths: string[];
+          weaknesses: string[];
+          fix_instructions: string[];
+        };
+        overall: {
+          passed: boolean;
+          summary: string;
+          action: string;
+          feedback_for_regeneration?: string;
+        };
+      } = { overall: { passed: true, summary: '', action: 'pass' } };
+
+      try {
+        const contentReviewerSkill = loadContentReviewerSkill();
+
+        const reviewPrompt = `${contentReviewerSkill}
+
+---
+
+### User's Original Question (THE PRIMARY PURPOSE)
+<user_question>
+${prompt || '(No specific question provided - general health analysis requested)'}
+</user_question>
+
+### Source of Truth (final_analysis.md)
+<final_analysis>
+${finalAnalysisContent}
+</final_analysis>
+
+### Output to Validate (index.html)
+<html_content>
+${htmlContent}
+</html_content>`;
+
+        console.log(`[AgenticDoctor] Content review prompt payload: ${Math.round(reviewPrompt.length / 1024)}KB`);
+
+        let reviewContent = '';
+        const reviewStream = await this.llmClient.sendMessageStream(
+          reviewPrompt,
+          `${sessionId}-content-review`,
+          undefined,
+          { model: REALM_CONFIG.models.doctor }
+        );
+
+        for await (const chunk of reviewStream) {
+          reviewContent += chunk;
+        }
+
+        if (reviewContent.trim().length === 0) {
+          throw new Error('Content review returned empty');
+        }
+
+        // Clean up JSON
+        reviewContent = reviewContent.trim();
+        const jsonStartIndex = reviewContent.indexOf('{');
+        if (jsonStartIndex > 0) {
+          reviewContent = reviewContent.slice(jsonStartIndex);
+        }
+        if (reviewContent.startsWith('```json')) {
+          reviewContent = reviewContent.slice(7);
+        } else if (reviewContent.startsWith('```')) {
+          reviewContent = reviewContent.slice(3);
+        }
+        if (reviewContent.endsWith('```')) {
+          reviewContent = reviewContent.slice(0, -3);
+        }
+        reviewContent = reviewContent.trim();
+
+        // Parse and save
+        try {
+          contentReviewResult = JSON.parse(reviewContent);
+          await fs.promises.writeFile(contentReviewPath, JSON.stringify(contentReviewResult, null, 2), 'utf-8');
+          console.log(`[AgenticDoctor] Content review: passed=${contentReviewResult.overall.passed}, action=${contentReviewResult.overall.action}`);
+        } catch (jsonError) {
+          console.warn('[AgenticDoctor] Content review JSON parse failed, assuming pass');
+          contentReviewResult = { overall: { passed: true, summary: '', action: 'pass' } };
+        }
+
+        if (contentReviewResult.overall.passed) {
+          yield { type: 'log', message: 'Content review passed - all four dimensions acceptable.' };
+        } else {
+          yield { type: 'log', message: 'Content review found issues:' };
+
+          // Dimension 0: User Question Addressed (MOST IMPORTANT)
+          if (contentReviewResult.user_question_addressed && !contentReviewResult.user_question_addressed.passed) {
+            yield { type: 'log', message: `[User Question] NOT ADDRESSED - ${contentReviewResult.user_question_addressed.issues.length} issue(s)` };
+            if (!contentReviewResult.user_question_addressed.question_answered) {
+              yield { type: 'log', message: '  - Question not directly answered' };
+            }
+            if (!contentReviewResult.user_question_addressed.answer_prominent) {
+              yield { type: 'log', message: '  - Answer not prominent/visible' };
+            }
+          }
+
+          // Dimension 1: Detail Fidelity
+          if (contentReviewResult.detail_fidelity && !contentReviewResult.detail_fidelity.passed) {
+            const highCount = contentReviewResult.detail_fidelity.issues.filter(i => i.severity === 'high').length;
+            yield { type: 'log', message: `[Detail Fidelity] ${contentReviewResult.detail_fidelity.issues.length} issues (${highCount} high severity)` };
+          }
+
+          // Dimension 2: Content Completeness
+          if (contentReviewResult.content_completeness && !contentReviewResult.content_completeness.passed) {
+            const missing = contentReviewResult.content_completeness.missing_categories.map(c => c.category).join(', ');
+            yield { type: 'log', message: `[Content Completeness] Missing: ${missing}` };
+          }
+
+          // Dimension 3: Visual Design
+          if (contentReviewResult.visual_design) {
+            yield { type: 'log', message: `[Visual Design] Score: ${contentReviewResult.visual_design.score}` };
+          }
+
+          if (contentReviewResult.overall.summary) {
+            yield { type: 'log', message: `Summary: ${contentReviewResult.overall.summary}` };
+          }
+        }
+
+        yield { type: 'step', name: 'Content Review', status: 'completed' };
+
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('[AgenticDoctor] Content review failed:', errorMessage);
+        yield { type: 'log', message: `Content review failed: ${errorMessage}. Proceeding with current HTML.` };
+        yield { type: 'step', name: 'Content Review', status: 'failed' };
+        contentReviewResult = { overall: { passed: true, summary: '', action: 'pass' } }; // Skip patching on error
+      }
+
+      // ========================================================================
+      // Phase 10: HTML Regeneration (if needed)
+      // If content review found issues, regenerate HTML with feedback
+      // ========================================================================
+      if (contentReviewResult.overall.action === 'regenerate_with_feedback' && contentReviewResult.overall.feedback_for_regeneration) {
+        yield { type: 'step', name: 'HTML Regeneration', status: 'running' };
+        yield { type: 'log', message: 'Regenerating HTML with reviewer feedback...' };
+
+        try {
+          const htmlSkill = loadHTMLBuilderSkill();
+
+          // Build regeneration prompt with feedback
+          const regenPrompt = `${htmlSkill}
+
+---
+
+## REGENERATION TASK
+
+Your previous HTML output had issues. You need to regenerate addressing ALL of the following:
+
+### Reviewer Feedback (MUST ADDRESS)
+<feedback>
+${contentReviewResult.overall.feedback_for_regeneration}
+</feedback>
+
+### User Question Issues (MOST IMPORTANT - FIX FIRST)
+<user_question_issues>
+User Asked: ${contentReviewResult.user_question_addressed?.user_question || prompt || 'N/A'}
+Question Answered: ${contentReviewResult.user_question_addressed?.question_answered || false}
+Answer Prominent: ${contentReviewResult.user_question_addressed?.answer_prominent || false}
+Findings Connected: ${contentReviewResult.user_question_addressed?.findings_connected || false}
+Issues: ${JSON.stringify(contentReviewResult.user_question_addressed?.issues || [], null, 2)}
+</user_question_issues>
+
+### Detail Fidelity Issues
+<detail_issues>
+${JSON.stringify(contentReviewResult.detail_fidelity?.issues || [], null, 2)}
+</detail_issues>
+
+### Missing Content Categories
+<missing_categories>
+${JSON.stringify(contentReviewResult.content_completeness?.missing_categories || [], null, 2)}
+</missing_categories>
+
+### Visual Design Feedback
+<design_feedback>
+Score: ${contentReviewResult.visual_design?.score || 'unknown'}
+Weaknesses: ${JSON.stringify(contentReviewResult.visual_design?.weaknesses || [], null, 2)}
+Fix Instructions: ${JSON.stringify(contentReviewResult.visual_design?.fix_instructions || [], null, 2)}
+</design_feedback>
+
+### Source Data (use ALL details from here)
+
+${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Priority 1: Structured Data (for charts and visualizations)
+<structured_data>
+${structuredDataContent}
+</structured_data>
+
+### Priority 2: Rich Medical Analysis (for detailed sections)
+<analysis>
+${analysisContent}
+</analysis>
+
+### Priority 3: Cross-System Analysis (for mechanism explanations)
+<cross_systems>
+${crossSystemsContent}
+</cross_systems>
+
+### Priority 4: Final Synthesized Analysis (for patient-facing narrative)
+<final_analysis>
+${finalAnalysisContent}
+</final_analysis>
+
+## CRITICAL INSTRUCTIONS
+
+1. Address EVERY issue in the feedback
+2. Include ALL specific names, dosages, values, timings from the source
+3. Do NOT genericize or summarize - use exact details
+4. Make urgent/critical items visually prominent (callouts, warnings, colored boxes)
+5. Preserve explanatory context - the WHY matters as much as the WHAT
+
+**Output the complete regenerated HTML now.**`;
+
+          console.log(`[AgenticDoctor] Regeneration prompt payload: ${Math.round(regenPrompt.length / 1024)}KB`);
+
+          let regenHtml = '';
+          const regenStream = await this.llmClient.sendMessageStream(
+            regenPrompt,
+            `${sessionId}-html-regen`,
+            undefined,
+            { model: REALM_CONFIG.models.html }
+          );
+
+          for await (const chunk of regenStream) {
+            regenHtml += chunk;
+          }
+
+          if (regenHtml.trim().length > 0) {
+            // Clean up regenerated HTML
+            regenHtml = regenHtml.trim();
+            const regenDoctypeIndex = regenHtml.indexOf('<!DOCTYPE');
+            if (regenDoctypeIndex > 0) {
+              regenHtml = regenHtml.slice(regenDoctypeIndex);
+            }
+            if (regenHtml.startsWith('```html')) {
+              regenHtml = regenHtml.slice(7);
+            } else if (regenHtml.startsWith('```')) {
+              regenHtml = regenHtml.slice(3);
+            }
+            if (regenHtml.endsWith('```')) {
+              regenHtml = regenHtml.slice(0, -3);
+            }
+            regenHtml = regenHtml.trim();
+
+            // Validate it's valid HTML
+            if (regenHtml.includes('<!DOCTYPE') && regenHtml.includes('</html>')) {
+              htmlContent = regenHtml;
+              await fs.promises.writeFile(htmlPath, htmlContent, 'utf-8');
+              console.log(`[AgenticDoctor] Regenerated HTML: ${htmlContent.length} chars`);
+              yield { type: 'log', message: 'HTML regenerated with fixes.' };
+            } else {
+              yield { type: 'log', message: 'Regeneration produced invalid HTML, keeping original.' };
+            }
+          } else {
+            yield { type: 'log', message: 'Regeneration returned empty, keeping original HTML.' };
+          }
+
+          yield { type: 'step', name: 'HTML Regeneration', status: 'completed' };
+
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error('[AgenticDoctor] HTML regeneration failed:', errorMessage);
+          yield { type: 'log', message: `HTML regeneration failed: ${errorMessage}. Using original HTML.` };
+          yield { type: 'step', name: 'HTML Regeneration', status: 'failed' };
+        }
+      }
+
       // Return the realm URL
       const realmUrl = `/realms/${realmId}/index.html`;
 
-      yield { type: 'log', message: 'Health Realm generation complete.' };
-      yield { type: 'step', name: 'Realm Generation', status: 'completed' };
       yield { type: 'log', message: `Health Realm ready: ${realmUrl}` };
       yield { type: 'result', url: realmUrl };
 

@@ -3,8 +3,12 @@
  *
  * Usage: npx tsx scripts/regenerate-html.ts [prompt]
  *
- * This script skips phases 1-7 and only runs phase 8 (HTML generation)
- * using the existing files in storage/
+ * This script skips phases 1-7 and runs phases 8-10:
+ * - Phase 8: HTML Generation
+ * - Phase 9: Content Review (compares final_analysis.md vs index.html)
+ * - Phase 10: HTML Patching (if gaps found)
+ *
+ * Uses existing files in storage/
  */
 
 import fs from 'fs';
@@ -152,8 +156,342 @@ ${researchContent}
   const htmlPath = path.join(realmDir, 'index.html');
   fs.writeFileSync(htmlPath, htmlContent, 'utf-8');
 
-  console.log(`\n✅ HTML generated: ${htmlContent.length} chars`);
-  console.log(`📁 Saved to: ${htmlPath}`);
+  console.log(`\n✅ Phase 8 complete: index.html (${htmlContent.length} chars)`);
+
+  // ========================================================================
+  // Phase 9: Content Review
+  // Compares final_analysis.md against index.html to identify information loss
+  // ========================================================================
+  console.log('\n' + '='.repeat(60));
+  console.log('Phase 9: Content Review');
+  console.log('='.repeat(60));
+  console.log('Comparing final_analysis.md against generated HTML...');
+  console.log('Checking for: conditions, treatments, doctor questions, gaps, references, positive findings');
+
+  const contentReviewPath = path.join(storageDir, 'content_review.json');
+  let contentReviewResult: {
+    user_question_addressed?: {
+      passed: boolean;
+      user_question: string;
+      question_answered: boolean;
+      answer_prominent: boolean;
+      findings_connected: boolean;
+      narrative_framed: boolean;
+      issues: Array<{
+        type: string;
+        description: string;
+        fix_instruction: string;
+      }>;
+    };
+    detail_fidelity?: {
+      passed: boolean;
+      issues: Array<{
+        type: string;
+        severity: string;
+        source_content: string;
+        html_found: string;
+        fix_instruction: string;
+      }>;
+    };
+    content_completeness?: {
+      passed: boolean;
+      present_categories: string[];
+      missing_categories: Array<{
+        category: string;
+        source_had: string;
+        importance: string;
+        fix_instruction: string;
+      }>;
+    };
+    visual_design?: {
+      score: string;
+      strengths: string[];
+      weaknesses: string[];
+      fix_instructions: string[];
+    };
+    overall: {
+      passed: boolean;
+      summary: string;
+      action: string;
+      feedback_for_regeneration?: string;
+    };
+  } = { overall: { passed: true, summary: '', action: 'pass' } };
+
+  try {
+    const contentReviewerSkill = loadSkill('content-reviewer');
+
+    const reviewPrompt = `${contentReviewerSkill}
+
+---
+
+### User's Original Question (THE PRIMARY PURPOSE)
+<user_question>
+${prompt || '(No specific question provided - general health analysis requested)'}
+</user_question>
+
+### Source of Truth (final_analysis.md)
+<final_analysis>
+${finalAnalysisContent}
+</final_analysis>
+
+### Output to Validate (index.html)
+<html_content>
+${htmlContent}
+</html_content>`;
+
+    console.log(`Reviewing HTML for completeness... (payload: ${Math.round(reviewPrompt.length / 1024)}KB)`);
+
+    let reviewContent = '';
+    const reviewStream = await gemini.sendMessageStream(
+      reviewPrompt,
+      `${sessionId}-content-review`,
+      undefined,
+      { model: REALM_CONFIG.models.doctor }
+    );
+
+    for await (const chunk of reviewStream) {
+      reviewContent += chunk;
+      process.stdout.write('.');
+    }
+    console.log(' Done!');
+
+    if (reviewContent.trim().length === 0) {
+      throw new Error('Content review returned empty');
+    }
+
+    // Clean up JSON
+    reviewContent = reviewContent.trim();
+    const jsonStartIndex = reviewContent.indexOf('{');
+    if (jsonStartIndex > 0) {
+      reviewContent = reviewContent.slice(jsonStartIndex);
+    }
+    if (reviewContent.startsWith('```json')) {
+      reviewContent = reviewContent.slice(7);
+    } else if (reviewContent.startsWith('```')) {
+      reviewContent = reviewContent.slice(3);
+    }
+    if (reviewContent.endsWith('```')) {
+      reviewContent = reviewContent.slice(0, -3);
+    }
+    reviewContent = reviewContent.trim();
+
+    // Parse and save
+    try {
+      contentReviewResult = JSON.parse(reviewContent);
+      fs.writeFileSync(contentReviewPath, JSON.stringify(contentReviewResult, null, 2), 'utf-8');
+      console.log(`  Content review: passed=${contentReviewResult.overall.passed}, action=${contentReviewResult.overall.action}`);
+    } catch {
+      console.warn('  Content review JSON parse failed, assuming pass');
+      contentReviewResult = { overall: { passed: true, summary: '', action: 'pass' } };
+    }
+
+    if (contentReviewResult.overall.passed) {
+      console.log('  ✅ Content review passed - all four dimensions acceptable.');
+    } else {
+      console.log('  ⚠️ Content review found issues:');
+
+      // Dimension 0: User Question Addressed (MOST IMPORTANT)
+      if (contentReviewResult.user_question_addressed) {
+        const uq = contentReviewResult.user_question_addressed;
+        if (!uq.passed) {
+          console.log(`  [User Question] FAILED - Question not properly addressed`);
+          if (!uq.question_answered) console.log('     - Question not directly answered');
+          if (!uq.answer_prominent) console.log('     - Answer not prominent/visible');
+          if (!uq.findings_connected) console.log('     - Findings not connected to question');
+        } else {
+          console.log('  [User Question] Passed - Question addressed prominently');
+        }
+      }
+
+      // Dimension 1: Detail Fidelity
+      if (contentReviewResult.detail_fidelity) {
+        const df = contentReviewResult.detail_fidelity;
+        if (!df.passed) {
+          const highCount = df.issues.filter(i => i.severity === 'high').length;
+          const mediumCount = df.issues.filter(i => i.severity === 'medium').length;
+          console.log(`  [Detail Fidelity] FAILED - ${df.issues.length} issue(s): ${highCount} high, ${mediumCount} medium`);
+        } else {
+          console.log('  [Detail Fidelity] Passed');
+        }
+      }
+
+      // Dimension 2: Content Completeness
+      if (contentReviewResult.content_completeness) {
+        const cc = contentReviewResult.content_completeness;
+        if (!cc.passed) {
+          console.log(`  [Content Completeness] FAILED - Missing categories: ${cc.missing_categories.map(c => c.category).join(', ')}`);
+        } else {
+          console.log(`  [Content Completeness] Passed - Present: ${cc.present_categories.join(', ')}`);
+        }
+      }
+
+      // Dimension 3: Visual Design
+      if (contentReviewResult.visual_design) {
+        const vd = contentReviewResult.visual_design;
+        console.log(`  [Visual Design] Score: ${vd.score.toUpperCase()}`);
+        if (vd.weaknesses.length > 0) {
+          console.log(`     Weaknesses: ${vd.weaknesses.slice(0, 3).join('; ')}`);
+        }
+      }
+
+      if (contentReviewResult.overall.summary) {
+        console.log(`  Summary: ${contentReviewResult.overall.summary}`);
+      }
+    }
+
+    console.log(`✅ Phase 9 complete: content_review.json`);
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`  Content review failed: ${errorMessage}`);
+    console.log('  Proceeding with current HTML.');
+    contentReviewResult = { overall: { passed: true, summary: '', action: 'pass' } };
+  }
+
+  // ========================================================================
+  // Phase 10: HTML Regeneration (if needed)
+  // If content review found issues, regenerate HTML with feedback
+  // ========================================================================
+  if (contentReviewResult.overall.action === 'regenerate_with_feedback' && contentReviewResult.overall.feedback_for_regeneration) {
+    console.log('\n' + '='.repeat(60));
+    console.log('Phase 10: HTML Regeneration');
+    console.log('='.repeat(60));
+    console.log('Regenerating HTML with reviewer feedback...');
+    console.log(`Feedback: ${contentReviewResult.overall.feedback_for_regeneration!.substring(0, 200)}...`);
+
+    try {
+      // Build regeneration prompt with feedback
+      const regenPrompt = `${htmlSkill}
+
+---
+
+## REGENERATION TASK
+
+Your previous HTML output had issues. You need to regenerate addressing ALL of the following:
+
+### Reviewer Feedback (MUST ADDRESS)
+<feedback>
+${contentReviewResult.overall.feedback_for_regeneration}
+</feedback>
+
+### User Question Issues (MOST IMPORTANT - FIX FIRST)
+<user_question_issues>
+User Asked: ${contentReviewResult.user_question_addressed?.user_question || prompt || 'N/A'}
+Question Answered: ${contentReviewResult.user_question_addressed?.question_answered || false}
+Answer Prominent: ${contentReviewResult.user_question_addressed?.answer_prominent || false}
+Findings Connected: ${contentReviewResult.user_question_addressed?.findings_connected || false}
+Issues: ${JSON.stringify(contentReviewResult.user_question_addressed?.issues || [], null, 2)}
+</user_question_issues>
+
+### Detail Fidelity Issues
+<detail_issues>
+${JSON.stringify(contentReviewResult.detail_fidelity?.issues || [], null, 2)}
+</detail_issues>
+
+### Missing Content Categories
+<missing_categories>
+${JSON.stringify(contentReviewResult.content_completeness?.missing_categories || [], null, 2)}
+</missing_categories>
+
+### Visual Design Feedback
+<design_feedback>
+Score: ${contentReviewResult.visual_design?.score || 'unknown'}
+Weaknesses: ${JSON.stringify(contentReviewResult.visual_design?.weaknesses || [], null, 2)}
+Fix Instructions: ${JSON.stringify(contentReviewResult.visual_design?.fix_instructions || [], null, 2)}
+</design_feedback>
+
+### Source Data (use ALL details from here)
+
+${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Priority 1: Structured Data (for charts and visualizations)
+<structured_data>
+${structuredDataContent}
+</structured_data>
+
+### Priority 2: Rich Medical Analysis (for detailed sections)
+<analysis>
+${analysisContent}
+</analysis>
+
+### Priority 3: Cross-System Analysis (for mechanism explanations)
+<cross_systems>
+${crossSystemsContent}
+</cross_systems>
+
+### Priority 4: Final Synthesized Analysis (for patient-facing narrative)
+<final_analysis>
+${finalAnalysisContent}
+</final_analysis>
+
+## CRITICAL INSTRUCTIONS
+
+1. Address EVERY issue in the feedback
+2. Include ALL specific names, dosages, values, timings from the source
+3. Do NOT genericize or summarize - use exact details
+4. Make urgent/critical items visually prominent (callouts, warnings, colored boxes)
+5. Preserve explanatory context - the WHY matters as much as the WHAT
+
+**Output the complete regenerated HTML now.**`;
+
+      console.log(`Regenerating HTML... (payload: ${Math.round(regenPrompt.length / 1024)}KB)`);
+
+      let regenHtml = '';
+      const regenStream = await gemini.sendMessageStream(
+        regenPrompt,
+        `${sessionId}-html-regen`,
+        undefined,
+        { model: REALM_CONFIG.models.html }
+      );
+
+      for await (const chunk of regenStream) {
+        regenHtml += chunk;
+        process.stdout.write('.');
+      }
+      console.log(' Done!');
+
+      if (regenHtml.trim().length > 0) {
+        // Clean up regenerated HTML
+        regenHtml = regenHtml.trim();
+        const regenDoctypeIndex = regenHtml.indexOf('<!DOCTYPE');
+        if (regenDoctypeIndex > 0) {
+          regenHtml = regenHtml.slice(regenDoctypeIndex);
+        }
+        if (regenHtml.startsWith('```html')) {
+          regenHtml = regenHtml.slice(7);
+        } else if (regenHtml.startsWith('```')) {
+          regenHtml = regenHtml.slice(3);
+        }
+        if (regenHtml.endsWith('```')) {
+          regenHtml = regenHtml.slice(0, -3);
+        }
+        regenHtml = regenHtml.trim();
+
+        // Validate it's valid HTML
+        if (regenHtml.includes('<!DOCTYPE') && regenHtml.includes('</html>')) {
+          htmlContent = regenHtml;
+          fs.writeFileSync(htmlPath, htmlContent, 'utf-8');
+          console.log(`  ✅ HTML regenerated with fixes: ${htmlContent.length} chars`);
+        } else {
+          console.log('  ⚠️ Regeneration produced invalid HTML, keeping original.');
+        }
+      } else {
+        console.log('  ⚠️ Regeneration returned empty, keeping original HTML.');
+      }
+
+      console.log(`✅ Phase 10 complete`);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`  HTML regeneration failed: ${errorMessage}`);
+      console.log('  Using original HTML.');
+    }
+  } else if (contentReviewResult.overall.passed) {
+    console.log('\nPhase 10: HTML Regeneration - Skipped (all dimensions passed)');
+  }
+
+  console.log(`\n${'='.repeat(60)}`);
+  console.log('✅ All phases complete!');
+  console.log(`${'='.repeat(60)}`);
+  console.log(`📁 HTML saved to: ${htmlPath}`);
   console.log(`🌐 View at: http://localhost:5173/realms/${realmId}/index.html`);
 }
 
