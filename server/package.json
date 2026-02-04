@@ -9,7 +9,9 @@
     "job": "tsx src/job-runner.ts",
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "regen-html": "tsx scripts/regenerate-html.ts"
+    "regen-html": "tsx scripts/regenerate-html.ts",
+    "regen-analysis": "tsx scripts/regenerate-analysis.ts",
+    "regen-synthesis": "tsx scripts/regenerate-synthesis.ts"
   },
   "keywords": [],
   "author": "",
