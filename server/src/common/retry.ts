@@ -83,6 +83,7 @@ function isRetryable(error: unknown): boolean {
     // Network errors
     'fetch failed', 'econnreset', 'econnrefused', 'socket hang up', 'network error',
     'connection refused', 'connection reset', 'epipe', 'enotfound', 'eai_again',
+    'terminated', 'other side closed', 'und_err_socket',
     // Server errors
     '500', '502', '503', '504',
     'internal server error', 'bad gateway', 'service unavailable', 'gateway timeout',
