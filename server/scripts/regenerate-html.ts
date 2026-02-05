@@ -1,12 +1,12 @@
 /**
- * Regenerate HTML from existing markdown files
+ * Regenerate HTML from existing structured data
  *
  * Usage: npx tsx scripts/regenerate-html.ts [prompt]
  *
- * This script skips phases 1-7 and runs phases 8-10:
- * - Phase 8: HTML Generation
- * - Phase 9: Content Review (compares final_analysis.md vs index.html)
- * - Phase 10: HTML Patching (if gaps found)
+ * This script skips phases 1-6 and runs phases 7-9:
+ * - Phase 7: HTML Generation (from structured_data.json)
+ * - Phase 8: Content Review (compares structured_data.json vs index.html)
+ * - Phase 9: HTML Regeneration (if gaps found)
  *
  * Uses existing files in storage/
  */
@@ -40,9 +40,6 @@ async function regenerateHtml(userPrompt?: string) {
 
   // Check required files exist
   const requiredFiles = [
-    'analysis.md',
-    'cross_systems.md',
-    'final_analysis.md',
     'structured_data.json'
   ];
 
@@ -53,61 +50,29 @@ async function regenerateHtml(userPrompt?: string) {
     }
   }
 
-  // Load all the intermediate files
-  console.log('Loading intermediate files...');
-  const analysisContent = fs.readFileSync(path.join(storageDir, 'analysis.md'), 'utf-8');
-  const crossSystemsContent = fs.readFileSync(path.join(storageDir, 'cross_systems.md'), 'utf-8');
-  const finalAnalysisContent = fs.readFileSync(path.join(storageDir, 'final_analysis.md'), 'utf-8');
+  // Load structured data (the only required file)
+  console.log('Loading structured data...');
   const structuredDataContent = fs.readFileSync(path.join(storageDir, 'structured_data.json'), 'utf-8');
 
-  // Optional: research data
-  let researchContent = '';
-  const researchPath = path.join(storageDir, 'research.json');
-  if (fs.existsSync(researchPath)) {
-    researchContent = fs.readFileSync(researchPath, 'utf-8');
-  }
-
   console.log(`Loaded:
-  - analysis.md: ${analysisContent.length} chars
-  - cross_systems.md: ${crossSystemsContent.length} chars
-  - final_analysis.md: ${finalAnalysisContent.length} chars
-  - structured_data.json: ${structuredDataContent.length} chars
-  - research.json: ${researchContent.length} chars`);
+  - structured_data.json: ${structuredDataContent.length} chars`);
 
   // Load HTML builder skill
   const htmlSkill = loadSkill('html-builder');
   console.log(`Loaded html-builder skill: ${htmlSkill.length} chars`);
 
-  // Build the prompt
+  // Build the prompt - DATA-DRIVEN: only structured_data.json
   const prompt = userPrompt || '';
   const htmlPrompt = `${htmlSkill}
 
 ---
 
-${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Priority 1: Structured Data (for charts and visualizations)
+### Structured Data (SOURCE OF TRUTH)
+This JSON contains ALL data for rendering. Iterate through each field and render appropriate sections.
+Only render sections for fields that have data. Do not invent sections not in this JSON.
 <structured_data>
 ${structuredDataContent}
-</structured_data>
-
-### Priority 2: Rich Medical Analysis (for detailed sections)
-<analysis>
-${analysisContent}
-</analysis>
-
-### Priority 3: Cross-System Analysis (for mechanism explanations)
-<cross_systems>
-${crossSystemsContent}
-</cross_systems>
-
-### Priority 4: Final Synthesized Analysis (for patient-facing narrative)
-<final_analysis>
-${finalAnalysisContent}
-</final_analysis>
-
-${researchContent ? `### Priority 5: Research Data (for references)
-<research_json>
-${researchContent}
-</research_json>` : ''}`;
+</structured_data>`;
 
   console.log(`\nGenerating HTML... (payload: ${Math.round(htmlPrompt.length / 1024)}KB)`);
   console.log(`Using model: ${REALM_CONFIG.models.html}`);
@@ -156,17 +121,17 @@ ${researchContent}
   const htmlPath = path.join(realmDir, 'index.html');
   fs.writeFileSync(htmlPath, htmlContent, 'utf-8');
 
-  console.log(`\n✅ Phase 8 complete: index.html (${htmlContent.length} chars)`);
+  console.log(`\n✅ Phase 7 complete: index.html (${htmlContent.length} chars)`);
 
   // ========================================================================
-  // Phase 9: Content Review
-  // Compares final_analysis.md against index.html to identify information loss
+  // Phase 8: Content Review
+  // Compares structured_data.json against index.html to identify information loss
   // ========================================================================
   console.log('\n' + '='.repeat(60));
-  console.log('Phase 9: Content Review');
+  console.log('Phase 8: Content Review');
   console.log('='.repeat(60));
-  console.log('Comparing final_analysis.md against generated HTML...');
-  console.log('Checking for: conditions, treatments, doctor questions, gaps, references, positive findings');
+  console.log('Comparing structured_data.json against generated HTML...');
+  console.log('Checking for: all JSON fields rendered, specifics preserved, visual design quality');
 
   const contentReviewPath = path.join(storageDir, 'content_review.json');
   let contentReviewResult: {
@@ -229,10 +194,10 @@ ${researchContent}
 ${prompt || '(No specific question provided - general health analysis requested)'}
 </user_question>
 
-### Source of Truth (final_analysis.md)
-<final_analysis>
-${finalAnalysisContent}
-</final_analysis>
+### Source of Truth (structured_data.json)
+<structured_data>
+${structuredDataContent}
+</structured_data>
 
 ### Output to Validate (index.html)
 <html_content>
@@ -339,7 +304,7 @@ ${htmlContent}
       }
     }
 
-    console.log(`✅ Phase 9 complete: content_review.json`);
+    console.log(`✅ Phase 8 complete: content_review.json`);
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -349,7 +314,7 @@ ${htmlContent}
   }
 
   // ========================================================================
-  // Phase 10: HTML Regeneration (if needed)
+  // Phase 9: HTML Regeneration (if needed)
   // If content review found issues, regenerate HTML with feedback
   // ========================================================================
   if (contentReviewResult.overall.action === 'regenerate_with_feedback' && contentReviewResult.overall.feedback_for_regeneration) {
@@ -402,33 +367,19 @@ Fix Instructions: ${JSON.stringify(contentReviewResult.visual_design?.fix_instru
 
 ### Source Data (use ALL details from here)
 
-${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Priority 1: Structured Data (for charts and visualizations)
+${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Structured Data (SOURCE OF TRUTH - the JSON drives all HTML sections)
 <structured_data>
 ${structuredDataContent}
 </structured_data>
 
-### Priority 2: Rich Medical Analysis (for detailed sections)
-<analysis>
-${analysisContent}
-</analysis>
-
-### Priority 3: Cross-System Analysis (for mechanism explanations)
-<cross_systems>
-${crossSystemsContent}
-</cross_systems>
-
-### Priority 4: Final Synthesized Analysis (for patient-facing narrative)
-<final_analysis>
-${finalAnalysisContent}
-</final_analysis>
-
 ## CRITICAL INSTRUCTIONS
 
 1. Address EVERY issue in the feedback
-2. Include ALL specific names, dosages, values, timings from the source
-3. Do NOT genericize or summarize - use exact details
+2. Include ALL specific names, dosages, values, timings from the structured data
+3. Do NOT genericize or summarize - use exact details from JSON
 4. Make urgent/critical items visually prominent (callouts, warnings, colored boxes)
 5. Preserve explanatory context - the WHY matters as much as the WHAT
+6. Only render sections for fields that have data in the JSON
 
 **Output the complete regenerated HTML now.**`;
 
@@ -477,7 +428,7 @@ ${finalAnalysisContent}
         console.log('  ⚠️ Regeneration returned empty, keeping original HTML.');
       }
 
-      console.log(`✅ Phase 10 complete`);
+      console.log(`✅ Phase 9 complete`);
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -485,7 +436,7 @@ ${finalAnalysisContent}
       console.log('  Using original HTML.');
     }
   } else if (contentReviewResult.overall.passed) {
-    console.log('\nPhase 10: HTML Regeneration - Skipped (all dimensions passed)');
+    console.log('\nPhase 9: HTML Regeneration - Skipped (all dimensions passed)');
   }
 
   console.log(`\n${'='.repeat(60)}`);
