@@ -2,14 +2,14 @@
  * Storage Factory
  *
  * Creates the appropriate storage adapter based on configuration.
- * Supports local, S3, and GCS storage backends.
+ * Supports local and S3 storage backends.
  */
 
 import type { StoragePort } from '../../application/ports/storage.port.js';
 import { LocalStorageAdapter } from './local-storage.adapter.js';
 import { S3StorageAdapter } from './s3-storage.adapter.js';
 
-export type StorageProvider = 'local' | 's3' | 'gcs';
+export type StorageProvider = 'local' | 's3';
 
 export interface StorageFactoryConfig {
   provider: StorageProvider;
@@ -17,8 +17,6 @@ export interface StorageFactoryConfig {
   region?: string;
   awsAccessKeyId?: string;
   awsSecretAccessKey?: string;
-  gcsProjectId?: string;
-  gcsCredentialsJson?: string;
   localBaseDir?: string;
   signedUrlExpirationHours?: number;
 }
@@ -45,14 +43,6 @@ export function createStorageAdapter(config: StorageFactoryConfig): StoragePort 
         signedUrlExpirationHours: config.signedUrlExpirationHours,
       });
 
-    case 'gcs':
-      // GCS adapter will be imported dynamically to avoid requiring
-      // @google-cloud/storage when not using GCS
-      throw new Error(
-        'GCS storage requires the GcsStorageAdapter. ' +
-          'Import it directly from adapters/gcs/gcs-storage.adapter.js'
-      );
-
     default:
       throw new Error(`Unknown storage provider: ${config.provider}`);
   }
@@ -62,22 +52,20 @@ export function createStorageAdapter(config: StorageFactoryConfig): StoragePort 
  * Create a storage adapter from environment variables
  *
  * Environment variables:
- * - STORAGE_PROVIDER: 'local' | 's3' | 'gcs' (default: 'local')
- * - BUCKET_NAME: Required for S3/GCS
+ * - STORAGE_PROVIDER: 'local' | 's3' (default: 'local')
+ * - BUCKET_NAME: Required for S3
  * - AWS_REGION: AWS region (default: 'us-east-2')
  * - AWS_ACCESS_KEY_ID: Optional, uses IAM/IRSA if not set
  * - AWS_SECRET_ACCESS_KEY: Optional
- * - PROJECT_ID: Required for GCS
- * - GCS_SERVICE_ACCOUNT_JSON: Required for GCS
  * - STORAGE_BASE_DIR: Local storage base directory (default: './storage')
  */
 export function createStorageAdapterFromEnv(): StoragePort {
   const provider = (process.env.STORAGE_PROVIDER ?? 'local') as StorageProvider;
 
   // Validate provider
-  if (!['local', 's3', 'gcs'].includes(provider)) {
+  if (!['local', 's3'].includes(provider)) {
     throw new Error(
-      `Invalid STORAGE_PROVIDER: ${provider}. Must be 'local', 's3', or 'gcs'`
+      `Invalid STORAGE_PROVIDER: ${provider}. Must be 'local' or 's3'`
     );
   }
 
@@ -87,8 +75,6 @@ export function createStorageAdapterFromEnv(): StoragePort {
     region: process.env.AWS_REGION,
     awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID,
     awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    gcsProjectId: process.env.PROJECT_ID,
-    gcsCredentialsJson: process.env.GCS_SERVICE_ACCOUNT_JSON,
     localBaseDir: process.env.STORAGE_BASE_DIR,
   });
 }
@@ -105,5 +91,5 @@ export function getStorageProvider(): StorageProvider {
  */
 export function isCloudStorageEnabled(): boolean {
   const provider = getStorageProvider();
-  return provider === 's3' || provider === 'gcs';
+  return provider === 's3';
 }

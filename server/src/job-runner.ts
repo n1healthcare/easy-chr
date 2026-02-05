@@ -3,7 +3,7 @@
  *
  * This entry point runs as a Kubernetes Job spawned by forge-sentinel.
  * It fetches PDFs, processes them through the Agentic Doctor pipeline,
- * and uploads the result to Google Cloud Storage.
+ * and uploads the result to AWS S3.
  *
  * Environment Variables (injected by forge-sentinel):
  * - USER_ID: User identifier for PDF fetching
@@ -14,16 +14,16 @@
  * - N1_API_KEY: Authentication key for N1 API
  * - OPENAI_API_KEY: LiteLLM API key (converted to GEMINI_API_KEY internally)
  * - OPENAI_BASE_URL: LiteLLM proxy URL (converted to GOOGLE_GEMINI_BASE_URL internally)
- * - BUCKET_NAME: GCS bucket for output storage
- * - PROJECT_ID: GCP project ID
- * - GCS_SERVICE_ACCOUNT_JSON: Service account credentials (JSON string)
+ * - STORAGE_PROVIDER: 'local' | 's3' (default: 's3' in production)
+ * - BUCKET_NAME: S3 bucket for output storage
+ * - AWS_REGION: AWS region (default: 'us-east-2')
  *
  * Note: OPENAI_API_KEY and OPENAI_BASE_URL are automatically converted to
  * GEMINI_API_KEY and GOOGLE_GEMINI_BASE_URL at startup for compatibility.
  *
  * Environment-based feature flags:
  * - ENVIRONMENT: 'development' | 'staging' | 'production' (default: production)
- *   - development: Skips GCS upload and progress tracking
+ *   - development: Skips S3 upload and progress tracking
  *   - staging/production: Full pipeline with uploads and tracking
  */
 
@@ -68,7 +68,6 @@ import { GeminiAdapter } from './adapters/gemini/gemini.adapter.js';
 import { N1ApiAdapter } from './adapters/n1-api/n1-api.adapter.js';
 import { AgenticDoctorUseCase } from './application/use-cases/agentic-doctor.use-case.js';
 import { FetchAndProcessPDFsUseCase } from './application/use-cases/fetch-and-process-pdfs.use-case.js';
-import { GcsStorageAdapter } from './adapters/gcs/gcs-storage.adapter.js';
 import { RetryableError, ValidationError } from './common/exceptions.js';
 import { createStorageAdapterFromEnv } from './adapters/storage/storage.factory.js';
 import { LegacyPaths, ProductionPaths } from './common/storage-paths.js';
@@ -243,7 +242,7 @@ function classifyError(error: Error): ErrorInfo {
     errorMessage.includes('validation') ||
     errorMessage.includes('invalid') ||
     errorMessage.includes('missing required environment variables') ||
-    errorMessage.includes('missing gcs environment variables')
+    errorMessage.includes('missing s3 environment variable')
   ) {
     return {
       exitCode: WorkflowExitCode.VALIDATION_ERROR,
@@ -402,10 +401,9 @@ interface JobConfig {
   prompt: string;
   n1ApiBaseUrl: string;
   n1ApiKey: string;
-  // GCS config - optional in development
+  // S3 config - optional in development
   bucketName?: string;
-  projectId?: string;
-  gcsCredentials?: string;
+  awsRegion?: string;
 }
 
 function validateEnvironment(): JobConfig {
@@ -417,11 +415,10 @@ function validateEnvironment(): JobConfig {
     N1_API_KEY: process.env.N1_API_KEY,
   };
 
-  // GCS fields - only required in staging/production
-  const gcsFields = {
+  // S3 fields - only required in staging/production
+  const s3Fields = {
     BUCKET_NAME: process.env.BUCKET_NAME,
-    PROJECT_ID: process.env.PROJECT_ID,
-    GCS_SERVICE_ACCOUNT_JSON: process.env.GCS_SERVICE_ACCOUNT_JSON,
+    AWS_REGION: process.env.AWS_REGION || 'us-east-2',  // Default region
   };
 
   // Check core required fields
@@ -433,14 +430,17 @@ function validateEnvironment(): JobConfig {
     throw new Error(`Missing required environment variables: ${missingCore.join(', ')}`);
   }
 
-  // Check GCS fields only if uploads are enabled
+  // Check S3 fields only if uploads are enabled
   if (!SKIP_UPLOADS) {
-    const missingGcs = Object.entries(gcsFields)
-      .filter(([_, value]) => !value)
-      .map(([key]) => key);
-
-    if (missingGcs.length > 0) {
-      throw new Error(`Missing GCS environment variables (required for ${ENVIRONMENT}): ${missingGcs.join(', ')}`);
+    const storageProvider = process.env.STORAGE_PROVIDER ?? 'local';
+    if (storageProvider !== 's3') {
+      throw new Error(
+        `STORAGE_PROVIDER must be 's3' for ${ENVIRONMENT} (currently: '${storageProvider}'). ` +
+        `Set STORAGE_PROVIDER=s3 to enable S3 uploads.`
+      );
+    }
+    if (!s3Fields.BUCKET_NAME) {
+      throw new Error(`Missing S3 environment variable BUCKET_NAME (required for ${ENVIRONMENT})`);
     }
   }
 
@@ -453,9 +453,8 @@ function validateEnvironment(): JobConfig {
     // Remove trailing slash to prevent double-slash URLs (e.g., /api//reports/status)
     n1ApiBaseUrl: coreRequired.N1_API_BASE_URL!.replace(/\/+$/, ''),
     n1ApiKey: coreRequired.N1_API_KEY!,
-    bucketName: gcsFields.BUCKET_NAME || undefined,
-    projectId: gcsFields.PROJECT_ID || undefined,
-    gcsCredentials: gcsFields.GCS_SERVICE_ACCOUNT_JSON || undefined,
+    bucketName: s3Fields.BUCKET_NAME || undefined,
+    awsRegion: s3Fields.AWS_REGION || undefined,
   };
 }
 
@@ -483,6 +482,28 @@ async function runJob() {
   } catch (error) {
     const errorInfo = classifyError(error as Error);
     console.error('✗ Environment validation failed:', error);
+
+    // Try to notify failure even without full config (best effort)
+    const partialConfig = {
+      n1ApiBaseUrl: (process.env.N1_API_BASE_URL || '').replace(/\/+$/, ''),
+      n1ApiKey: process.env.N1_API_KEY || '',
+      userId: process.env.USER_ID || '',
+      chrId: process.env.CHR_ID || '',
+    };
+
+    // Only notify if we have the minimum required fields
+    if (partialConfig.n1ApiBaseUrl && partialConfig.n1ApiKey && partialConfig.chrId) {
+      await notifyProgress(
+        partialConfig,
+        'failed',
+        'Environment validation failed',
+        errorInfo.userMessage || (error as Error).message,
+        errorInfo.errorCode
+      );
+    } else {
+      console.error('[Progress] Cannot notify API - missing N1_API_BASE_URL, N1_API_KEY, or CHR_ID');
+    }
+
     process.exit(errorInfo.exitCode);
   }
 
@@ -497,7 +518,10 @@ async function runJob() {
 
     // Create storage adapter based on environment
     const storage = createStorageAdapterFromEnv();
-    console.log('✓ Gemini adapter and storage ready');
+    const storageProvider = process.env.STORAGE_PROVIDER ?? 'local';
+    const bucketName = process.env.BUCKET_NAME ?? '(none)';
+    console.log(`✓ Gemini adapter ready`);
+    console.log(`✓ Storage: provider=${storageProvider}, bucket=${bucketName}`);
     console.log('');
 
     // Step 2: Initialize Agentic Doctor with storage
@@ -589,7 +613,15 @@ async function runJob() {
       const prodPath = ProductionPaths.userChr(config.userId, config.chrId, `${filename}.html`);
 
       // Write to production path
+      console.log(`  Writing to: ${prodPath}`);
       await storage.writeFile(prodPath, htmlContent, 'text/html');
+
+      // Verify the file was written successfully
+      const writeVerified = await storage.exists(prodPath);
+      if (!writeVerified) {
+        throw new Error(`Failed to verify write to S3: ${prodPath}`);
+      }
+      console.log(`  ✓ Write verified`);
 
       // Get signed URL for access
       publicUrl = await storage.getSignedUrl(prodPath);
