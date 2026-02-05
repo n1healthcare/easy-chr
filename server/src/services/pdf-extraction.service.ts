@@ -20,6 +20,8 @@ import {
   createGoogleGenAI,
   type BillingContext,
 } from '../utils/genai-factory.js';
+import type { StoragePort } from '../application/ports/storage.port.js';
+import { LegacyPaths } from '../common/storage-paths.js';
 
 // ============================================================================
 // Skill Loader
@@ -95,8 +97,10 @@ export class PDFExtractionService {
   private genai: GoogleGenAI;
   private model: string;
   private extractionPrompt: string;
+  private storage: StoragePort;
 
-  constructor(billingContext?: BillingContext) {
+  constructor(storage: StoragePort, billingContext?: BillingContext) {
+    this.storage = storage;
     this.genai = createGoogleGenAI(billingContext);
     this.model = REALM_CONFIG.models.markdown;
     this.extractionPrompt = loadPdfExtractorSkill();
@@ -106,34 +110,31 @@ export class PDFExtractionService {
   /**
    * Extract content from multiple PDFs and save to a single extracted.md file
    *
-   * INCREMENTAL WRITING: Content is appended to the file as each page completes,
-   * so progress is preserved even if extraction crashes mid-way.
+   * BUFFERED WRITING: Content is collected in memory and written once at the end.
+   * This is optimized for cloud storage (S3/GCS) which doesn't support efficient appends.
    *
    * @param pdfPaths - Array of PDF file paths to process
-   * @param outputDir - Directory to save the extracted.md file
    * @returns AsyncGenerator yielding progress events
    */
   async *extractPDFs(
-    pdfPaths: string[],
-    outputDir: string
+    pdfPaths: string[]
   ): AsyncGenerator<PDFExtractionEvent, string, unknown> {
     const timestamp = new Date().toISOString();
     const fileNames = pdfPaths.map(p => path.basename(p));
 
-    // Ensure output directory exists
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
-
-    const outputPath = path.join(outputDir, 'extracted.md');
+    // Ensure storage is ready
+    await this.storage.ensureDir('');
 
     yield {
       type: 'log',
       data: { message: `Starting extraction of ${pdfPaths.length} PDF(s)...` }
     };
 
-    // Write header immediately
-    await this.writeHeader(outputPath, timestamp, fileNames);
+    // Buffer all content in memory for cloud storage compatibility
+    const contentBuffer: string[] = [];
+
+    // Add header
+    contentBuffer.push(this.buildHeader(timestamp, fileNames));
 
     let totalPagesExtracted = 0;
     let successCount = 0;
@@ -148,11 +149,11 @@ export class PDFExtractionService {
       };
 
       try {
-        // Get page results for this PDF and write incrementally
+        // Get page results for this PDF
         for await (const event of this.extractSinglePDF(pdfPath)) {
           if (event.type === 'page_complete' && event.data.result) {
-            // Write this page immediately to the file
-            await this.appendPageContent(outputPath, event.data.result);
+            // Buffer this page's content
+            contentBuffer.push(this.formatPageContent(event.data.result));
             totalPagesExtracted++;
             if (event.data.result.success) {
               successCount++;
@@ -179,12 +180,8 @@ export class PDFExtractionService {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
 
-        // Write error note to file so we know extraction failed for this file
-        await fs.promises.appendFile(
-          outputPath,
-          `\n<!-- ERROR: Failed to process ${fileName}: ${errorMessage} -->\n\n`,
-          'utf-8'
-        );
+        // Add error note to buffer
+        contentBuffer.push(`\n<!-- ERROR: Failed to process ${fileName}: ${errorMessage} -->\n\n`);
 
         yield {
           type: 'error',
@@ -197,15 +194,20 @@ export class PDFExtractionService {
       }
     }
 
-    // Write footer with final stats
-    await this.writeFooter(outputPath, totalPagesExtracted, successCount);
+    // Add footer with final stats
+    contentBuffer.push(this.buildFooter(totalPagesExtracted, successCount));
+
+    // Write all content at once to storage
+    const fullContent = contentBuffer.join('');
+    await this.storage.writeFile(LegacyPaths.extracted, fullContent);
+    console.log(`[PDFExtraction] Wrote ${fullContent.length} chars to ${LegacyPaths.extracted}`);
 
     yield {
       type: 'log',
-      data: { message: `Extraction complete. Output: ${outputPath}` }
+      data: { message: `Extraction complete. Output: ${LegacyPaths.extracted}` }
     };
 
-    return outputPath;
+    return LegacyPaths.extracted;
   }
 
   /**
@@ -355,62 +357,37 @@ export class PDFExtractionService {
   }
 
   /**
-   * Write the header to the extracted.md file (overwrites if exists)
+   * Build the header content for extracted.md
    */
-  private async writeHeader(
-    outputPath: string,
-    timestamp: string,
-    fileNames: string[]
-  ): Promise<void> {
+  private buildHeader(timestamp: string, fileNames: string[]): string {
     let header = '';
     header += `<!-- START EXTRACTION -->\n`;
     header += `<!-- Extraction Date: ${timestamp} -->\n`;
     header += `<!-- Files Processed: ${fileNames.join(', ')} -->\n`;
-    header += `<!-- Note: Content is written incrementally as pages are extracted -->\n\n`;
+    header += `<!-- Note: Content is buffered and written in a single operation -->\n\n`;
     header += `---\n\n`;
-
-    // Write (overwrite) the file with the header
-    await fs.promises.writeFile(outputPath, header, 'utf-8');
-    console.log(`[PDFExtraction] Header written to: ${outputPath}`);
+    return header;
   }
 
   /**
-   * Append a single page's content to the extracted.md file
+   * Format a single page's content
    */
-  private async appendPageContent(
-    outputPath: string,
-    result: PageExtractionResult
-  ): Promise<void> {
+  private formatPageContent(result: PageExtractionResult): string {
     let content = '';
     content += `## [${result.fileName}] - Page ${result.pageNumber}\n\n`;
     content += result.markdown.trim();
     content += '\n\n---\n\n';
-
-    await fs.promises.appendFile(outputPath, content, 'utf-8');
-    console.log(`[PDFExtraction] Appended page ${result.pageNumber} from ${result.fileName}`);
+    return content;
   }
 
   /**
-   * Write the footer with final stats to the extracted.md file
+   * Build the footer content with final stats
    */
-  private async writeFooter(
-    outputPath: string,
-    totalPages: number,
-    successCount: number
-  ): Promise<void> {
+  private buildFooter(totalPages: number, successCount: number): string {
     let footer = '';
     footer += `<!-- END EXTRACTION -->\n`;
     footer += `<!-- Total Pages: ${totalPages} | Successful: ${successCount} -->\n`;
     footer += `<!-- Extraction completed at: ${new Date().toISOString()} -->\n`;
-
-    await fs.promises.appendFile(outputPath, footer, 'utf-8');
-    console.log(`[PDFExtraction] Footer written. Total: ${totalPages} pages, ${successCount} successful`);
-  }
-
-  /**
-   * Utility delay function
-   */
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return footer;
   }
 }
