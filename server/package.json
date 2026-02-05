@@ -27,6 +27,9 @@
   },
   "dependencies": {
     "@a2a-js/sdk": "^0.3.7",
+    "@aws-sdk/client-s3": "^3.983.0",
+    "@aws-sdk/lib-storage": "^3.983.0",
+    "@aws-sdk/s3-request-presigner": "^3.983.0",
     "@fastify/cors": "^11.2.0",
     "@fastify/multipart": "^9.3.0",
     "@fastify/static": "^9.0.0",

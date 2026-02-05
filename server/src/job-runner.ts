@@ -70,6 +70,9 @@ import { AgenticDoctorUseCase } from './application/use-cases/agentic-doctor.use
 import { FetchAndProcessPDFsUseCase } from './application/use-cases/fetch-and-process-pdfs.use-case.js';
 import { GcsStorageAdapter } from './adapters/gcs/gcs-storage.adapter.js';
 import { RetryableError, ValidationError } from './common/exceptions.js';
+import { createStorageAdapterFromEnv } from './adapters/storage/storage.factory.js';
+import { LegacyPaths, ProductionPaths } from './common/storage-paths.js';
+import type { StoragePort } from './application/ports/storage.port.js';
 import path from 'path';
 import fs from 'fs';
 
@@ -486,17 +489,20 @@ async function runJob() {
   let realmPath: string | null = null;
 
   try {
-    // Step 1: Initialize Gemini adapter
+    // Step 1: Initialize Gemini adapter and storage
     await notifyProgress(config, 'initializing', `Setting up AI pipeline for report id ${config.chrId}`);
-    console.log('[1/5] Initializing Gemini adapter...');
+    console.log('[1/5] Initializing Gemini adapter and storage...');
     const geminiAdapter = new GeminiAdapter();
     await geminiAdapter.initialize();
-    console.log('✓ Gemini adapter ready');
+
+    // Create storage adapter based on environment
+    const storage = createStorageAdapterFromEnv();
+    console.log('✓ Gemini adapter and storage ready');
     console.log('');
 
-    // Step 2: Initialize Agentic Doctor
+    // Step 2: Initialize Agentic Doctor with storage
     console.log('[2/5] Initializing Agentic Doctor pipeline...');
-    const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter);
+    const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter, storage);
     agenticDoctorUseCase.setBillingContext({
       userId: config.userId,
       chrId: config.chrId,
@@ -553,40 +559,43 @@ async function runJob() {
     console.log('✓ Processing complete');
     console.log('');
 
-    // Extract the full path to the HTML file
+    // Extract realm ID from path and read HTML from storage
     // realmPath format: "/realms/<uuid>/index.html"
-    const realmDir = path.join(process.cwd(), 'storage', 'realms', path.dirname(realmPath.replace('/realms/', '')));
-    const htmlFilePath = path.join(realmDir, 'index.html');
+    const realmId = realmPath.replace('/realms/', '').replace('/index.html', '');
+    const storagePath = LegacyPaths.realm(realmId);
 
-    if (!fs.existsSync(htmlFilePath)) {
-      throw new Error(`Generated HTML not found at: ${htmlFilePath}`);
+    // Check if HTML exists in storage
+    const htmlExists = await storage.exists(storagePath);
+    if (!htmlExists) {
+      throw new Error(`Generated HTML not found at: ${storagePath}`);
     }
 
-    let publicUrl = htmlFilePath; // Default to local path
+    let publicUrl = storagePath; // Default to storage path
 
-    // Step 5: Upload to GCS (skip in development)
+    // Step 5: Upload to production path and get signed URL (skip in development)
     if (SKIP_UPLOADS) {
-      console.log('[5/5] Skipping GCS upload (ENVIRONMENT=development)');
-      console.log(`  Local file: ${htmlFilePath}`);
+      console.log('[5/5] Skipping production upload (ENVIRONMENT=development)');
+      console.log(`  Storage path: ${storagePath}`);
     } else {
       await notifyProgress(config, 'uploading');
-      console.log('[5/5] Uploading result to Google Cloud Storage...');
-      const gcsAdapter = new GcsStorageAdapter(
-        config.bucketName!,
-        config.projectId!,
-        config.gcsCredentials!
-      );
+      console.log('[5/5] Copying to production path and generating signed URL...');
 
-      const htmlContent = fs.readFileSync(htmlFilePath, 'utf-8');
+      // Read HTML from working storage
+      const htmlContent = await storage.readFileAsString(storagePath);
 
-      // Build path: users/{userId}/chr/{chrId}/{filename}.html
-      // Strip any existing extension (e.g., .pdf, .html) from chrFilename before adding .html
+      // Build production path: users/{userId}/chr/{chrId}/{filename}.html
       const rawFilename = config.chrFilename || 'report';
       const filename = path.basename(rawFilename, path.extname(rawFilename)) || 'report';
-      const gcsPath = `users/${config.userId}/chr/${config.chrId}/${filename}.html`;
-      publicUrl = await gcsAdapter.uploadHtml(htmlContent, gcsPath);
+      const prodPath = ProductionPaths.userChr(config.userId, config.chrId, `${filename}.html`);
 
-      console.log(`✓ Uploaded to GCS: ${publicUrl}`);
+      // Write to production path
+      await storage.writeFile(prodPath, htmlContent, 'text/html');
+
+      // Get signed URL for access
+      publicUrl = await storage.getSignedUrl(prodPath);
+
+      console.log(`✓ Uploaded to production: ${prodPath}`);
+      console.log(`✓ Signed URL: ${publicUrl.substring(0, 80)}...`);
     }
     console.log('');
 

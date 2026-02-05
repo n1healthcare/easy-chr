@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { createServer } from './adapters/http/server.js';
+import { createStorageAdapterFromEnv } from './adapters/storage/storage.factory.js';
 
 dotenv.config();
 
@@ -25,7 +26,12 @@ if (process.env.OPENAI_BASE_URL) {
 
 const start = async () => {
   try {
-    const server = await createServer();
+    // Initialize storage adapter based on environment
+    const storage = createStorageAdapterFromEnv();
+    const provider = process.env.STORAGE_PROVIDER ?? 'local';
+    console.log(`Storage provider: ${provider}`);
+
+    const server = await createServer(storage);
     const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
     await server.listen({ port, host: '0.0.0.0' });
     console.log(`Server listening on port ${port}`);

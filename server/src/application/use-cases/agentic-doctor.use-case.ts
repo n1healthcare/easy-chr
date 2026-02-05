@@ -18,6 +18,8 @@ import path from 'path';
 import fs from 'fs';
 
 import { LLMClientPort } from '../ports/llm-client.port.js';
+import type { StoragePort } from '../ports/storage.port.js';
+import { LegacyPaths } from '../../common/storage-paths.js';
 import { readFileWithEncoding } from '../../../vendor/gemini-cli/packages/core/src/utils/fileUtils.js';
 import { PDFExtractionService } from '../../services/pdf-extraction.service.js';
 import { AgenticMedicalAnalyst, type AnalystEvent } from '../../services/agentic-medical-analyst.service.js';
@@ -129,7 +131,10 @@ function cleanupJson(content: string): string {
 export class AgenticDoctorUseCase {
   private billingContext?: BillingContext;
 
-  constructor(private readonly llmClient: LLMClientPort) {}
+  constructor(
+    private readonly llmClient: LLMClientPort,
+    private readonly storage: StoragePort
+  ) {}
 
   /**
    * Set billing context for LiteLLM cost tracking.
@@ -148,12 +153,9 @@ export class AgenticDoctorUseCase {
     uploadedFilePaths: string[],
   ): AsyncGenerator<RealmGenerationEvent, void, unknown> {
     const sessionId = uuidv4();
-    const storageDir = path.join(process.cwd(), 'storage');
 
     // Ensure storage directory exists
-    if (!fs.existsSync(storageDir)) {
-      fs.mkdirSync(storageDir, { recursive: true });
-    }
+    await this.storage.ensureDir('');
 
     console.log(`[AgenticDoctor] Session ${sessionId}: Processing ${uploadedFilePaths.length} files...`);
     console.log(`[AgenticDoctor] User prompt: "${prompt ? prompt.substring(0, 100) : '(empty)'}"${prompt && prompt.length > 100 ? '...' : ''}`);
@@ -185,10 +187,10 @@ export class AgenticDoctorUseCase {
     if (pdfFiles.length > 0) {
       yield { type: 'log', message: `Extracting ${pdfFiles.length} PDF(s) using Gemini Vision...` };
 
-      const pdfExtractor = new PDFExtractionService(this.billingContext);
+      const pdfExtractor = new PDFExtractionService(this.storage, this.billingContext);
 
       try {
-        for await (const event of pdfExtractor.extractPDFs(pdfFiles, storageDir)) {
+        for await (const event of pdfExtractor.extractPDFs(pdfFiles)) {
           if (event.type === 'log' || event.type === 'progress') {
             yield { type: 'log', message: event.data.message || '' };
           } else if (event.type === 'page_complete') {
@@ -201,9 +203,8 @@ export class AgenticDoctorUseCase {
           }
         }
 
-        const extractedPath = path.join(storageDir, 'extracted.md');
-        if (fs.existsSync(extractedPath)) {
-          allExtractedContent = await fs.promises.readFile(extractedPath, 'utf-8');
+        if (await this.storage.exists(LegacyPaths.extracted)) {
+          allExtractedContent = await this.storage.readFileAsString(LegacyPaths.extracted);
           console.log(`[AgenticDoctor] PDF extraction complete: ${allExtractedContent.length} chars`);
           yield { type: 'log', message: `PDF extraction complete (${pdfFiles.length} files)` };
         } else {
@@ -252,8 +253,7 @@ export class AgenticDoctorUseCase {
     }
 
     // Save final extracted.md
-    const extractedPath = path.join(storageDir, 'extracted.md');
-    await fs.promises.writeFile(extractedPath, allExtractedContent, 'utf-8');
+    await this.storage.writeFile(LegacyPaths.extracted, allExtractedContent);
 
     yield { type: 'step', name: 'Document Extraction', status: 'completed' };
 
@@ -264,7 +264,7 @@ export class AgenticDoctorUseCase {
     }
 
     console.log(`[AgenticDoctor] Total extracted content: ${allExtractedContent.length} chars`);
-    yield { type: 'log', message: `Extraction complete. Output: ${extractedPath}` };
+    yield { type: 'log', message: `Extraction complete. Output: ${LegacyPaths.extracted}` };
 
     // ========================================================================
     // Phase 2: Agentic Medical Analysis
@@ -275,7 +275,6 @@ export class AgenticDoctorUseCase {
     yield { type: 'step', name: 'Medical Analysis', status: 'running' };
     yield { type: 'log', message: 'Starting agentic medical analysis...' };
 
-    const analysisPath = path.join(storageDir, 'analysis.md');
     let analysisContent = '';
 
     try {
@@ -344,7 +343,7 @@ export class AgenticDoctorUseCase {
         throw new Error('Agentic analysis produced no content');
       }
 
-      await fs.promises.writeFile(analysisPath, analysisContent, 'utf-8');
+      await this.storage.writeFile(LegacyPaths.analysis, analysisContent);
       console.log(`[AgenticDoctor] Agentic analysis complete: ${analysisContent.length} chars`);
 
       yield { type: 'log', message: `Medical analysis complete (${analysisContent.length} chars)` };
@@ -355,7 +354,7 @@ export class AgenticDoctorUseCase {
       console.error('[AgenticDoctor] Agentic analysis failed:', errorMessage);
       yield { type: 'log', message: `Medical analysis failed: ${errorMessage}` };
       yield { type: 'step', name: 'Medical Analysis', status: 'failed' };
-      yield { type: 'result', url: extractedPath };
+      yield { type: 'result', url: LegacyPaths.extracted };
       return;
     }
 
@@ -366,7 +365,6 @@ export class AgenticDoctorUseCase {
     yield { type: 'step', name: 'Cross-System Analysis', status: 'running' };
     yield { type: 'log', message: 'Analyzing cross-system connections...' };
 
-    const crossSystemsPath = path.join(storageDir, 'cross_systems.md');
     let crossSystemsContent = '';
 
     try {
@@ -404,7 +402,7 @@ ${analysisContent}
       // Strip thinking text
       crossSystemsContent = stripThinkingText(crossSystemsContent, /^#\s+.+$/m);
 
-      await fs.promises.writeFile(crossSystemsPath, crossSystemsContent, 'utf-8');
+      await this.storage.writeFile(LegacyPaths.crossSystems, crossSystemsContent);
       console.log(`[AgenticDoctor] Cross-system analysis: ${crossSystemsContent.length} chars`);
 
       yield { type: 'log', message: 'Cross-system analysis complete.' };
@@ -426,7 +424,6 @@ ${analysisContent}
     yield { type: 'step', name: 'Research', status: 'running' };
     yield { type: 'log', message: 'Validating claims with external sources...' };
 
-    const researchPath = path.join(storageDir, 'research.json');
     let researchOutput: ResearchOutput = { researchedClaims: [], unsupportedClaims: [], additionalFindings: [] };
     let researchMarkdown = '';
 
@@ -475,7 +472,7 @@ ${analysisContent}
         researchMarkdown = formatResearchAsMarkdown(researchOutput);
 
         // Save research output
-        await fs.promises.writeFile(researchPath, JSON.stringify(researchOutput, null, 2), 'utf-8');
+        await this.storage.writeFile(LegacyPaths.research, JSON.stringify(researchOutput, null, 2));
         console.log(`[AgenticDoctor] Research complete: ${researchOutput.researchedClaims.length} claims verified`);
 
         yield { type: 'log', message: `Research complete: ${researchOutput.researchedClaims.length} claims verified, ${researchOutput.unsupportedClaims.length} unsupported` };
@@ -502,7 +499,6 @@ ${analysisContent}
     yield { type: 'step', name: 'Data Structuring', status: 'running' };
     yield { type: 'log', message: 'Extracting structured data for visualizations...' };
 
-    const structuredDataPath = path.join(storageDir, 'structured_data.json');
     let structuredDataContent = '';
 
     try {
@@ -589,7 +585,7 @@ ${researchMarkdown}
         }
       }
 
-      await fs.promises.writeFile(structuredDataPath, structuredDataContent, 'utf-8');
+      await this.storage.writeFile(LegacyPaths.structuredData, structuredDataContent);
 
       yield { type: 'log', message: 'Data structuring complete.' };
       yield { type: 'step', name: 'Data Structuring', status: 'completed' };
@@ -627,7 +623,6 @@ ${researchMarkdown}
     yield { type: 'step', name: 'Validation', status: 'running' };
     yield { type: 'log', message: 'Validating structured data completeness...' };
 
-    const validationPath = path.join(storageDir, 'validation.md');
     const MAX_CORRECTION_CYCLES = 1;
     let correctionCycle = 0;
     let validationPassed = false;
@@ -677,7 +672,7 @@ ${structuredDataContent}
         // Strip thinking text
         validationContent = stripThinkingText(validationContent, /^#\s+.+$/m);
 
-        await fs.promises.writeFile(validationPath, validationContent, 'utf-8');
+        await this.storage.writeFile(LegacyPaths.validation, validationContent);
         console.log(`[AgenticDoctor] Validation report (cycle ${correctionCycle}): ${validationContent.length} chars`);
 
         // Check if validation passed or needs revision
@@ -748,7 +743,7 @@ Output the CORRECTED JSON now (starting with \`{\`):`;
                 JSON.parse(correctedContent);
                 // Update structuredDataContent with corrected version
                 structuredDataContent = correctedContent;
-                await fs.promises.writeFile(structuredDataPath, structuredDataContent, 'utf-8');
+                await this.storage.writeFile(LegacyPaths.structuredData, structuredDataContent);
                 console.log(`[AgenticDoctor] Corrected structured data: ${structuredDataContent.length} chars`);
                 yield { type: 'log', message: 'Structured data corrected. Re-validating...' };
               } catch {
@@ -792,13 +787,10 @@ Output the CORRECTED JSON now (starting with \`{\`):`;
     yield { type: 'log', message: 'Building your Health Realm...' };
 
     const realmId = sessionId;
-    const realmDir = path.join(storageDir, 'realms', realmId);
-    const htmlPath = path.join(realmDir, 'index.html');
+    const realmPath = LegacyPaths.realm(realmId);
 
     // Ensure realm directory exists
-    if (!fs.existsSync(realmDir)) {
-      fs.mkdirSync(realmDir, { recursive: true });
-    }
+    await this.storage.ensureDir(LegacyPaths.realmDir(realmId));
 
     try {
       const htmlSkill = loadHTMLBuilderSkill();
@@ -859,7 +851,7 @@ ${structuredDataContent}
       htmlContent = htmlContent.trim();
 
       // Write HTML to file
-      await fs.promises.writeFile(htmlPath, htmlContent, 'utf-8');
+      await this.storage.writeFile(realmPath, htmlContent, 'text/html');
       console.log(`[AgenticDoctor] HTML Realm: ${htmlContent.length} chars`);
 
       yield { type: 'log', message: 'Initial HTML generation complete.' };
@@ -872,7 +864,6 @@ ${structuredDataContent}
       yield { type: 'step', name: 'Content Review', status: 'running' };
       yield { type: 'log', message: 'Reviewing HTML for completeness...' };
 
-      const contentReviewPath = path.join(storageDir, 'content_review.json');
       let contentReviewResult: {
         user_question_addressed?: {
           passed: boolean;
@@ -980,7 +971,7 @@ ${htmlContent}
         // Parse and save
         try {
           contentReviewResult = JSON.parse(reviewContent);
-          await fs.promises.writeFile(contentReviewPath, JSON.stringify(contentReviewResult, null, 2), 'utf-8');
+          await this.storage.writeFile(LegacyPaths.contentReview, JSON.stringify(contentReviewResult, null, 2));
           console.log(`[AgenticDoctor] Content review: passed=${contentReviewResult.overall.passed}, action=${contentReviewResult.overall.action}`);
         } catch (jsonError) {
           console.warn('[AgenticDoctor] Content review JSON parse failed, assuming pass');
@@ -1138,7 +1129,7 @@ ${structuredDataContent}
             // Validate it's valid HTML
             if (regenHtml.includes('<!DOCTYPE') && regenHtml.includes('</html>')) {
               htmlContent = regenHtml;
-              await fs.promises.writeFile(htmlPath, htmlContent, 'utf-8');
+              await this.storage.writeFile(realmPath, htmlContent, 'text/html');
               console.log(`[AgenticDoctor] Regenerated HTML: ${htmlContent.length} chars`);
               yield { type: 'log', message: 'HTML regenerated with fixes.' };
             } else {
