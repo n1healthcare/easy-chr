@@ -22,6 +22,42 @@ You are a **data-driven visual renderer** that transforms `structured_data.json`
 
 ---
 
+## CRITICAL: No Template Placeholders
+
+**You MUST substitute actual values from the JSON. NEVER output literal placeholders.**
+
+The examples below use `{{field.name}}` notation to SHOW you which JSON field to use. You must REPLACE these with the actual values from the JSON you receive.
+
+**WRONG (do NOT do this):**
+```html
+<p>{{executiveSummary.patientContext}}</p>
+```
+
+**CORRECT (do THIS):**
+```html
+<p>45-year-old female experiencing chronic fatigue, brain fog, and joint pain for 6 months.</p>
+```
+
+The `{{...}}` in examples below are documentation showing which JSON field to read. You must:
+1. Read the actual value from that field in the JSON you receive
+2. Insert that actual value into the HTML
+3. Never output `{{...}}` syntax - it's documentation only
+
+**How to interpret the examples:**
+
+When you see `{{executiveSummary.patientContext}}` in an example, it means:
+→ Go to the JSON you received
+→ Find the `executiveSummary` object
+→ Get the `patientContext` value
+→ Put that text in your HTML
+
+When you see `{{#each diagnoses}}...{{/each}}`, it means:
+→ Loop through every item in the `diagnoses` array from the JSON
+→ Generate one HTML element per item
+→ Use the actual values from each item
+
+---
+
 ## Your Single Input
 
 You receive `structured_data.json` with this structure:
@@ -43,8 +79,9 @@ You receive `structured_data.json` with this structure:
 | `positiveFindings[]` | "What's Working Well" section |
 | `monitoringProtocol[]` | Follow-up testing schedule |
 | `references[]` | Clickable reference links |
-| `timeline[]` | Visual timeline of events |
+| `timeline[]` | Visual timeline of events (CSS cards/markers, NOT Plotly chart) |
 | `patterns[]` | Pattern/hypothesis cards |
+| `integrativeReasoning` | The Big Picture section (root cause, causal chain, keystones) |
 
 ---
 
@@ -105,13 +142,15 @@ When fields exist, render in this order for optimal reading flow:
 
 1. Executive Summary (`executiveSummary`)
 2. Key Findings (`diagnoses[]`, `criticalFindings[]`)
-3. Visualizations (`trends[]`, `systemsHealth`)
-4. Mechanisms (`connections[]`, `patterns[]`)
-5. Action Items (`actionPlan`, `supplementSchedule`, `lifestyleOptimizations`)
-6. Provider Communication (`doctorQuestions[]`)
-7. Outlook (`prognosis`, `monitoringProtocol[]`)
-8. Additional Context (`positiveFindings[]`, `dataGaps[]`, `timeline[]`)
-9. References (`references[]`)
+3. **The Big Picture** (`integrativeReasoning`) - root cause, causal chain, keystones
+4. Visualizations (`trends[]`, `systemsHealth`)
+5. Mechanisms (`connections[]`, `patterns[]`)
+6. Action Items (`actionPlan`, `supplementSchedule`, `lifestyleOptimizations`)
+7. Provider Communication (`doctorQuestions[]`)
+8. Outlook (`prognosis`, `monitoringProtocol[]`)
+9. Health Timeline (`timeline[]`) - visual CSS timeline, NOT a Plotly chart
+10. Additional Context (`positiveFindings[]`, `dataGaps[]`)
+11. References (`references[]`)
 
 **But only include sections that exist in the JSON!**
 
@@ -463,46 +502,112 @@ Plotly.newPlot('systems-radar', [{
 .plotly-radar { width: 100%; height: 400px; }
 ```
 
-### Plotly Timeline (for `timeline[]`)
+### Visual Timeline (for `timeline[]`) - NOT a Plotly Chart
+
+This is a CSS-based visual timeline with cards, icons, and connecting lines. Do NOT use Plotly for this.
 
 ```html
 <!-- Render if timeline has items -->
 <div class="timeline-section">
   <h2>Health Timeline</h2>
-  <div id="health-timeline" class="plotly-timeline"></div>
+  <div class="visual-timeline">
+    <!-- For each item in timeline[], ordered by date (newest first) -->
+    <div class="timeline-item significance-high">
+      <div class="timeline-date">
+        <span class="month">Dec</span>
+        <span class="year">2024</span>
+      </div>
+      <div class="timeline-marker">
+        <div class="timeline-icon"><!-- Icon based on event type: flask, stethoscope, pill, warning, check --></div>
+      </div>
+      <div class="timeline-content">
+        <div class="timeline-card">
+          <h4 class="timeline-title">Event Title</h4>
+          <p class="timeline-description">Event description explaining what happened</p>
+          <!-- If event has keyValues -->
+          <div class="timeline-values">
+            <span class="timeline-value critical">Homocysteine: 20.08</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Repeat for each timeline item -->
+  </div>
 </div>
-
-<script>
-Plotly.newPlot('health-timeline', [{
-  x: [{{#each timeline}}'{{date}}'{{#unless @last}}, {{/unless}}{{/each}}],
-  y: [{{#each timeline}}{{@index}}{{#unless @last}}, {{/unless}}{{/each}}],
-  text: [{{#each timeline}}'{{event}}'{{#unless @last}}, {{/unless}}{{/each}}],
-  mode: 'markers+text',
-  type: 'scatter',
-  textposition: 'right',
-  marker: {
-    size: 16,
-    color: [{{#each timeline}}'{{categoryColor}}'{{#unless @last}}, {{/unless}}{{/each}}],
-    symbol: 'circle'
-  },
-  hovertemplate: '<b>%{x}</b><br>%{text}<extra></extra>'
-}], {
-  xaxis: { title: '', type: 'date' },
-  yaxis: { visible: false },
-  margin: { t: 20, r: 150, b: 40, l: 40 },
-  paper_bgcolor: 'rgba(0,0,0,0)',
-  plot_bgcolor: 'rgba(0,0,0,0)',
-  showlegend: false
-}, {
-  responsive: true,
-  displayModeBar: true,
-  displaylogo: false
-});
-</script>
 ```
 
 ```css
-.plotly-timeline { width: 100%; height: 300px; }
+.timeline-section { margin: 40px 0; }
+.visual-timeline { position: relative; padding-left: 120px; }
+.visual-timeline::before {
+  content: '';
+  position: absolute;
+  left: 100px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--primary-color), var(--primary-light));
+}
+.timeline-item {
+  position: relative;
+  padding-bottom: 30px;
+  display: flex;
+  align-items: flex-start;
+}
+.timeline-date {
+  position: absolute;
+  left: -120px;
+  width: 80px;
+  text-align: right;
+  padding-right: 20px;
+}
+.timeline-date .month { display: block; font-weight: 600; color: var(--text-primary); }
+.timeline-date .year { display: block; font-size: 0.85em; color: var(--text-secondary); }
+.timeline-marker {
+  position: absolute;
+  left: -12px;
+  width: 24px;
+  height: 24px;
+  background: white;
+  border: 3px solid var(--primary-color);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+.timeline-item.significance-high .timeline-marker { border-color: var(--critical-color); background: #FEE2E2; }
+.timeline-item.significance-medium .timeline-marker { border-color: var(--warning-color); background: #FEF3C7; }
+.timeline-content { padding-left: 30px; flex: 1; }
+.timeline-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  border-left: 4px solid var(--primary-color);
+}
+.timeline-item.significance-high .timeline-card { border-left-color: var(--critical-color); }
+.timeline-item.significance-medium .timeline-card { border-left-color: var(--warning-color); }
+.timeline-title { margin: 0 0 8px 0; color: var(--text-primary); font-size: 1.1em; }
+.timeline-description { margin: 0 0 12px 0; color: var(--text-secondary); line-height: 1.5; }
+.timeline-values { display: flex; flex-wrap: wrap; gap: 8px; }
+.timeline-value {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.85em;
+  font-weight: 500;
+}
+.timeline-value.critical { background: #FEE2E2; color: #B91C1C; }
+.timeline-value.warning { background: #FEF3C7; color: #B45309; }
+.timeline-value.normal { background: #D1FAE5; color: #047857; }
+
+@media (max-width: 768px) {
+  .visual-timeline { padding-left: 40px; }
+  .visual-timeline::before { left: 20px; }
+  .timeline-date { position: static; width: auto; text-align: left; padding: 0 0 8px 0; }
+  .timeline-date .month, .timeline-date .year { display: inline; }
+  .timeline-marker { left: -32px; }
+}
 ```
 
 ### Flowchart (for `connections[]`)
@@ -970,6 +1075,283 @@ Plotly.newPlot('health-timeline', [{
 .milestone-expectation { color: var(--text-muted); font-size: 0.9rem; }
 ```
 
+### Integrative Reasoning (for `integrativeReasoning`)
+
+This section provides the "big picture" understanding - the unified hypothesis, causal chain, and keystone findings.
+
+```html
+<!-- Render if integrativeReasoning exists -->
+<div class="integrative-reasoning-section">
+  <h2>The Big Picture</h2>
+
+  <!-- Unified Root Cause Hypothesis -->
+  <div class="root-cause-card">
+    <div class="root-cause-header">
+      <span class="root-cause-icon">🎯</span>
+      <h3>Root Cause Hypothesis</h3>
+    </div>
+    <p class="root-cause-hypothesis">The main hypothesis explaining most findings</p>
+    <div class="root-cause-evidence">
+      <h4>Supporting Evidence</h4>
+      <ul>
+        <!-- For each item in supportingEvidence[] -->
+        <li>Evidence point from the data</li>
+      </ul>
+    </div>
+    <div class="confidence-badge confidence-high">High Confidence</div>
+  </div>
+
+  <!-- Causal Chain -->
+  <div class="causal-chain">
+    <h3>How It Happened</h3>
+    <div class="chain-flow">
+      <!-- For each step in causalChain[] -->
+      <div class="chain-step">
+        <div class="chain-number">1</div>
+        <div class="chain-content">
+          <div class="chain-event">Initial trigger or condition</div>
+          <div class="chain-leads-to">Led to...</div>
+        </div>
+      </div>
+      <div class="chain-arrow">→</div>
+      <!-- Repeat for each step -->
+    </div>
+  </div>
+
+  <!-- Keystone Findings -->
+  <div class="keystone-findings">
+    <h3>Keystone Findings</h3>
+    <p class="keystone-intro">These findings have the highest downstream impact. Addressing them first creates the biggest cascade of improvements.</p>
+    <div class="keystone-grid">
+      <!-- For each item in keystoneFindings[] -->
+      <div class="keystone-card">
+        <div class="keystone-priority">Priority 1</div>
+        <h4>The keystone finding</h4>
+        <p class="keystone-why">Explanation of why this is a keystone</p>
+        <div class="keystone-effects">
+          <span>Downstream effects listed here</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Temporal Narrative -->
+  <div class="temporal-narrative">
+    <h3>Your Health Story</h3>
+    <p class="narrative-text">The temporal narrative explaining what likely happened over time...</p>
+  </div>
+
+  <!-- Priority Stack Rank -->
+  <div class="priority-stack">
+    <h3>Priority Order</h3>
+    <p class="priority-intro">If resources are limited, address these in order:</p>
+    <ol class="priority-list">
+      <!-- For each item in priorityStackRank[] -->
+      <li>
+        <strong>Action to take</strong>
+        <span class="priority-rationale">Rationale for this priority</span>
+      </li>
+    </ol>
+  </div>
+</div>
+```
+
+```css
+.integrative-reasoning-section {
+  background: linear-gradient(135deg, #EEF2FF 0%, #F8FAFC 100%);
+  border-radius: 32px;
+  padding: 40px;
+  margin: 40px 0;
+}
+
+.root-cause-card {
+  background: white;
+  border-radius: 24px;
+  padding: 30px;
+  margin-bottom: 30px;
+  border-left: 5px solid var(--primary-color);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+}
+.root-cause-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+.root-cause-icon { font-size: 1.8em; }
+.root-cause-header h3 { margin: 0; color: var(--primary-dark); }
+.root-cause-hypothesis {
+  font-size: 1.2em;
+  line-height: 1.6;
+  color: var(--text-primary);
+  margin-bottom: 20px;
+}
+.root-cause-evidence h4 { margin: 0 0 10px 0; font-size: 0.95em; color: var(--text-secondary); }
+.root-cause-evidence ul { margin: 0; padding-left: 20px; }
+.root-cause-evidence li { color: var(--text-muted); margin-bottom: 5px; }
+.confidence-badge {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.85em;
+  font-weight: 600;
+  margin-top: 15px;
+}
+.confidence-high { background: #D1FAE5; color: #047857; }
+.confidence-medium { background: #FEF3C7; color: #B45309; }
+.confidence-low { background: #FEE2E2; color: #B91C1C; }
+
+.causal-chain {
+  background: white;
+  border-radius: 24px;
+  padding: 30px;
+  margin-bottom: 30px;
+}
+.causal-chain h3 { margin: 0 0 25px 0; }
+.chain-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 15px;
+}
+.chain-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--accent-bg);
+  padding: 15px 20px;
+  border-radius: 16px;
+  flex: 1;
+  min-width: 200px;
+}
+.chain-number {
+  width: 32px;
+  height: 32px;
+  background: var(--primary-color);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.chain-event { font-weight: 600; color: var(--text-primary); }
+.chain-leads-to { font-size: 0.85em; color: var(--text-muted); margin-top: 5px; }
+.chain-arrow {
+  font-size: 1.5em;
+  color: var(--primary-color);
+  font-weight: bold;
+}
+
+.keystone-findings {
+  background: white;
+  border-radius: 24px;
+  padding: 30px;
+  margin-bottom: 30px;
+}
+.keystone-findings h3 { margin: 0 0 10px 0; }
+.keystone-intro { color: var(--text-muted); margin-bottom: 20px; }
+.keystone-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+.keystone-card {
+  background: linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 100%);
+  border-radius: 16px;
+  padding: 20px;
+  border-left: 4px solid #F59E0B;
+}
+.keystone-priority {
+  display: inline-block;
+  background: #F59E0B;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.8em;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.keystone-card h4 { margin: 0 0 10px 0; color: var(--text-primary); }
+.keystone-why { color: var(--text-muted); font-size: 0.95em; margin-bottom: 15px; }
+.keystone-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.keystone-effects span {
+  background: white;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.85em;
+  color: var(--text-secondary);
+}
+
+.temporal-narrative {
+  background: white;
+  border-radius: 24px;
+  padding: 30px;
+  margin-bottom: 30px;
+}
+.temporal-narrative h3 { margin: 0 0 15px 0; }
+.narrative-text {
+  font-size: 1.1em;
+  line-height: 1.8;
+  color: var(--text-primary);
+  font-style: italic;
+  border-left: 3px solid var(--primary-light);
+  padding-left: 20px;
+}
+
+.priority-stack {
+  background: white;
+  border-radius: 24px;
+  padding: 30px;
+}
+.priority-stack h3 { margin: 0 0 10px 0; }
+.priority-intro { color: var(--text-muted); margin-bottom: 20px; }
+.priority-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: priority;
+}
+.priority-list li {
+  counter-increment: priority;
+  display: flex;
+  flex-direction: column;
+  padding: 15px 20px 15px 60px;
+  position: relative;
+  margin-bottom: 10px;
+  background: var(--accent-bg);
+  border-radius: 12px;
+}
+.priority-list li::before {
+  content: counter(priority);
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  background: var(--primary-color);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+.priority-list li strong { color: var(--text-primary); }
+.priority-rationale { color: var(--text-muted); font-size: 0.9em; margin-top: 4px; }
+
+@media (max-width: 768px) {
+  .chain-flow { flex-direction: column; }
+  .chain-arrow { transform: rotate(90deg); }
+}
+```
+
 ### Positive Findings (for `positiveFindings[]`)
 
 ```html
@@ -1305,6 +1687,7 @@ h1, h2, h3, h4 { font-family: 'Nunito', sans-serif; font-weight: 800; }
 2. **Use the component library** - match each JSON field to its appropriate component
 3. **Preserve all data** - every item in an array gets rendered, every field value gets displayed
 4. **Include all URLs** - references must have clickable links
+5. **SUBSTITUTE all values** - replace every `{{placeholder}}` with actual text from the JSON
 
 ### What You MUST NOT Do
 
@@ -1312,6 +1695,8 @@ h1, h2, h3, h4 { font-family: 'Nunito', sans-serif; font-weight: 800; }
 - Do NOT skip sections that have data in the JSON
 - Do NOT summarize or compress data
 - Do NOT hardcode sections - let the JSON drive structure
+- Do NOT output `{{...}}` placeholders - these are documentation only, substitute actual values
+- Do NOT leave any template syntax in the final HTML
 
 ---
 
@@ -1321,5 +1706,11 @@ Output ONLY the complete HTML file:
 - Start with `<!DOCTYPE html>`
 - No markdown, no explanation, no commentary
 - Complete, valid, self-contained HTML
+- **ALL values substituted** - no `{{...}}` template placeholders in output
+- Every piece of text must be actual content from the JSON, not placeholder syntax
 
-**Render the Health Realm now by iterating through structured_data.json and rendering each field that has data.**
+**FINAL CHECK before outputting:**
+- Search your output for `{{` - if found, you have placeholders that need to be replaced with actual values
+- Every `<p>`, `<span>`, `<div>` with content should have real text, not template syntax
+
+**Render the Health Realm now by iterating through structured_data.json and substituting actual values into the HTML.**

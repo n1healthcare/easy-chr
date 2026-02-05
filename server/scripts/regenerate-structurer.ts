@@ -143,12 +143,9 @@ ${crossSystemsContent}
 ### Priority 3: Research Findings (for citations and verified claims)
 <research>
 ${researchMarkdown}
-</research>
-
-### Priority 4: Original Extracted Data (source of truth for raw values)
-<extracted_data>
-${allExtractedContent}
-</extracted_data>`;
+</research>`;
+  // NOTE: allExtractedContent intentionally EXCLUDED to keep payload manageable
+  // The analysis already interprets the raw data, so including it is redundant
 
   console.log('Extracting structured data for visualizations...');
   const structureStream = await gemini.sendMessageStream(

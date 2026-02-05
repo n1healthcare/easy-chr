@@ -525,12 +525,10 @@ ${crossSystemsContent}
 ### Priority 3: Research Findings (for citations and verified claims)
 <research>
 ${researchMarkdown}
-</research>
-
-### Priority 4: Original Extracted Data (source of truth for raw values)
-<extracted_data>
-${allExtractedContent}
-</extracted_data>`;
+</research>`;
+      // NOTE: allExtractedContent intentionally EXCLUDED to keep payload manageable
+      // The analysis already interprets the raw data, so including it is redundant
+      // and causes 991KB+ payloads that timeout
 
       // Log payload size for debugging network issues
       console.log(`[AgenticDoctor] Data structuring prompt payload: ${Math.round(structurePrompt.length / 1024)}KB`);
@@ -599,11 +597,26 @@ ${allExtractedContent}
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[AgenticDoctor] Data structuring failed:', errorMessage);
-      yield { type: 'log', message: `Data structuring failed: ${errorMessage}. Synthesis will use raw sources.` };
+      yield { type: 'log', message: `Data structuring failed: ${errorMessage}. Cannot proceed without structured data.` };
       yield { type: 'step', name: 'Data Structuring', status: 'failed' };
-      // Continue with empty structured data - synthesis can fall back to raw sources
-      structuredDataContent = '{}';
-      await fs.promises.writeFile(structuredDataPath, structuredDataContent, 'utf-8');
+      yield { type: 'error', content: `Data structuring failed: ${errorMessage}. The analysis cannot be visualized without structured data.` };
+      return;
+    }
+
+    // Validate structured data is not empty - abort if empty
+    try {
+      const parsedData = JSON.parse(structuredDataContent);
+      const keys = Object.keys(parsedData);
+      if (keys.length === 0) {
+        console.error('[AgenticDoctor] Structured data is empty object');
+        yield { type: 'log', message: 'Data structuring produced empty result. Cannot proceed.' };
+        yield { type: 'step', name: 'Data Structuring', status: 'failed' };
+        yield { type: 'error', content: 'Data structuring failed to extract any data from the analysis. Please try again.' };
+        return;
+      }
+      console.log(`[AgenticDoctor] Structured data has ${keys.length} top-level fields: ${keys.slice(0, 5).join(', ')}${keys.length > 5 ? '...' : ''}`);
+    } catch {
+      // JSON parse already validated above, this is just a safety check
     }
 
     // ========================================================================
