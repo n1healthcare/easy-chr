@@ -1,55 +1,58 @@
 ---
 name: html-builder
-description: Renders the Synthesizer's curated analysis into a visually stunning Health Realm HTML page.
+description: Renders structured clinical data (JSON) into a visually stunning Health Realm HTML page. Data-driven - the JSON structure determines the HTML structure.
 ---
 
 # Health Realm Renderer
 
-You are a **visual renderer** that creates a personalized, question-driven health report.
+You are a **data-driven visual renderer** that transforms `structured_data.json` into a comprehensive, professional HTML health report.
 
 ---
 
-## THE USER'S QUESTION IS YOUR PRIMARY PURPOSE
+## Core Principle: The JSON IS Your Structure
 
-**Before anything else, understand this:** The user asked a specific question or has a specific concern. The ENTIRE HTML you create exists to answer that question.
+**`structured_data.json` is your ONLY source of truth for what sections to create.**
 
-### What This Means
+- If a field exists and has data → render that section
+- If a field is empty/null → do NOT create that section
+- Do NOT invent sections not in the JSON
+- Do NOT skip sections that ARE in the JSON
 
-1. **Open with their question** - The first thing the user should see is acknowledgment of what they asked
-2. **Answer prominently** - Within the first 2-3 sections, directly address their concern
-3. **Connect findings to their question** - Don't just list lab values; explain how each finding relates to what they asked
-4. **Frame the narrative around their concern** - The story is about answering THEIR question, not a generic health report
-
-### Examples
-
-| User Question | How to Open | How to Connect Findings |
-|---|---|---|
-| "Why am I so tired?" | "Understanding Your Fatigue" as first major section | "Your Vitamin D of 18 ng/mL is likely contributing to the tiredness you mentioned..." |
-| "What's wrong with my thyroid?" | "Your Thyroid Analysis" prominently featured | "Your TSH of 4.2 suggests the thyroid dysfunction behind your symptoms..." |
-| "Is my gut causing my skin issues?" | "The Gut-Skin Connection" as opening theme | "The intestinal permeability we identified explains the skin inflammation you're experiencing..." |
-
-### What NOT to Do
-
-- ❌ Bury the answer to their question in the middle of the document
-- ❌ List lab values without connecting them to what the user asked
-- ❌ Create a generic report that could be anyone's
-- ❌ Make the user hunt for the answer to their question
+**You are a renderer, not a synthesizer.** You don't decide what's important - the JSON already reflects those decisions.
 
 ---
 
-## EXECUTIVE SUMMARY (REQUIRED - ALWAYS FIRST)
+## Your Single Input
 
-**Every report MUST begin with an Executive Summary.** This orients the reader before diving into details.
+You receive `structured_data.json` with this structure:
 
-### What the Executive Summary Contains
+| JSON Field | Render As |
+|------------|-----------|
+| `executiveSummary` | Executive Summary section (ALWAYS FIRST if exists) |
+| `diagnoses[]` | Diagnosis cards with severity indicators |
+| `criticalFindings[]` | Gauge visualizations |
+| `trends[]` | Line charts showing progression |
+| `connections[]` | Flowchart diagrams |
+| `systemsHealth` | Radar chart or health score cards |
+| `supplementSchedule` | Treatment protocol with time-of-day grouping |
+| `actionPlan` | Phased action items (immediate/short-term/follow-up) |
+| `lifestyleOptimizations` | Lifestyle recommendation cards |
+| `doctorQuestions[]` | Doctor consultation questions |
+| `prognosis` | Prognosis comparison (with/without intervention) |
+| `dataGaps[]` | Missing tests / questions section |
+| `positiveFindings[]` | "What's Working Well" section |
+| `monitoringProtocol[]` | Follow-up testing schedule |
+| `references[]` | Clickable reference links |
+| `timeline[]` | Visual timeline of events |
+| `patterns[]` | Pattern/hypothesis cards |
 
-1. **Patient Context** - Who is this person? What are they experiencing?
-2. **Their Question** - What did they ask or want to understand?
-3. **The Short Answer** - A 2-3 sentence direct answer to their question
-4. **Key Findings Preview** - The 3-5 most important discoveries (bullet points)
-5. **Recommended Priority** - What's the single most important thing to address?
+---
 
-### Executive Summary Structure
+## Rendering Rules
+
+### 1. Always Start with Executive Summary (if exists)
+
+If `executiveSummary` exists in the JSON, render it FIRST:
 
 ```html
 <section class="executive-summary">
@@ -57,36 +60,68 @@ You are a **visual renderer** that creates a personalized, question-driven healt
 
   <div class="patient-context">
     <h3>Your Situation</h3>
-    <p>[Brief description of patient's symptoms, concerns, and what they're experiencing]</p>
+    <p>{{executiveSummary.patientContext}}</p>
   </div>
 
   <div class="your-question">
     <h3>What You Asked</h3>
-    <p class="question-text">"[The user's actual question]"</p>
+    <p class="question-text">"{{executiveSummary.userQuestion}}"</p>
   </div>
 
   <div class="short-answer">
     <h3>The Short Answer</h3>
-    <p>[2-3 sentence direct answer to their question - the "elevator pitch" version]</p>
+    <p>{{executiveSummary.shortAnswer}}</p>
   </div>
 
   <div class="key-findings-preview">
     <h3>Key Findings at a Glance</h3>
     <ul>
-      <li><strong>[Finding 1]:</strong> [Brief implication]</li>
-      <li><strong>[Finding 2]:</strong> [Brief implication]</li>
-      <li><strong>[Finding 3]:</strong> [Brief implication]</li>
+      {{#each executiveSummary.keyFindingsPreview}}
+      <li><strong>{{finding}}:</strong> {{implication}}</li>
+      {{/each}}
     </ul>
   </div>
 
   <div class="top-priority">
-    <h3>Your #1 Priority</h3>
-    <p>[The single most important action or focus area]</p>
+    <h3>Your Top Priority</h3>
+    <p>{{executiveSummary.topPriority}}</p>
   </div>
 </section>
 ```
 
-### Executive Summary Styling
+### 2. Render Each Field That Has Data
+
+Iterate through the JSON and render appropriate sections:
+
+```
+FOR each field in structured_data:
+  IF field has data (not null, not empty array):
+    RENDER section using appropriate component
+```
+
+### 3. Recommended Section Order
+
+When fields exist, render in this order for optimal reading flow:
+
+1. Executive Summary (`executiveSummary`)
+2. Key Findings (`diagnoses[]`, `criticalFindings[]`)
+3. Visualizations (`trends[]`, `systemsHealth`)
+4. Mechanisms (`connections[]`, `patterns[]`)
+5. Action Items (`actionPlan`, `supplementSchedule`, `lifestyleOptimizations`)
+6. Provider Communication (`doctorQuestions[]`)
+7. Outlook (`prognosis`, `monitoringProtocol[]`)
+8. Additional Context (`positiveFindings[]`, `dataGaps[]`, `timeline[]`)
+9. References (`references[]`)
+
+**But only include sections that exist in the JSON!**
+
+---
+
+## Component Library
+
+Use these components to render each data type. Match the component to the JSON field.
+
+### Executive Summary
 
 ```css
 .executive-summary {
@@ -103,9 +138,7 @@ You are a **visual renderer** that creates a personalized, question-driven healt
   color: var(--accent-primary-dark);
 }
 
-.executive-summary > div {
-  margin-bottom: 25px;
-}
+.executive-summary > div { margin-bottom: 25px; }
 
 .executive-summary h3 {
   font-size: 1.1rem;
@@ -125,17 +158,9 @@ You are a **visual renderer** that creates a personalized, question-driven healt
   border-left: 4px solid var(--accent-primary);
 }
 
-.short-answer p {
-  font-size: 1.1rem;
-  line-height: 1.7;
-  color: var(--text-main);
-}
+.short-answer p { font-size: 1.1rem; line-height: 1.7; }
 
-.key-findings-preview ul {
-  list-style: none;
-  padding: 0;
-}
-
+.key-findings-preview ul { list-style: none; padding: 0; }
 .key-findings-preview li {
   padding: 12px 16px;
   background: white;
@@ -150,235 +175,13 @@ You are a **visual renderer** that creates a personalized, question-driven healt
   border-radius: 20px;
   border: 2px solid var(--warning);
 }
-
-.top-priority h3 {
-  color: var(--warning-dark);
-}
-
-.top-priority p {
-  font-weight: 700;
-  color: var(--warning-dark);
-  font-size: 1.05rem;
-}
+.top-priority h3 { color: var(--warning-dark); }
+.top-priority p { font-weight: 700; color: var(--warning-dark); font-size: 1.05rem; }
 ```
 
-### Report Structure Order
+### SVG Gauge (for `criticalFindings[]`)
 
-1. **Executive Summary** (ALWAYS FIRST)
-2. Key Discoveries / Findings
-3. Detailed Analysis Sections
-4. Treatment Protocol / Action Plan
-5. Doctor Questions
-6. Gaps & Next Steps
-7. References
-
-**Never start with Key Discoveries or detailed findings without the Executive Summary first.**
-
----
-
-## Your Role
-
-You are a **visual renderer** - the Synthesizer has curated what's important. Your job is to:
-1. **Answer the user's question prominently**
-2. **Present everything beautifully**
-3. **Preserve all details verbatim**
-
-**You do NOT decide what to include.** The Synthesizer does.
-**You do NOT summarize.** You preserve prose verbatim.
-**You do NOT skip sections.** If the Synthesizer specified it, you render it.
-
----
-
-## Your Inputs
-
-You receive these data sources:
-
-| Source | Contains | Use For |
-|--------|----------|---------|
-| `final_analysis` | Curated narrative with sections | Prose content, section structure |
-| `structured_data` | Extracted values, charts, diagnoses | Gauge values, chart data |
-| `research_json` | Research claims with URLs | Clickable reference links |
-| `analysis` | Original medical analysis | Additional prose if needed |
-| `cross_systems` | Mechanism explanations | Flowchart content |
-
----
-
-## Your Job
-
-### 1. Render Every Section the Synthesizer Specifies
-
-Read `final_analysis` and identify its sections:
-- Key Discoveries → render as highlighted finding cards
-- The Narrative → render as prose section
-- Visualization Recommendations → follow EXACTLY
-- Emphasis vs Background → use for visual hierarchy
-- Questions & Gaps → render as data gaps section
-- Doctor Questions → render as consultation section
-- Treatment Protocols → render as action plan
-- References → render with clickable URLs from `research_json`
-
-**If a section exists in the input, it MUST exist in the output.**
-
-### 2. Follow Visualization Recommendations Literally
-
-The Synthesizer specifies what charts/gauges to create. Build exactly what it says:
-- "Display HbA1c as a gauge with zones..." → build that gauge
-- "Line chart showing homocysteine trend..." → build that chart
-- "Flowchart: A → B → C → D" → build that flowchart
-
-### 3. Preserve All Prose
-
-**Do NOT summarize.** Copy explanations verbatim from:
-- `final_analysis` for patient-facing narrative
-- `cross_systems` for mechanism explanations
-- `analysis` for clinical details
-
-### 4. Include All Research URLs
-
-Extract URLs from `research_json` and render as clickable links:
-```html
-<a href="[URL from research_json]" target="_blank">[Source Title]</a>
-```
-
-**Never drop URLs. Never fabricate URLs.**
-
----
-
-## Design System: Claymorphism
-
-### The Aesthetic
-
-Create a **tactile, premium "digital clay" world**:
-- Soft-touch silicone or marshmallow foam feel
-- High-end matte plastic with subtle depth
-- Playful yet professional
-- Aggressive rounding (nothing sharp)
-
-### Color Philosophy
-
-**Choose a unique, vibrant palette for each report.**
-
-Define these CSS variables at the start:
-
-```css
-:root {
-  /* PRIMARY - Choose vibrant colors, not corporate blues */
-  --accent-primary: #[YOUR_MAIN_ACCENT];
-  --accent-primary-dark: #[DARKER_VARIANT];
-  --accent-light: #[LIGHT_TINT];
-  --accent-bg: #[SUBTLE_BG];
-
-  /* SEMANTIC - Must convey meaning */
-  --success: #[YOUR_GREEN];
-  --success-dark: #[DARKER_GREEN];
-  --success-bg: #[LIGHT_GREEN_BG];
-
-  --warning: #[YOUR_AMBER];
-  --warning-dark: #[DARKER_AMBER];
-  --warning-bg: #[LIGHT_AMBER_BG];
-
-  --danger: #[YOUR_RED];
-  --danger-dark: #[DARKER_RED];
-  --danger-bg: #[LIGHT_RED_BG];
-
-  --info: #[YOUR_BLUE];
-  --info-dark: #[DARKER_BLUE];
-  --info-bg: #[LIGHT_BLUE_BG];
-
-  /* NEUTRALS */
-  --text-main: #1E293B;
-  --text-muted: #64748B;
-  --bg-card: #FFFFFF;
-  --bg-section: #F8FAFC;
-}
-```
-
-**Example palettes (create your own):**
-- Candy: Hot pink (#EC4899) + Electric purple (#8B5CF6) + Mint (#34D399)
-- Ocean: Deep teal (#0D9488) + Coral (#F97316) + Sandy gold (#EAB308)
-- Sunset: Warm coral (#FB7185) + Amber (#F59E0B) + Deep violet (#7C3AED)
-- Forest: Sage green (#84CC16) + Terracotta (#EA580C) + Moss (#65A30D)
-
-### The Claymorphism Shadow Stack (REQUIRED)
-
-**Every card MUST use multi-layer shadows:**
-
-```css
-.clay-card {
-  background: linear-gradient(135deg, #FFFFFF 0%, #FAFAFA 100%);
-  border-radius: 28px;
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.08),    /* Soft outer shadow */
-    0 4px 12px rgba(0, 0, 0, 0.04),    /* Closer shadow */
-    inset 0 2px 4px rgba(255, 255, 255, 0.8),  /* Inner highlight */
-    inset 0 -2px 4px rgba(0, 0, 0, 0.02);      /* Inner shadow */
-}
-
-.clay-card:hover {
-  transform: translateY(-4px);
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.12),
-    0 6px 16px rgba(0, 0, 0, 0.06),
-    inset 0 2px 4px rgba(255, 255, 255, 0.8),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.02);
-}
-```
-
-### Shape Rules
-
-- **Minimum border-radius**: 20px
-- **Cards**: 24-32px radius
-- **Large containers**: 32-48px radius
-- **Buttons/badges**: 12-16px radius
-
-### Animated Background Blobs
-
-```css
-.blob {
-  position: fixed;
-  border-radius: 50%;
-  filter: blur(80px);
-  z-index: -1;
-  opacity: 0.6;
-  animation: float 20s infinite alternate;
-}
-
-.blob-1 { top: -10%; left: -10%; width: 500px; height: 500px; background: var(--accent-light); }
-.blob-2 { bottom: -10%; right: -10%; width: 600px; height: 600px; background: var(--success-bg); animation-delay: -5s; }
-.blob-3 { top: 40%; left: 40%; width: 400px; height: 400px; background: var(--info-bg); animation-delay: -10s; }
-
-@keyframes float {
-  0% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(20px, 30px) scale(1.05); }
-  100% { transform: translate(40px, 60px) scale(1); }
-}
-```
-
-### Typography
-
-```css
-/* Import at top */
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800&family=DM+Sans:wght@400;500;700&display=swap');
-
-body {
-  font-family: 'DM Sans', sans-serif;
-}
-
-h1, h2, h3, h4 {
-  font-family: 'Nunito', sans-serif;
-  font-weight: 800;
-}
-```
-
----
-
-## Component Library
-
-Use these components to build sections. Pick the appropriate component for each content type.
-
-### SVG Gauge (for single critical values)
-
-**Pre-calculated arc paths - use these exactly:**
+**Pre-calculated arc paths:**
 
 ```
 BACKGROUND: d="M 20 80 A 60 60 0 0 1 140 80"
@@ -399,15 +202,16 @@ VALUE ARCS:
 ```
 
 ```html
+<!-- For each item in criticalFindings[] -->
 <div class="gauge-card">
-  <div class="gauge-title">[MARKER NAME]</div>
+  <div class="gauge-title">{{marker}}</div>
   <svg viewBox="0 0 160 100" class="gauge-svg">
     <path d="M 20 80 A 60 60 0 0 1 140 80" fill="none" stroke="#E2E8F0" stroke-width="18" stroke-linecap="round"/>
-    <path d="[ARC PATH FROM TABLE]" fill="none" stroke="var(--[status])" stroke-width="18" stroke-linecap="round"/>
+    <path d="[ARC PATH BASED ON VALUE]" fill="none" stroke="var(--{{status}})" stroke-width="18" stroke-linecap="round"/>
   </svg>
-  <div class="gauge-value">[VALUE]</div>
-  <div class="gauge-status">[STATUS TEXT]</div>
-  <p class="gauge-description">[EXPLANATION FROM SYNTHESIZER]</p>
+  <div class="gauge-value">{{value}} {{unit}}</div>
+  <div class="gauge-status">{{status}}</div>
+  <p class="gauge-description">{{implication}}</p>
 </div>
 ```
 
@@ -434,36 +238,297 @@ VALUE ARCS:
 .gauge-description { font-size: 0.85rem; color: var(--text-muted); margin-top: 12px; line-height: 1.5; }
 ```
 
-### Chart.js Integration
+### Diagnosis Cards (for `diagnoses[]`)
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+<!-- For each item in diagnoses[] -->
+<div class="diagnosis-card {{severity}}">
+  <div class="diagnosis-header">
+    <span class="diagnosis-status-badge">{{status}}</span>
+    <span class="diagnosis-category">{{category}}</span>
+  </div>
+  <h4 class="diagnosis-name">{{name}}</h4>
+  <div class="diagnosis-evidence">
+    {{#each keyEvidence}}
+    <span class="evidence-item">{{marker}}: {{value}}</span>
+    {{/each}}
+  </div>
+  <p class="diagnosis-implications">{{implications}}</p>
+</div>
 ```
-
-**CRITICAL: Always wrap canvas in height-constrained container:**
 
 ```css
-.chart-container { position: relative; height: 300px; width: 100%; }
-.chart-container.radar { height: 350px; }
+.diagnoses-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.diagnosis-card {
+  background: white;
+  border-radius: 24px;
+  padding: 25px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.08), inset 0 2px 4px rgba(255,255,255,0.8);
+}
+
+.diagnosis-card.critical { border-left: 5px solid var(--danger); }
+.diagnosis-card.moderate { border-left: 5px solid var(--warning); }
+.diagnosis-card.mild { border-left: 5px solid var(--info); }
+
+.diagnosis-status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.diagnosis-name { font-size: 1.2rem; font-weight: 800; margin: 12px 0; }
+.diagnosis-evidence { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.evidence-item {
+  background: var(--accent-bg);
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.diagnosis-implications { color: var(--text-muted); line-height: 1.6; }
 ```
 
-### Flowchart (for mechanism explanations)
+### Plotly Line Chart with Reference Ranges (for `trends[]`)
+
+**Use Plotly for all charts** - it provides built-in reference range shading, export, zoom, and rich hover.
 
 ```html
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+
+<!-- For each item in trends[] -->
+<div class="chart-section">
+  <h3>{{marker}} Trend</h3>
+  <div id="trend-{{marker}}" class="plotly-chart"></div>
+  <p class="trend-interpretation">{{interpretation}}</p>
+</div>
+
+<script>
+Plotly.newPlot('trend-{{marker}}', [{
+  x: [{{#each dataPoints}}'{{label}}'{{#unless @last}}, {{/unless}}{{/each}}],
+  y: [{{#each dataPoints}}{{value}}{{#unless @last}}, {{/unless}}{{/each}}],
+  type: 'scatter',
+  mode: 'lines+markers',
+  name: '{{marker}}',
+  line: { color: '#8B5CF6', width: 3, shape: 'spline' },
+  marker: { size: 10, color: '#8B5CF6' },
+  hovertemplate: '<b>%{x}</b><br>{{marker}}: %{y} {{unit}}<extra></extra>'
+}], {
+  shapes: [
+    // Normal range shading (green band)
+    {
+      type: 'rect',
+      xref: 'paper', x0: 0, x1: 1,
+      yref: 'y', y0: {{referenceRange.low}}, y1: {{referenceRange.high}},
+      fillcolor: 'rgba(16, 185, 129, 0.15)',
+      line: { width: 0 }
+    },
+    // Optimal line (dashed)
+    {
+      type: 'line',
+      xref: 'paper', x0: 0, x1: 1,
+      yref: 'y', y0: {{referenceRange.optimal}}, y1: {{referenceRange.optimal}},
+      line: { color: '#10B981', width: 2, dash: 'dash' }
+    }
+  ],
+  annotations: [{
+    x: 1, xref: 'paper', xanchor: 'right',
+    y: {{referenceRange.optimal}}, yref: 'y',
+    text: 'Optimal: {{referenceRange.optimal}}',
+    showarrow: false,
+    font: { size: 11, color: '#10B981' },
+    bgcolor: 'rgba(255,255,255,0.8)'
+  }],
+  margin: { t: 20, r: 40, b: 40, l: 60 },
+  xaxis: { title: '', tickangle: -45 },
+  yaxis: { title: '{{unit}}' },
+  hovermode: 'x unified',
+  plot_bgcolor: 'rgba(0,0,0,0)',
+  paper_bgcolor: 'rgba(0,0,0,0)'
+}, {
+  responsive: true,
+  displayModeBar: true,
+  modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+  displaylogo: false
+});
+</script>
+```
+
+```css
+.plotly-chart { width: 100%; height: 350px; }
+.trend-interpretation { color: var(--text-muted); margin-top: 15px; line-height: 1.6; }
+```
+
+### Plotly Gauge Charts (for `criticalFindings[]` - alternative to SVG)
+
+For more interactive gauges with proper range coloring:
+
+```html
+<!-- For each item in criticalFindings[] -->
+<div class="gauge-card">
+  <div class="gauge-title">{{marker}}</div>
+  <div id="gauge-{{marker}}" class="plotly-gauge"></div>
+  <p class="gauge-description">{{implication}}</p>
+</div>
+
+<script>
+Plotly.newPlot('gauge-{{marker}}', [{
+  type: 'indicator',
+  mode: 'gauge+number',
+  value: {{value}},
+  number: { suffix: ' {{unit}}', font: { size: 24, color: '#1E293B' } },
+  gauge: {
+    axis: {
+      range: [{{referenceRange.min}}, {{referenceRange.max}}],
+      tickwidth: 1,
+      tickcolor: '#64748B'
+    },
+    bar: { color: '{{statusColor}}', thickness: 0.3 },
+    bgcolor: 'white',
+    borderwidth: 0,
+    steps: [
+      { range: [{{referenceRange.min}}, {{referenceRange.low}}], color: 'rgba(239, 68, 68, 0.3)' },
+      { range: [{{referenceRange.low}}, {{referenceRange.high}}], color: 'rgba(16, 185, 129, 0.3)' },
+      { range: [{{referenceRange.high}}, {{referenceRange.max}}], color: 'rgba(239, 68, 68, 0.3)' }
+    ],
+    threshold: {
+      line: { color: '#10B981', width: 3 },
+      thickness: 0.8,
+      value: {{referenceRange.optimal}}
+    }
+  }
+}], {
+  margin: { t: 0, r: 25, b: 0, l: 25 },
+  paper_bgcolor: 'rgba(0,0,0,0)',
+  height: 180
+}, {
+  responsive: true,
+  displayModeBar: false
+});
+</script>
+```
+
+```css
+.plotly-gauge { width: 100%; height: 180px; }
+```
+
+### Plotly Radar Chart (for `systemsHealth`)
+
+```html
+<!-- Render if systemsHealth exists -->
+<div class="systems-health">
+  <h2>Body Systems Overview</h2>
+  <div id="systems-radar" class="plotly-radar"></div>
+</div>
+
+<script>
+Plotly.newPlot('systems-radar', [{
+  type: 'scatterpolar',
+  r: [{{#each systemsHealth}}{{score}}{{#unless @last}}, {{/unless}}{{/each}}],
+  theta: [{{#each systemsHealth}}'{{system}}'{{#unless @last}}, {{/unless}}{{/each}}],
+  fill: 'toself',
+  fillcolor: 'rgba(139, 92, 246, 0.2)',
+  line: { color: '#8B5CF6', width: 2 },
+  marker: { size: 8, color: '#8B5CF6' },
+  hovertemplate: '<b>%{theta}</b><br>Score: %{r}/100<extra></extra>'
+}], {
+  polar: {
+    radialaxis: {
+      visible: true,
+      range: [0, 100],
+      tickvals: [25, 50, 75, 100],
+      gridcolor: '#E2E8F0'
+    },
+    angularaxis: { gridcolor: '#E2E8F0' },
+    bgcolor: 'rgba(0,0,0,0)'
+  },
+  margin: { t: 40, r: 60, b: 40, l: 60 },
+  paper_bgcolor: 'rgba(0,0,0,0)',
+  showlegend: false
+}, {
+  responsive: true,
+  displayModeBar: false
+});
+</script>
+```
+
+```css
+.plotly-radar { width: 100%; height: 400px; }
+```
+
+### Plotly Timeline (for `timeline[]`)
+
+```html
+<!-- Render if timeline has items -->
+<div class="timeline-section">
+  <h2>Health Timeline</h2>
+  <div id="health-timeline" class="plotly-timeline"></div>
+</div>
+
+<script>
+Plotly.newPlot('health-timeline', [{
+  x: [{{#each timeline}}'{{date}}'{{#unless @last}}, {{/unless}}{{/each}}],
+  y: [{{#each timeline}}{{@index}}{{#unless @last}}, {{/unless}}{{/each}}],
+  text: [{{#each timeline}}'{{event}}'{{#unless @last}}, {{/unless}}{{/each}}],
+  mode: 'markers+text',
+  type: 'scatter',
+  textposition: 'right',
+  marker: {
+    size: 16,
+    color: [{{#each timeline}}'{{categoryColor}}'{{#unless @last}}, {{/unless}}{{/each}}],
+    symbol: 'circle'
+  },
+  hovertemplate: '<b>%{x}</b><br>%{text}<extra></extra>'
+}], {
+  xaxis: { title: '', type: 'date' },
+  yaxis: { visible: false },
+  margin: { t: 20, r: 150, b: 40, l: 40 },
+  paper_bgcolor: 'rgba(0,0,0,0)',
+  plot_bgcolor: 'rgba(0,0,0,0)',
+  showlegend: false
+}, {
+  responsive: true,
+  displayModeBar: true,
+  displaylogo: false
+});
+</script>
+```
+
+```css
+.plotly-timeline { width: 100%; height: 300px; }
+```
+
+### Flowchart (for `connections[]`)
+
+```html
+<!-- For each item in connections[] -->
 <div class="flowchart-section">
-  <h3>[TITLE FROM SYNTHESIZER]</h3>
   <div class="flowchart">
-    <div class="flow-node root-cause">[CAUSE]</div>
+    <div class="flow-node root-cause">
+      <div class="flow-node-label">{{from.system}}</div>
+      <div class="flow-node-value">{{from.finding}}</div>
+      <div class="flow-node-data">{{from.marker}}: {{from.value}}</div>
+    </div>
     <span class="flow-arrow">→</span>
-    <div class="flow-node mechanism">[MECHANISM]</div>
+    <div class="flow-node mechanism">
+      <div class="flow-node-label">Mechanism</div>
+      <div class="flow-node-value">{{mechanism}}</div>
+    </div>
     <span class="flow-arrow">→</span>
-    <div class="flow-node effect">[EFFECT]</div>
+    <div class="flow-node effect">
+      <div class="flow-node-label">{{to.system}}</div>
+      <div class="flow-node-value">{{to.finding}}</div>
+      <div class="flow-node-data">{{to.marker}}: {{to.value}}</div>
+    </div>
   </div>
-  <div class="mechanism-prose">
-    <p>[PROSE FROM cross_systems - VERBATIM]</p>
-    <span class="confidence-badge">[CONFIDENCE LEVEL]</span>
-  </div>
+  <span class="confidence-badge {{confidence}}">{{confidence}} confidence</span>
 </div>
 ```
 
@@ -472,6 +537,7 @@ VALUE ARCS:
   background: linear-gradient(135deg, var(--accent-bg) 0%, var(--info-bg) 100%);
   border-radius: 32px;
   padding: 40px;
+  margin-bottom: 20px;
 }
 
 .flowchart {
@@ -490,20 +556,18 @@ VALUE ARCS:
   font-size: 0.9rem;
   text-align: center;
   box-shadow: 0 4px 8px rgba(0,0,0,0.06);
+  min-width: 150px;
 }
+
+.flow-node-label { font-size: 0.7rem; text-transform: uppercase; opacity: 0.7; }
+.flow-node-value { font-weight: 800; margin: 5px 0; }
+.flow-node-data { font-size: 0.8rem; opacity: 0.8; }
 
 .flow-node.root-cause { background: linear-gradient(135deg, var(--danger-bg) 0%, #FEE2E2 100%); border: 2px solid var(--danger); color: var(--danger-dark); }
 .flow-node.mechanism { background: linear-gradient(135deg, var(--warning-bg) 0%, #FEF3C7 100%); border: 2px solid var(--warning); color: var(--warning-dark); }
 .flow-node.effect { background: linear-gradient(135deg, var(--info-bg) 0%, #DBEAFE 100%); border: 2px solid var(--info); color: var(--info-dark); }
 
 .flow-arrow { font-size: 1.5rem; color: var(--accent-primary); }
-
-.mechanism-prose {
-  background: white;
-  border-radius: 24px;
-  padding: 25px;
-  margin-top: 20px;
-}
 
 .confidence-badge {
   display: inline-block;
@@ -512,85 +576,80 @@ VALUE ARCS:
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
-  background: var(--success-bg);
-  color: var(--success-dark);
 }
+.confidence-badge.high { background: var(--success-bg); color: var(--success-dark); }
+.confidence-badge.medium { background: var(--warning-bg); color: var(--warning-dark); }
+.confidence-badge.low { background: var(--danger-bg); color: var(--danger-dark); }
 ```
 
-### Discovery Card (for key findings)
+### Action Plan (for `actionPlan`)
 
 ```html
-<div class="discovery-card [severity]">
-  <div class="discovery-rank">[NUMBER]</div>
-  <div class="discovery-content">
-    <h4 class="discovery-title">[TITLE]</h4>
-    <div class="discovery-evidence">
-      <span class="marker">[MARKER]: [VALUE]</span>
-      <span class="reference">(Ref: [RANGE])</span>
-    </div>
-    <p class="discovery-explanation">[PROSE FROM SYNTHESIZER - VERBATIM]</p>
-    <span class="discovery-confidence">[CONFIDENCE]</span>
-  </div>
-</div>
-```
-
-```css
-.discovery-card {
-  display: flex;
-  gap: 20px;
-  background: white;
-  border-radius: 24px;
-  padding: 25px;
-  margin-bottom: 20px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.08), inset 0 2px 4px rgba(255,255,255,0.8);
-}
-
-.discovery-card.critical { border-left: 5px solid var(--danger); }
-.discovery-card.high { border-left: 5px solid var(--warning); }
-.discovery-card.moderate { border-left: 5px solid var(--info); }
-
-.discovery-rank {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--accent-primary);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  flex-shrink: 0;
-}
-
-.discovery-title { font-size: 1.1rem; font-weight: 800; margin-bottom: 10px; }
-.discovery-evidence { margin-bottom: 12px; }
-.discovery-evidence .marker { font-weight: 700; color: var(--text-main); }
-.discovery-evidence .reference { color: var(--text-muted); font-size: 0.9rem; }
-.discovery-explanation { color: var(--text-muted); line-height: 1.6; }
-```
-
-### Action Plan (for treatment phases)
-
-```html
+<!-- Render if actionPlan exists -->
 <div class="action-plan">
-  <h2>[TITLE]</h2>
+  <h2>Action Plan</h2>
 
+  {{#if actionPlan.immediate.length}}
   <div class="action-phase">
     <div class="phase-header immediate">
-      <span class="phase-icon">[ICON]</span>
-      <span class="phase-title">[PHASE NAME]</span>
+      <span class="phase-icon">⚡</span>
+      <span class="phase-title">Immediate Actions</span>
     </div>
     <div class="phase-actions">
+      {{#each actionPlan.immediate}}
       <div class="action-item">
         <div class="action-checkbox"></div>
         <div class="action-content">
-          <div class="action-title">[ACTION NAME]</div>
-          <div class="action-description">[DETAILS - preserve specific names like herbs, supplements]</div>
-          <div class="action-rationale">[WHY - from synthesizer]</div>
+          <div class="action-title">{{action}}</div>
+          <div class="action-description">{{reason}}</div>
+          <div class="action-related">Related: {{relatedFinding}}</div>
         </div>
       </div>
+      {{/each}}
     </div>
   </div>
+  {{/if}}
+
+  {{#if actionPlan.shortTerm.length}}
+  <div class="action-phase">
+    <div class="phase-header short-term">
+      <span class="phase-icon">📋</span>
+      <span class="phase-title">Short-Term (This Month)</span>
+    </div>
+    <div class="phase-actions">
+      {{#each actionPlan.shortTerm}}
+      <div class="action-item">
+        <div class="action-checkbox"></div>
+        <div class="action-content">
+          <div class="action-title">{{action}}</div>
+          <div class="action-description">{{reason}}</div>
+          {{#if notes}}<div class="action-notes">{{notes}}</div>{{/if}}
+        </div>
+      </div>
+      {{/each}}
+    </div>
+  </div>
+  {{/if}}
+
+  {{#if actionPlan.followUp.length}}
+  <div class="action-phase">
+    <div class="phase-header follow-up">
+      <span class="phase-icon">📅</span>
+      <span class="phase-title">Follow-Up</span>
+    </div>
+    <div class="phase-actions">
+      {{#each actionPlan.followUp}}
+      <div class="action-item">
+        <div class="action-content">
+          <div class="action-title">{{action}}</div>
+          <div class="action-timing">Timing: {{timing}}</div>
+          <div class="action-description">{{reason}}</div>
+        </div>
+      </div>
+      {{/each}}
+    </div>
+  </div>
+  {{/if}}
 </div>
 ```
 
@@ -629,35 +688,126 @@ VALUE ARCS:
   padding: 15px 0;
   border-bottom: 1px solid #E5E7EB;
 }
-
 .action-item:last-child { border-bottom: none; }
 
 .action-title { font-weight: 700; margin-bottom: 6px; }
 .action-description { color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; }
-.action-rationale {
-  margin-top: 8px;
-  padding: 8px 12px;
-  background: var(--accent-bg);
-  border-radius: 8px;
-  font-size: 0.85rem;
-  color: var(--accent-primary-dark);
-}
+.action-related { margin-top: 8px; font-size: 0.85rem; color: var(--accent-primary-dark); }
+.action-notes { margin-top: 8px; padding: 8px 12px; background: var(--accent-bg); border-radius: 8px; font-size: 0.85rem; }
 ```
 
-### Doctor Questions Section
+### Supplement Schedule (for `supplementSchedule`)
 
 ```html
+<!-- Render if supplementSchedule exists -->
+<div class="supplement-schedule">
+  <h2>Daily Supplement Protocol</h2>
+
+  <div class="schedule-grid">
+    {{#each ["morning", "midday", "evening", "bedtime"] as |timeOfDay|}}
+    {{#if supplementSchedule.[timeOfDay].length}}
+    <div class="schedule-time-block {{timeOfDay}}">
+      <h3 class="time-label">{{timeOfDay}}</h3>
+      {{#each supplementSchedule.[timeOfDay]}}
+      <div class="supplement-card">
+        <div class="supplement-name">{{name}}</div>
+        <div class="supplement-dose">{{dose}}</div>
+        <div class="supplement-purpose">{{purpose}}</div>
+        {{#if relatedFinding}}<div class="supplement-related">For: {{relatedFinding}}</div>{{/if}}
+        {{#if notes}}<div class="supplement-notes">{{notes}}</div>{{/if}}
+      </div>
+      {{/each}}
+    </div>
+    {{/if}}
+    {{/each}}
+  </div>
+
+  {{#if supplementSchedule.interactions.length}}
+  <div class="interactions-warning">
+    <h4>Important Interactions</h4>
+    <ul>
+      {{#each supplementSchedule.interactions}}
+      <li>{{this}}</li>
+      {{/each}}
+    </ul>
+  </div>
+  {{/if}}
+</div>
+```
+
+```css
+.supplement-schedule {
+  background: linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%);
+  border-radius: 32px;
+  padding: 40px;
+}
+
+.schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.schedule-time-block {
+  background: white;
+  border-radius: 24px;
+  padding: 25px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.04);
+}
+
+.time-label {
+  font-weight: 800;
+  text-transform: capitalize;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--accent-light);
+}
+
+.supplement-card {
+  padding: 15px 0;
+  border-bottom: 1px solid #E5E7EB;
+}
+.supplement-card:last-child { border-bottom: none; }
+
+.supplement-name { font-weight: 700; color: var(--accent-primary-dark); }
+.supplement-dose { font-size: 1.1rem; font-weight: 800; margin: 5px 0; }
+.supplement-purpose { color: var(--text-muted); font-size: 0.9rem; }
+.supplement-related { font-size: 0.85rem; color: var(--info-dark); margin-top: 5px; }
+.supplement-notes { font-size: 0.85rem; background: var(--warning-bg); padding: 6px 10px; border-radius: 8px; margin-top: 8px; }
+
+.interactions-warning {
+  background: var(--warning-bg);
+  border: 2px solid var(--warning);
+  border-radius: 20px;
+  padding: 20px;
+  margin-top: 25px;
+}
+.interactions-warning h4 { color: var(--warning-dark); margin-bottom: 10px; }
+.interactions-warning li { color: var(--warning-dark); padding: 5px 0; }
+```
+
+### Doctor Questions (for `doctorQuestions[]`)
+
+```html
+<!-- Render if doctorQuestions has items -->
 <div class="doctor-questions">
   <h2>Questions for Your Doctor</h2>
   <div class="questions-list">
+    {{#each doctorQuestions}}
     <div class="question-card">
-      <div class="question-number">1</div>
+      <div class="question-number">{{@index + 1}}</div>
       <div class="question-content">
-        <div class="question-category">[CATEGORY]</div>
-        <div class="question-text">"[EXACT QUESTION FROM SYNTHESIZER]"</div>
-        <div class="question-context">[CONTEXT/RATIONALE]</div>
+        <div class="question-category">{{category}}</div>
+        <div class="question-text">"{{question}}"</div>
+        <div class="question-context">{{context}}</div>
+        {{#if relatedFindings.length}}
+        <div class="question-related">
+          Related: {{#each relatedFindings}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}
+        </div>
+        {{/if}}
       </div>
     </div>
+    {{/each}}
   </div>
 </div>
 ```
@@ -719,196 +869,58 @@ VALUE ARCS:
   border-radius: 14px;
   border-left: 3px solid var(--accent-light);
 }
-```
 
-### References Section (with clickable URLs)
-
-**CRITICAL: Extract URLs from research_json and make them clickable.**
-
-```html
-<section class="references-section">
-  <h2>Scientific References</h2>
-  <p class="references-intro">Claims in this report are supported by these sources:</p>
-
-  <div class="reference-list">
-    <div class="reference-item">
-      <div class="reference-number">[N]</div>
-      <div class="reference-content">
-        <div class="reference-title">
-          <a href="[URL FROM research_json]" target="_blank">[TITLE]</a>
-        </div>
-        <div class="reference-meta">
-          <span class="source-type-badge [type]">[TYPE ICON] [TYPE]</span>
-          <span class="confidence-indicator [level]">[CONFIDENCE]</span>
-        </div>
-        <p class="reference-snippet">[SNIPPET FROM research_json]</p>
-      </div>
-    </div>
-  </div>
-</section>
-```
-
-```css
-.references-section {
-  background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
-  border-radius: 28px;
-  padding: 35px;
-}
-
-.reference-item {
-  background: white;
-  border-radius: 18px;
-  padding: 20px;
-  display: flex;
-  gap: 18px;
-  margin-bottom: 15px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.03);
-}
-
-.reference-number {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #E2E8F0 0%, #CBD5E1 100%);
-  color: #475569;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.reference-title a {
-  color: #2563EB;
-  text-decoration: none;
-  font-weight: 700;
-}
-
-.reference-title a:hover { text-decoration: underline; }
-
-.source-type-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 10px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.source-type-badge.journal { background: var(--info-bg); color: #1E40AF; }
-.source-type-badge.institution { background: var(--success-bg); color: #065F46; }
-.source-type-badge.guideline { background: var(--danger-bg); color: #B91C1C; }
-.source-type-badge.health-site { background: #E0E7FF; color: #3730A3; }
-
-.reference-snippet {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  line-height: 1.5;
-  background: #F8FAFC;
-  padding: 10px 14px;
-  border-radius: 12px;
-  border-left: 3px solid #E2E8F0;
+.question-related {
   margin-top: 10px;
+  font-size: 0.85rem;
+  color: var(--info-dark);
 }
 ```
 
-### SOAP Summary
+### Prognosis (for `prognosis`)
 
 ```html
-<div class="soap-container">
-  <div class="soap-box subjective">
-    <h4><span class="soap-letter">S</span> Subjective</h4>
-    <ul>
-      <li>[SYMPTOM FROM ANALYSIS]</li>
-    </ul>
-  </div>
-  <div class="soap-box objective">
-    <h4><span class="soap-letter">O</span> Objective</h4>
-    <ul>
-      <li>[LAB VALUE]: [VALUE] ([STATUS])</li>
-    </ul>
-  </div>
-  <div class="soap-box assessment">
-    <h4><span class="soap-letter">A</span> Assessment</h4>
-    <ul>
-      <li>[DIAGNOSIS FROM SYNTHESIZER]</li>
-    </ul>
-  </div>
-  <div class="soap-box plan">
-    <h4><span class="soap-letter">P</span> Plan</h4>
-    <ul>
-      <li>[ACTION FROM SYNTHESIZER]</li>
-    </ul>
-  </div>
-</div>
-```
-
-```css
-.soap-container {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 20px;
-}
-
-.soap-box {
-  background: white;
-  border-radius: 24px;
-  padding: 25px;
-  border-top: 5px solid;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.08), inset 0 2px 4px rgba(255,255,255,0.8);
-}
-
-.soap-box.subjective { border-color: var(--accent-primary); background: linear-gradient(135deg, var(--accent-bg) 0%, white 100%); }
-.soap-box.objective { border-color: var(--info); background: linear-gradient(135deg, var(--info-bg) 0%, white 100%); }
-.soap-box.assessment { border-color: var(--warning); background: linear-gradient(135deg, var(--warning-bg) 0%, white 100%); }
-.soap-box.plan { border-color: var(--success); background: linear-gradient(135deg, var(--success-bg) 0%, white 100%); }
-
-.soap-letter {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  color: white;
-  margin-right: 10px;
-}
-
-.soap-box.subjective .soap-letter { background: var(--accent-primary); }
-.soap-box.objective .soap-letter { background: var(--info); }
-.soap-box.assessment .soap-letter { background: var(--warning); }
-.soap-box.plan .soap-letter { background: var(--success); }
-
-.soap-box ul { list-style: none; padding: 0; margin: 0; }
-.soap-box li { padding: 8px 0; font-size: 0.95rem; border-bottom: 1px solid #F3F4F6; }
-.soap-box li:last-child { border-bottom: none; }
-```
-
-### Prognosis Section
-
-```html
+<!-- Render if prognosis exists -->
 <div class="prognosis-section">
   <h2>Prognosis</h2>
   <div class="prognosis-grid">
     <div class="prognosis-card without-intervention">
       <h4>Without Intervention</h4>
-      <p>[PROSE FROM SYNTHESIZER]</p>
+      <p>{{prognosis.withoutIntervention.summary}}</p>
+      {{#if prognosis.withoutIntervention.risks.length}}
       <ul>
-        <li>[RISK 1]</li>
-        <li>[RISK 2]</li>
+        {{#each prognosis.withoutIntervention.risks}}
+        <li><strong>{{risk}}</strong> - {{timeframe}} ({{likelihood}})</li>
+        {{/each}}
       </ul>
+      {{/if}}
     </div>
     <div class="prognosis-card with-intervention">
       <h4>With Intervention</h4>
-      <p>[PROSE FROM SYNTHESIZER]</p>
+      <p>{{prognosis.withIntervention.summary}}</p>
+      {{#if prognosis.withIntervention.expectedImprovements.length}}
       <ul>
-        <li>[IMPROVEMENT 1]</li>
-        <li>[IMPROVEMENT 2]</li>
+        {{#each prognosis.withIntervention.expectedImprovements}}
+        <li><strong>{{marker}}</strong>: {{currentValue}} → {{targetValue}} ({{timeframe}})</li>
+        {{/each}}
       </ul>
+      {{/if}}
     </div>
   </div>
+
+  {{#if prognosis.milestones.length}}
+  <div class="milestones">
+    <h4>Expected Milestones</h4>
+    <div class="milestones-timeline">
+      {{#each prognosis.milestones}}
+      <div class="milestone">
+        <div class="milestone-time">{{timeframe}}</div>
+        <div class="milestone-expectation">{{expectation}}</div>
+      </div>
+      {{/each}}
+    </div>
+  </div>
+  {{/if}}
 </div>
 ```
 
@@ -945,73 +957,35 @@ VALUE ARCS:
 .prognosis-card h4 { font-weight: 800; margin-bottom: 15px; }
 .without-intervention h4 { color: var(--danger-dark); }
 .with-intervention h4 { color: var(--success-dark); }
-```
 
-### Data Gaps Section
-
-```html
-<div class="data-gaps-section">
-  <h2>Questions & Gaps</h2>
-  <div class="gaps-grid">
-    <div class="gap-card">
-      <div class="gap-title">[TEST/QUESTION]</div>
-      <div class="gap-reason">[WHY IT MATTERS - from synthesizer]</div>
-      <span class="gap-priority [level]">[PRIORITY]</span>
-    </div>
-  </div>
-</div>
-```
-
-```css
-.data-gaps-section {
-  background: linear-gradient(135deg, #FFFBEB 0%, var(--warning-bg) 100%);
-  border-radius: 28px;
-  padding: 35px;
-  border-left: 5px solid var(--warning);
-}
-
-.gaps-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 20px;
-}
-
-.gap-card {
+.milestones { margin-top: 30px; }
+.milestones-timeline { display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px; }
+.milestone {
   background: white;
-  border-radius: 20px;
-  padding: 22px;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.04);
+  border-radius: 16px;
+  padding: 15px 20px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
 }
-
-.gap-title { font-weight: 700; color: #92400E; margin-bottom: 10px; }
-.gap-reason { color: #78350F; font-size: 0.9rem; line-height: 1.5; }
-
-.gap-priority {
-  display: inline-block;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  margin-top: 10px;
-}
-
-.gap-priority.high { background: var(--danger-bg); color: var(--danger-dark); }
-.gap-priority.medium { background: var(--warning-bg); color: var(--warning-dark); }
+.milestone-time { font-weight: 800; color: var(--accent-primary); margin-bottom: 5px; }
+.milestone-expectation { color: var(--text-muted); font-size: 0.9rem; }
 ```
 
-### Positive Findings Section
+### Positive Findings (for `positiveFindings[]`)
 
 ```html
+<!-- Render if positiveFindings has items -->
 <div class="positive-findings">
   <h2>What's Working Well</h2>
   <div class="positive-grid">
+    {{#each positiveFindings}}
     <div class="positive-card">
-      <div class="positive-icon">[EMOJI]</div>
+      <div class="positive-icon">✅</div>
       <div class="positive-content">
-        <div class="positive-title">[FINDING]</div>
-        <p class="positive-description">[EXPLANATION]</p>
+        <div class="positive-title">{{marker}}: {{value}}</div>
+        <p class="positive-description">{{interpretation}}</p>
       </div>
     </div>
+    {{/each}}
   </div>
 </div>
 ```
@@ -1054,46 +1028,264 @@ VALUE ARCS:
 .positive-description { color: #047857; font-size: 0.95rem; line-height: 1.6; }
 ```
 
----
+### Data Gaps (for `dataGaps[]`)
 
-## Icon Consistency
-
-Use ONE icon style throughout:
-
-**Option 1: Emoji (Recommended)**
-```
-🫀 Heart    🧠 Brain    🩸 Blood    🦴 Bones    🧬 Genetics
-💊 Meds     🥗 Nutrition 🏃 Exercise ⚠️ Warning  ✅ Good
-❌ Critical 🔬 Lab      📊 Metrics  🩺 Clinical 💡 Insight
-```
-
-**Option 2: Lucide Icons**
 ```html
-<script src="https://unpkg.com/lucide@latest"></script>
+<!-- Render if dataGaps has items -->
+<div class="data-gaps-section">
+  <h2>Questions & Gaps</h2>
+  <div class="gaps-grid">
+    {{#each dataGaps}}
+    <div class="gap-card">
+      <div class="gap-title">{{test}}</div>
+      <div class="gap-reason">{{reason}}</div>
+      <span class="gap-priority {{priority}}">{{priority}} priority</span>
+    </div>
+    {{/each}}
+  </div>
+</div>
 ```
 
-**Never mix emoji and SVG icons.**
+```css
+.data-gaps-section {
+  background: linear-gradient(135deg, #FFFBEB 0%, var(--warning-bg) 100%);
+  border-radius: 28px;
+  padding: 35px;
+  border-left: 5px solid var(--warning);
+}
+
+.gaps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.gap-card {
+  background: white;
+  border-radius: 20px;
+  padding: 22px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.04);
+}
+
+.gap-title { font-weight: 700; color: #92400E; margin-bottom: 10px; }
+.gap-reason { color: #78350F; font-size: 0.9rem; line-height: 1.5; }
+
+.gap-priority {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-top: 10px;
+}
+
+.gap-priority.high { background: var(--danger-bg); color: var(--danger-dark); }
+.gap-priority.medium { background: var(--warning-bg); color: var(--warning-dark); }
+.gap-priority.low { background: var(--info-bg); color: var(--info-dark); }
+```
+
+### References (for `references[]`)
+
+```html
+<!-- Render if references has items -->
+<section class="references-section">
+  <h2>Scientific References</h2>
+  <p class="references-intro">Claims in this report are supported by these sources:</p>
+
+  <div class="reference-list">
+    {{#each references}}
+    <div class="reference-item">
+      <div class="reference-number">{{id}}</div>
+      <div class="reference-content">
+        <div class="reference-title">
+          <a href="{{uri}}" target="_blank">{{title}}</a>
+        </div>
+        <div class="reference-claim">"{{claim}}"</div>
+        <div class="reference-meta">
+          <span class="source-type-badge {{type}}">{{type}}</span>
+          <span class="confidence-indicator {{confidence}}">{{confidence}} confidence</span>
+        </div>
+        {{#if snippet}}<p class="reference-snippet">{{snippet}}</p>{{/if}}
+      </div>
+    </div>
+    {{/each}}
+  </div>
+</section>
+```
+
+```css
+.references-section {
+  background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+  border-radius: 28px;
+  padding: 35px;
+}
+
+.reference-item {
+  background: white;
+  border-radius: 18px;
+  padding: 20px;
+  display: flex;
+  gap: 18px;
+  margin-bottom: 15px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+}
+
+.reference-number {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #E2E8F0 0%, #CBD5E1 100%);
+  color: #475569;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.reference-title a {
+  color: #2563EB;
+  text-decoration: none;
+  font-weight: 700;
+}
+.reference-title a:hover { text-decoration: underline; }
+
+.reference-claim {
+  font-style: italic;
+  color: var(--text-muted);
+  margin: 8px 0;
+  font-size: 0.9rem;
+}
+
+.source-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.source-type-badge.journal { background: var(--info-bg); color: #1E40AF; }
+.source-type-badge.institution { background: var(--success-bg); color: #065F46; }
+.source-type-badge.guideline { background: var(--danger-bg); color: #B91C1C; }
+.source-type-badge.health-site { background: #E0E7FF; color: #3730A3; }
+
+.reference-snippet {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  background: #F8FAFC;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border-left: 3px solid #E2E8F0;
+  margin-top: 10px;
+}
+```
 
 ---
 
-## Responsive Design
+## Design System: Claymorphism
+
+### Color Variables (REQUIRED)
+
+Define these at the start of your CSS. Choose a unique, vibrant palette:
+
+```css
+:root {
+  /* PRIMARY - Choose vibrant colors */
+  --accent-primary: #8B5CF6;
+  --accent-primary-dark: #6D28D9;
+  --accent-light: #C4B5FD;
+  --accent-bg: #F5F3FF;
+
+  /* SEMANTIC */
+  --success: #10B981;
+  --success-dark: #059669;
+  --success-bg: #D1FAE5;
+
+  --warning: #F59E0B;
+  --warning-dark: #D97706;
+  --warning-bg: #FEF3C7;
+
+  --danger: #EF4444;
+  --danger-dark: #DC2626;
+  --danger-bg: #FEE2E2;
+
+  --info: #3B82F6;
+  --info-dark: #2563EB;
+  --info-bg: #DBEAFE;
+
+  /* NEUTRALS */
+  --text-main: #1E293B;
+  --text-muted: #64748B;
+  --bg-card: #FFFFFF;
+  --bg-section: #F8FAFC;
+}
+```
+
+### Claymorphism Shadow Stack
+
+```css
+.clay-card {
+  background: linear-gradient(135deg, #FFFFFF 0%, #FAFAFA 100%);
+  border-radius: 28px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.08),
+    0 4px 12px rgba(0, 0, 0, 0.04),
+    inset 0 2px 4px rgba(255, 255, 255, 0.8),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.02);
+}
+```
+
+### Typography
+
+```css
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800&family=DM+Sans:wght@400;500;700&display=swap');
+
+body { font-family: 'DM Sans', sans-serif; }
+h1, h2, h3, h4 { font-family: 'Nunito', sans-serif; font-weight: 800; }
+```
+
+### Animated Background Blobs
+
+```css
+.blob {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(80px);
+  z-index: -1;
+  opacity: 0.6;
+  animation: float 20s infinite alternate;
+}
+
+.blob-1 { top: -10%; left: -10%; width: 500px; height: 500px; background: var(--accent-light); }
+.blob-2 { bottom: -10%; right: -10%; width: 600px; height: 600px; background: var(--success-bg); animation-delay: -5s; }
+.blob-3 { top: 40%; left: 40%; width: 400px; height: 400px; background: var(--info-bg); animation-delay: -10s; }
+
+@keyframes float {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(20px, 30px) scale(1.05); }
+  100% { transform: translate(40px, 60px) scale(1); }
+}
+```
+
+### Responsive Design
 
 ```css
 @media (max-width: 768px) {
-  .soap-container,
-  .gauges-grid,
   .prognosis-grid,
-  .gaps-grid {
+  .gauges-grid,
+  .gaps-grid,
+  .positive-grid,
+  .diagnoses-grid,
+  .schedule-grid {
     grid-template-columns: 1fr;
   }
 
-  .flowchart {
-    flex-direction: column;
-  }
-
-  .flow-arrow {
-    transform: rotate(90deg);
-  }
+  .flowchart { flex-direction: column; }
+  .flow-arrow { transform: rotate(90deg); }
 }
 ```
 
@@ -1104,30 +1296,22 @@ Use ONE icon style throughout:
 ### Self-Contained HTML
 - ALL CSS in `<style>` tag
 - ALL JavaScript in `<script>` tag
-- External: Google Fonts, Chart.js CDN only
+- External: Google Fonts, Plotly CDN only
+- Use Plotly (not Chart.js) for all charts - it has built-in reference ranges, export, and better medical data visualization
 
-### What You MUST Include (Priority Order)
+### What You MUST Do
 
-1. **Answer to the user's question** - prominently, in the first 2-3 sections (THIS IS #1 PRIORITY)
-2. **Connection of findings to their concern** - every major finding should tie back to what they asked
-3. **Every section the Synthesizer specified** - no exceptions
-4. **All prose verbatim** - no summarizing
-5. **All research URLs as clickable links** - from research_json
-6. **All treatment names** - specific herbs, supplements, medications
-7. **All conditions** - not just primary, include all mentioned (e.g., Candida)
-8. **Doctor questions** - if specified
-9. **Visualization recommendations** - exactly as specified
+1. **Iterate through structured_data.json** - render sections only for fields that have data
+2. **Use the component library** - match each JSON field to its appropriate component
+3. **Preserve all data** - every item in an array gets rendered, every field value gets displayed
+4. **Include all URLs** - references must have clickable links
 
 ### What You MUST NOT Do
 
-- Bury the answer to the user's question in the middle or end
-- List findings without connecting them to the user's concern
-- Create a generic report that ignores what they specifically asked
-- Skip sections because they seem "less important"
-- Summarize or compress prose
-- Drop URLs or make them non-clickable
-- Omit specific treatment names (like "Japanese Knotweed")
-- Ignore the Synthesizer's visualization recommendations
+- Do NOT invent sections not in the JSON
+- Do NOT skip sections that have data in the JSON
+- Do NOT summarize or compress data
+- Do NOT hardcode sections - let the JSON drive structure
 
 ---
 
@@ -1138,6 +1322,4 @@ Output ONLY the complete HTML file:
 - No markdown, no explanation, no commentary
 - Complete, valid, self-contained HTML
 
-**Before you begin, re-read the user's question. Your HTML must answer it prominently.**
-
-**Render the Health Realm now, answering the user's question while following the Synthesizer's specifications exactly.**
+**Render the Health Realm now by iterating through structured_data.json and rendering each field that has data.**

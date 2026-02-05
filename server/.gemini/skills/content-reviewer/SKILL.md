@@ -353,10 +353,10 @@ You will receive:
 {{user_prompt}}
 </user_question>
 
-### Source of Truth (final_analysis.md)
-<final_analysis>
-{{final_analysis}}
-</final_analysis>
+### Source of Truth (structured_data.json)
+<structured_data>
+{{structured_data}}
+</structured_data>
 
 ### Output to Validate (index.html)
 <html_content>
@@ -365,6 +365,12 @@ You will receive:
 ```
 
 **The user's question comes FIRST because it is the most important input.** Everything else exists to answer that question.
+
+**Note:** The structured_data.json contains all data in JSON format. Check that:
+- Every field with data in the JSON has a corresponding section in HTML
+- Specific values (numbers, names, dosages) from JSON appear in HTML
+- The executiveSummary.shortAnswer addresses the user's question
+- Categories like keyBiomarkers, recommendations, healthTimeline are represented
 
 ---
 

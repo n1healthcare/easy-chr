@@ -3,14 +3,13 @@
  *
  * Usage: npx tsx scripts/regenerate-analysis.ts [prompt]
  *
- * This script skips phase 1 (extraction) and runs phases 2-8:
+ * This script skips phase 1 (extraction) and runs phases 2-7:
  * - Phase 2: Medical Analysis
  * - Phase 3: Cross-System Analysis
  * - Phase 4: Research
- * - Phase 5: Synthesis
- * - Phase 6: Validation
- * - Phase 7: Data Structuring
- * - Phase 8: HTML Generation
+ * - Phase 5: Data Structuring (SOURCE OF TRUTH)
+ * - Phase 6: Validation (validates structured_data.json)
+ * - Phase 7: HTML Generation (from structured_data.json)
  *
  * Uses existing extracted.md from storage/
  */
@@ -56,6 +55,23 @@ function stripThinkingText(content: string, marker: string | RegExp): string {
     }
   }
   return content;
+}
+
+function cleanupJson(content: string): string {
+  content = content.trim();
+  const jsonStartIndex = content.indexOf('{');
+  if (jsonStartIndex > 0) {
+    content = content.slice(jsonStartIndex);
+  }
+  if (content.startsWith('```json')) {
+    content = content.slice(7);
+  } else if (content.startsWith('```')) {
+    content = content.slice(3);
+  }
+  if (content.endsWith('```')) {
+    content = content.slice(0, -3);
+  }
+  return content.trim();
 }
 
 async function regenerateAnalysis(userPrompt?: string) {
@@ -221,59 +237,82 @@ ${analysisContent}
   }
 
   // ========================================================================
-  // Phase 5: Synthesis
+  // Phase 5: Data Structuring (SOURCE OF TRUTH)
+  // Extracts chart-ready JSON BEFORE synthesis
   // ========================================================================
   console.log('\n' + '='.repeat(60));
-  console.log('Phase 5: Synthesis');
+  console.log('Phase 5: Data Structuring');
   console.log('='.repeat(60));
 
-  const finalAnalysisPath = path.join(storageDir, 'final_analysis.md');
-  let finalAnalysisContent = '';
+  const structuredDataPath = path.join(storageDir, 'structured_data.json');
+  let structuredDataContent = '';
 
-  const synthesizerSkill = loadSkill('synthesizer');
-  const researchSection = researchOutput.researchedClaims.length > 0
-    ? `\n\n### Research Findings (Verified Claims with Citations)\n<research>\n${researchMarkdown}\n</research>`
-    : '';
-
-  const synthesisPrompt = `${synthesizerSkill}
+  const dataStructurerSkill = loadSkill('data-structurer');
+  const structurePrompt = `${dataStructurerSkill}
 
 ---
 
-${prompt ? `### Patient's Original Question\n${prompt}\n\n` : ''}### Original Extracted Data (Source of Truth)
-<extracted_data>
-${allExtractedContent}
-</extracted_data>
-
-### Initial Medical Analysis
+${prompt ? `#### Patient's Question/Context\n${prompt}\n\n` : ''}### Priority 1: Rich Medical Analysis (PRIMARY for diagnoses, timeline, prognosis, supplements)
 <analysis>
 ${analysisContent}
 </analysis>
 
-### Cross-System Connections
+### Priority 2: Cross-System Connections (for mechanism explanations)
 <cross_systems>
 ${crossSystemsContent}
-</cross_systems>${researchSection}`;
+</cross_systems>
 
-  console.log('Synthesizing final analysis...');
-  const synthesisStream = await gemini.sendMessageStream(
-    synthesisPrompt,
-    `${sessionId}-synthesis`,
+### Priority 3: Research Findings (for citations and verified claims)
+<research>
+${researchMarkdown}
+</research>
+
+### Priority 4: Original Extracted Data (source of truth for raw values)
+<extracted_data>
+${allExtractedContent}
+</extracted_data>`;
+
+  console.log('Extracting structured data for visualizations...');
+  const structureStream = await gemini.sendMessageStream(
+    structurePrompt,
+    `${sessionId}-structure`,
     undefined,
     { model: REALM_CONFIG.models.doctor }
   );
 
-  for await (const chunk of synthesisStream) {
-    finalAnalysisContent += chunk;
+  for await (const chunk of structureStream) {
+    structuredDataContent += chunk;
     process.stdout.write('.');
   }
   console.log(' Done!');
 
-  finalAnalysisContent = stripThinkingText(finalAnalysisContent, /^#\s+.+$/m);
-  fs.writeFileSync(finalAnalysisPath, finalAnalysisContent, 'utf-8');
-  console.log(`✅ Phase 5 complete: final_analysis.md (${finalAnalysisContent.length} chars)`);
+  // Clean up JSON
+  structuredDataContent = cleanupJson(structuredDataContent);
+
+  // Validate JSON
+  try {
+    JSON.parse(structuredDataContent);
+  } catch {
+    console.warn('  JSON not valid, attempting repair...');
+    const lastBrace = structuredDataContent.lastIndexOf('}');
+    if (lastBrace > 0) {
+      structuredDataContent = structuredDataContent.slice(0, lastBrace + 1);
+      try {
+        JSON.parse(structuredDataContent);
+        console.log('  JSON repaired.');
+      } catch {
+        console.warn('  JSON repair failed, using empty structure.');
+        structuredDataContent = '{}';
+      }
+    }
+  }
+
+  fs.writeFileSync(structuredDataPath, structuredDataContent, 'utf-8');
+  console.log(`✅ Phase 5 complete: structured_data.json (${structuredDataContent.length} chars)`);
 
   // ========================================================================
   // Phase 6: Validation
+  // Validates structured_data.json completeness against source data
   // ========================================================================
   console.log('\n' + '='.repeat(60));
   console.log('Phase 6: Validation');
@@ -290,17 +329,22 @@ ${crossSystemsContent}
 
 ---
 
-${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Original Extracted Data (Source of Truth)
+${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Original Extracted Data (Source of Truth for raw values)
 <extracted_data>
 ${allExtractedContent}
 </extracted_data>
 
-### Final Synthesized Analysis (To Validate)
-<final_analysis>
-${finalAnalysisContent}
-</final_analysis>`;
+### Medical Analysis (Source of Truth for clinical interpretation)
+<analysis>
+${analysisContent}
+</analysis>
 
-    console.log(`Validating analysis (cycle ${correctionCycle})...`);
+### Structured Data (To Validate)
+<structured_data>
+${structuredDataContent}
+</structured_data>`;
+
+    console.log(`Validating structured data (cycle ${correctionCycle})...`);
     let validationContent = '';
     const validationStream = await gemini.sendMessageStream(
       validationPrompt,
@@ -324,33 +368,41 @@ ${finalAnalysisContent}
     if (needsRevision || hasCriticalErrors) {
       console.log('  Validation found issues.');
       if (correctionCycle < MAX_CORRECTION_CYCLES) {
-        console.log('  Sending corrections back to synthesizer...');
+        console.log('  Sending corrections back to data structurer...');
 
         const correctionsMatch = validationContent.match(/## Required Corrections[\s\S]*?(?=##|$)/);
         const requiredCorrections = correctionsMatch ? correctionsMatch[0] : '';
 
-        const correctionPrompt = `${synthesizerSkill}
+        const dataStructurerSkill = loadSkill('data-structurer');
+        const correctionPrompt = `${dataStructurerSkill}
 
 ---
 
 ## CORRECTION TASK
 
-${prompt ? `### Patient's Original Question\n${prompt}\n\n` : ''}### Original Extracted Data (Source of Truth)
+${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Original Extracted Data (Source of Truth for raw values)
 <extracted_data>
 ${allExtractedContent}
 </extracted_data>
 
-### Previous Synthesis (Has Issues)
-<previous_synthesis>
-${finalAnalysisContent}
-</previous_synthesis>
+### Medical Analysis (Source of Truth for clinical interpretation)
+<analysis>
+${analysisContent}
+</analysis>
+
+### Previous Structured Data (Has Issues)
+<previous_structured_data>
+${structuredDataContent}
+</previous_structured_data>
 
 ### Validation Report
 <validation_report>
 ${validationContent}
 </validation_report>
 
-${requiredCorrections ? `### Required Corrections (MUST FIX)\n${requiredCorrections}` : ''}`;
+${requiredCorrections ? `### Required Corrections (MUST FIX)\n${requiredCorrections}` : ''}
+
+Output the CORRECTED JSON now (starting with \`{\`):`;
 
         let correctedContent = '';
         const correctionStream = await gemini.sendMessageStream(
@@ -365,10 +417,16 @@ ${requiredCorrections ? `### Required Corrections (MUST FIX)\n${requiredCorrecti
         }
 
         if (correctedContent.trim().length > 0) {
-          correctedContent = stripThinkingText(correctedContent, /^#\s+.+$/m);
-          finalAnalysisContent = correctedContent;
-          fs.writeFileSync(finalAnalysisPath, finalAnalysisContent, 'utf-8');
-          console.log('  Synthesis corrected. Re-validating...');
+          correctedContent = cleanupJson(correctedContent);
+          try {
+            JSON.parse(correctedContent);
+            structuredDataContent = correctedContent;
+            fs.writeFileSync(structuredDataPath, structuredDataContent, 'utf-8');
+            console.log('  Structured data corrected. Re-validating...');
+          } catch {
+            console.warn('  Corrected JSON invalid, keeping original.');
+            validationPassed = true;
+          }
         } else {
           validationPassed = true;
         }
@@ -386,96 +444,10 @@ ${requiredCorrections ? `### Required Corrections (MUST FIX)\n${requiredCorrecti
   console.log(`✅ Phase 6 complete: validation.md`);
 
   // ========================================================================
-  // Phase 7: Data Structuring
+  // Phase 7: HTML Generation
   // ========================================================================
   console.log('\n' + '='.repeat(60));
-  console.log('Phase 7: Data Structuring');
-  console.log('='.repeat(60));
-
-  const structuredDataPath = path.join(storageDir, 'structured_data.json');
-  let structuredDataContent = '';
-
-  const dataStructurerSkill = loadSkill('data-structurer');
-  const structurePrompt = `${dataStructurerSkill}
-
----
-
-${prompt ? `#### Patient's Question/Context\n${prompt}\n\n` : ''}### Priority 1: Rich Medical Analysis (PRIMARY for diagnoses, timeline, prognosis, supplements)
-<analysis>
-${analysisContent}
-</analysis>
-
-### Priority 2: Cross-System Connections (for mechanism explanations)
-<cross_systems>
-${crossSystemsContent}
-</cross_systems>
-
-### Priority 3: Final Synthesized Analysis (for patient-facing narrative)
-<final_analysis>
-${finalAnalysisContent}
-</final_analysis>
-
-### Priority 4: Original Extracted Data (source of truth for raw values)
-<extracted_data>
-${allExtractedContent}
-</extracted_data>`;
-
-  console.log('Extracting structured data for visualizations...');
-  const structureStream = await gemini.sendMessageStream(
-    structurePrompt,
-    `${sessionId}-structure`,
-    undefined,
-    { model: REALM_CONFIG.models.doctor }
-  );
-
-  for await (const chunk of structureStream) {
-    structuredDataContent += chunk;
-    process.stdout.write('.');
-  }
-  console.log(' Done!');
-
-  // Clean up JSON
-  structuredDataContent = structuredDataContent.trim();
-  const jsonStartIndex = structuredDataContent.indexOf('{');
-  if (jsonStartIndex > 0) {
-    structuredDataContent = structuredDataContent.slice(jsonStartIndex);
-  }
-  if (structuredDataContent.startsWith('```json')) {
-    structuredDataContent = structuredDataContent.slice(7);
-  } else if (structuredDataContent.startsWith('```')) {
-    structuredDataContent = structuredDataContent.slice(3);
-  }
-  if (structuredDataContent.endsWith('```')) {
-    structuredDataContent = structuredDataContent.slice(0, -3);
-  }
-  structuredDataContent = structuredDataContent.trim();
-
-  // Validate JSON
-  try {
-    JSON.parse(structuredDataContent);
-  } catch {
-    console.warn('  JSON not valid, attempting repair...');
-    const lastBrace = structuredDataContent.lastIndexOf('}');
-    if (lastBrace > 0) {
-      structuredDataContent = structuredDataContent.slice(0, lastBrace + 1);
-      try {
-        JSON.parse(structuredDataContent);
-        console.log('  JSON repaired.');
-      } catch {
-        console.warn('  JSON repair failed, using empty structure.');
-        structuredDataContent = '{}';
-      }
-    }
-  }
-
-  fs.writeFileSync(structuredDataPath, structuredDataContent, 'utf-8');
-  console.log(`✅ Phase 7 complete: structured_data.json (${structuredDataContent.length} chars)`);
-
-  // ========================================================================
-  // Phase 8: HTML Generation
-  // ========================================================================
-  console.log('\n' + '='.repeat(60));
-  console.log('Phase 8: HTML Generation');
+  console.log('Phase 7: HTML Generation');
   console.log('='.repeat(60));
 
   const realmId = uuidv4();
@@ -483,29 +455,17 @@ ${allExtractedContent}
   fs.mkdirSync(realmDir, { recursive: true });
 
   const htmlSkill = loadSkill('html-builder');
+  // DATA-DRIVEN: only structured_data.json - the JSON IS the structure
   const htmlPrompt = `${htmlSkill}
 
 ---
 
-${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Priority 1: Structured Data (for charts and visualizations)
+### Structured Data (SOURCE OF TRUTH)
+This JSON contains ALL data for rendering. Iterate through each field and render appropriate sections.
+Only render sections for fields that have data. Do not invent sections not in this JSON.
 <structured_data>
 ${structuredDataContent}
-</structured_data>
-
-### Priority 2: Rich Medical Analysis (for detailed sections)
-<analysis>
-${analysisContent}
-</analysis>
-
-### Priority 3: Cross-System Analysis (for mechanism explanations)
-<cross_systems>
-${crossSystemsContent}
-</cross_systems>
-
-### Priority 4: Final Synthesized Analysis (for patient-facing narrative)
-<final_analysis>
-${finalAnalysisContent}
-</final_analysis>`;
+</structured_data>`;
 
   console.log(`Generating HTML... (payload: ${Math.round(htmlPrompt.length / 1024)}KB)`);
   let htmlContent = '';
