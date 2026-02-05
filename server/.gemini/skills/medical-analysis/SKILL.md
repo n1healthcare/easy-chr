@@ -86,11 +86,40 @@ For each major document or finding:
 4. update_analysis("Key Patterns", synthesized_connections)
 ```
 
-### Phase 4: Synthesis (2-3 cycles)
+### Phase 4: Cross-System Connections (3-5 cycles)
+```
+1. For each major finding, search for downstream effects in OTHER systems
+2. Identify causal chains: A → B → C
+3. Map how body systems are interconnected through this patient's data
+4. update_analysis("Cross-System Connections", connection_map)
+```
+
+**Example cross-system exploration:**
+```
+Finding: Low stomach acid
+→ search_data("B12 absorption") → B12 requires stomach acid
+→ search_data("mineral absorption") → Zinc, iron, copper need acid
+→ search_data("SIBO") → Low acid → bacterial overgrowth
+→ Result: Low stomach acid → malabsorption → multiple deficiencies → immune dysfunction
+```
+
+### Phase 5: Integrative Clinical Reasoning (3-5 cycles) — THE CRITICAL PHASE
+```
+1. get_analysis() → Review all findings and connections
+2. Form UNIFIED ROOT CAUSE HYPOTHESIS — what ONE thing explains most findings?
+3. Build CAUSAL CHAIN — what happened first, second, third?
+4. Identify KEYSTONE FINDINGS — which 1-2 findings have the highest downstream impact?
+5. Generate COMPETING HYPOTHESES — what's the alternative explanation?
+6. Write TEMPORAL NARRATIVE — what likely happened over time?
+7. Create PRIORITY RANKING — if fixing ONE thing, what has biggest cascade effect?
+8. update_analysis("Integrative Synthesis", unified_understanding)
+```
+
+### Phase 6: Final Synthesis (2-3 cycles)
 ```
 1. Choose primary clinical frames that best explain the data
 2. Write the executive narrative connecting everything
-3. Finalize recommendations
+3. Finalize recommendations based on keystone findings and priorities
 4. complete_analysis() with summary
 ```
 
@@ -203,11 +232,19 @@ Use `update_analysis(section, content)` to build these sections incrementally:
 14. **Questions for Doctor** — What the patient should discuss with their physician
 15. **Missing Data** — Tests that would clarify the picture
 
+### Integrative Reasoning Sections (REQUIRED)
+16. **Unified Root Cause Hypothesis** — The ONE thing that best explains most findings
+17. **Causal Chain** — The sequence: First A → then B → causing C, D, E
+18. **Keystone Findings** — The 2-3 findings with highest downstream impact (fix these first)
+19. **Cross-System Connections** — How findings in one system affect others
+20. **Competing Hypotheses** — Alternative explanations with evidence for/against
+21. **Temporal Narrative** — What likely happened over time (the patient's health story)
+22. **Priority Stack Rank** — If limited resources, address in this order: 1, 2, 3...
+
 ### Optional Sections (if data supports)
 - Medication/Supplement Review — Interactions and depletion risks
 - Trend Analysis — How key markers have changed over time
 - Lifestyle Assessment — Sleep, diet, exercise, stress
-- Root Cause Hypotheses — What's driving the patterns
 
 ---
 
