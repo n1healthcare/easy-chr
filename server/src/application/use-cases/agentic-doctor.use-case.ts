@@ -3,13 +3,13 @@
  *
  * 8-Phase Pipeline:
  * Phase 1: Document Extraction - PDFs via Vision OCR, text files directly → extracted.md
- * Phase 2: Medical Analysis - LLM with medical-analysis skill → analysis.md
- * Phase 3: Cross-System Analysis - LLM identifies connections between systems → cross_systems.md
- * Phase 4: Research - Web search to validate claims with external sources → research.json
- * Phase 5: Synthesis - LLM merges insights + research into cohesive narrative → final_analysis.md
- * Phase 6: Validation - LLM validates completeness and accuracy → validation.md (with correction loop)
- * Phase 7: Data Structuring - LLM extracts chart-ready JSON → structured_data.json
- * Phase 8: Realm Generation - LLM with html-builder skill → interactive Health Realm (index.html)
+ * Phase 2: Medical Analysis - LLM with medical-analysis skill → analysis.md (includes cross-system analysis)
+ * Phase 3: Research - Web search to validate claims with external sources → research.json
+ * Phase 4: Data Structuring - LLM extracts chart-ready JSON (SOURCE OF TRUTH) → structured_data.json
+ * Phase 5: Validation - LLM validates structured_data.json completeness → validation.md (with correction loop)
+ * Phase 6: Realm Generation - LLM with html-builder skill → interactive Health Realm (index.html)
+ * Phase 7: Content Review - LLM compares structured_data.json vs index.html for gaps → content_review.json
+ * Phase 8: HTML Regeneration - If gaps found, LLM regenerates HTML with feedback
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -17,9 +17,12 @@ import path from 'path';
 import fs from 'fs';
 
 import { LLMClientPort } from '../ports/llm-client.port.js';
+import type { StoragePort } from '../ports/storage.port.js';
+import { LegacyPaths } from '../../common/storage-paths.js';
 import { readFileWithEncoding } from '../../../vendor/gemini-cli/packages/core/src/utils/fileUtils.js';
 import { PDFExtractionService } from '../../services/pdf-extraction.service.js';
 import { AgenticMedicalAnalyst, type AnalystEvent } from '../../services/agentic-medical-analyst.service.js';
+import { AgenticValidator, type ValidatorEvent } from '../../services/agentic-validator.service.js';
 import { researchClaims, formatResearchAsMarkdown, type ResearchOutput, type ResearchEvent } from '../../services/research-agent.service.js';
 import { REALM_CONFIG } from '../../config.js';
 import type { RealmGenerationEvent } from '../../domain/types.js';
@@ -58,21 +61,6 @@ const loadMedicalAnalysisSkill = () => loadSkill(
   'You are a medical analyst. Analyze the patient data and write a comprehensive report.'
 );
 
-const loadCrossSystemSkill = () => loadSkill(
-  'cross-system-analyst',
-  'You are a systems medicine specialist. Identify connections between body systems and root cause hypotheses.'
-);
-
-const loadSynthesizerSkill = () => loadSkill(
-  'synthesizer',
-  'You are a medical communication specialist. Merge analysis into a cohesive, prioritized narrative.'
-);
-
-const loadValidatorSkill = () => loadSkill(
-  'validator',
-  'You are a quality assurance specialist. Validate that the analysis is complete and accurate.'
-);
-
 const loadHTMLBuilderSkill = () => loadSkill(
   'html-builder',
   'You are an HTML builder. Transform the analysis into a beautiful, interactive HTML page.'
@@ -81,6 +69,11 @@ const loadHTMLBuilderSkill = () => loadSkill(
 const loadDataStructurerSkill = () => loadSkill(
   'data-structurer',
   'You are a data extraction specialist. Extract structured JSON from medical analysis for chart visualization.'
+);
+
+const loadContentReviewerSkill = () => loadSkill(
+  'content-reviewer',
+  'You are a QA agent. Compare structured_data.json against index.html to identify information loss.'
 );
 
 // ============================================================================
@@ -105,13 +98,94 @@ function stripThinkingText(content: string, marker: string | RegExp): string {
 }
 
 // ============================================================================
+// Helper: Stream with retry for mid-stream failures
+// ============================================================================
+
+interface StreamWithRetryOptions {
+  maxRetries?: number;
+  operationName: string;
+  onRetry?: (attempt: number, error: string) => void;
+}
+
+async function streamWithRetry(
+  llmClient: LLMClientPort,
+  prompt: string,
+  sessionId: string,
+  model: string,
+  options: StreamWithRetryOptions
+): Promise<string> {
+  const maxRetries = options.maxRetries ?? 3;
+  let attempt = 0;
+  let content = '';
+
+  while (attempt < maxRetries) {
+    attempt++;
+    content = ''; // Reset on each attempt
+
+    try {
+      const stream = await llmClient.sendMessageStream(
+        prompt,
+        `${sessionId}-${attempt}`,
+        undefined,
+        { model }
+      );
+
+      for await (const chunk of stream) {
+        content += chunk;
+      }
+
+      // Success - return content
+      return content;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`[AgenticDoctor] ${options.operationName} stream attempt ${attempt}/${maxRetries} failed: ${errorMsg}`);
+
+      if (attempt >= maxRetries) {
+        throw error; // Re-throw on final attempt
+      }
+
+      // Notify caller of retry
+      if (options.onRetry) {
+        options.onRetry(attempt, errorMsg);
+      }
+
+      // Exponential backoff
+      const waitMs = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
+  }
+
+  return content;
+}
+
+function cleanupJson(content: string): string {
+  content = content.trim();
+  const jsonStartIndex = content.indexOf('{');
+  if (jsonStartIndex > 0) {
+    content = content.slice(jsonStartIndex);
+  }
+  if (content.startsWith('```json')) {
+    content = content.slice(7);
+  } else if (content.startsWith('```')) {
+    content = content.slice(3);
+  }
+  if (content.endsWith('```')) {
+    content = content.slice(0, -3);
+  }
+  return content.trim();
+}
+
+// ============================================================================
 // Use Case Implementation
 // ============================================================================
 
 export class AgenticDoctorUseCase {
   private billingContext?: BillingContext;
 
-  constructor(private readonly llmClient: LLMClientPort) {}
+  constructor(
+    private readonly llmClient: LLMClientPort,
+    private readonly storage: StoragePort
+  ) {}
 
   /**
    * Set billing context for LiteLLM cost tracking.
@@ -130,14 +204,12 @@ export class AgenticDoctorUseCase {
     uploadedFilePaths: string[],
   ): AsyncGenerator<RealmGenerationEvent, void, unknown> {
     const sessionId = uuidv4();
-    const storageDir = path.join(process.cwd(), 'storage');
 
     // Ensure storage directory exists
-    if (!fs.existsSync(storageDir)) {
-      fs.mkdirSync(storageDir, { recursive: true });
-    }
+    await this.storage.ensureDir('');
 
     console.log(`[AgenticDoctor] Session ${sessionId}: Processing ${uploadedFilePaths.length} files...`);
+    console.log(`[AgenticDoctor] User prompt: "${prompt ? prompt.substring(0, 100) : '(empty)'}"${prompt && prompt.length > 100 ? '...' : ''}`);
 
     // ========================================================================
     // Phase 1: Document Extraction
@@ -166,10 +238,10 @@ export class AgenticDoctorUseCase {
     if (pdfFiles.length > 0) {
       yield { type: 'log', message: `Extracting ${pdfFiles.length} PDF(s) using Gemini Vision...` };
 
-      const pdfExtractor = new PDFExtractionService(this.billingContext);
+      const pdfExtractor = new PDFExtractionService(this.storage, this.billingContext);
 
       try {
-        for await (const event of pdfExtractor.extractPDFs(pdfFiles, storageDir)) {
+        for await (const event of pdfExtractor.extractPDFs(pdfFiles)) {
           if (event.type === 'log' || event.type === 'progress') {
             yield { type: 'log', message: event.data.message || '' };
           } else if (event.type === 'page_complete') {
@@ -182,9 +254,8 @@ export class AgenticDoctorUseCase {
           }
         }
 
-        const extractedPath = path.join(storageDir, 'extracted.md');
-        if (fs.existsSync(extractedPath)) {
-          allExtractedContent = await fs.promises.readFile(extractedPath, 'utf-8');
+        if (await this.storage.exists(LegacyPaths.extracted)) {
+          allExtractedContent = await this.storage.readFileAsString(LegacyPaths.extracted);
           console.log(`[AgenticDoctor] PDF extraction complete: ${allExtractedContent.length} chars`);
           yield { type: 'log', message: `PDF extraction complete (${pdfFiles.length} files)` };
         } else {
@@ -233,8 +304,7 @@ export class AgenticDoctorUseCase {
     }
 
     // Save final extracted.md
-    const extractedPath = path.join(storageDir, 'extracted.md');
-    await fs.promises.writeFile(extractedPath, allExtractedContent, 'utf-8');
+    await this.storage.writeFile(LegacyPaths.extracted, allExtractedContent);
 
     yield { type: 'step', name: 'Document Extraction', status: 'completed' };
 
@@ -245,7 +315,7 @@ export class AgenticDoctorUseCase {
     }
 
     console.log(`[AgenticDoctor] Total extracted content: ${allExtractedContent.length} chars`);
-    yield { type: 'log', message: `Extraction complete. Output: ${extractedPath}` };
+    yield { type: 'log', message: `Extraction complete. Output: ${LegacyPaths.extracted}` };
 
     // ========================================================================
     // Phase 2: Agentic Medical Analysis
@@ -256,7 +326,6 @@ export class AgenticDoctorUseCase {
     yield { type: 'step', name: 'Medical Analysis', status: 'running' };
     yield { type: 'log', message: 'Starting agentic medical analysis...' };
 
-    const analysisPath = path.join(storageDir, 'analysis.md');
     let analysisContent = '';
 
     try {
@@ -325,7 +394,7 @@ export class AgenticDoctorUseCase {
         throw new Error('Agentic analysis produced no content');
       }
 
-      await fs.promises.writeFile(analysisPath, analysisContent, 'utf-8');
+      await this.storage.writeFile(LegacyPaths.analysis, analysisContent);
       console.log(`[AgenticDoctor] Agentic analysis complete: ${analysisContent.length} chars`);
 
       yield { type: 'log', message: `Medical analysis complete (${analysisContent.length} chars)` };
@@ -336,78 +405,17 @@ export class AgenticDoctorUseCase {
       console.error('[AgenticDoctor] Agentic analysis failed:', errorMessage);
       yield { type: 'log', message: `Medical analysis failed: ${errorMessage}` };
       yield { type: 'step', name: 'Medical Analysis', status: 'failed' };
-      yield { type: 'result', url: extractedPath };
+      yield { type: 'result', url: LegacyPaths.extracted };
       return;
     }
 
     // ========================================================================
-    // Phase 3: Cross-System Analysis
-    // Identifies connections between body systems
-    // ========================================================================
-    yield { type: 'step', name: 'Cross-System Analysis', status: 'running' };
-    yield { type: 'log', message: 'Analyzing cross-system connections...' };
-
-    const crossSystemsPath = path.join(storageDir, 'cross_systems.md');
-    let crossSystemsContent = '';
-
-    try {
-      const crossSystemSkill = loadCrossSystemSkill();
-
-      const crossSystemPrompt = `${crossSystemSkill}
-
----
-
-${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Original Extracted Data
-<extracted_data>
-${allExtractedContent}
-</extracted_data>
-
-### Initial Medical Analysis
-<analysis>
-${analysisContent}
-</analysis>`;
-
-      const crossSystemStream = await this.llmClient.sendMessageStream(
-        crossSystemPrompt,
-        `${sessionId}-crosssystem`,
-        undefined,
-        { model: REALM_CONFIG.models.doctor }
-      );
-
-      for await (const chunk of crossSystemStream) {
-        crossSystemsContent += chunk;
-      }
-
-      if (crossSystemsContent.trim().length === 0) {
-        throw new Error('LLM returned empty cross-system analysis');
-      }
-
-      // Strip thinking text
-      crossSystemsContent = stripThinkingText(crossSystemsContent, /^#\s+.+$/m);
-
-      await fs.promises.writeFile(crossSystemsPath, crossSystemsContent, 'utf-8');
-      console.log(`[AgenticDoctor] Cross-system analysis: ${crossSystemsContent.length} chars`);
-
-      yield { type: 'log', message: 'Cross-system analysis complete.' };
-      yield { type: 'step', name: 'Cross-System Analysis', status: 'completed' };
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('[AgenticDoctor] Cross-system analysis failed:', errorMessage);
-      yield { type: 'log', message: `Cross-system analysis failed: ${errorMessage}. Continuing with basic analysis.` };
-      yield { type: 'step', name: 'Cross-System Analysis', status: 'failed' };
-      // Continue anyway - cross-system is enhancement, not critical
-      crossSystemsContent = '(Cross-system analysis not available)';
-    }
-
-    // ========================================================================
-    // Phase 4: Research
+    // Phase 3: Research
     // Validates medical claims with external sources using web search
     // ========================================================================
     yield { type: 'step', name: 'Research', status: 'running' };
     yield { type: 'log', message: 'Validating claims with external sources...' };
 
-    const researchPath = path.join(storageDir, 'research.json');
     let researchOutput: ResearchOutput = { researchedClaims: [], unsupportedClaims: [], additionalFindings: [] };
     let researchMarkdown = '';
 
@@ -419,7 +427,6 @@ ${analysisContent}
         const researchGenerator = researchClaims(
           geminiConfig,
           analysisContent,
-          crossSystemsContent,
           prompt
         );
 
@@ -456,7 +463,7 @@ ${analysisContent}
         researchMarkdown = formatResearchAsMarkdown(researchOutput);
 
         // Save research output
-        await fs.promises.writeFile(researchPath, JSON.stringify(researchOutput, null, 2), 'utf-8');
+        await this.storage.writeFile(LegacyPaths.research, JSON.stringify(researchOutput, null, 2));
         console.log(`[AgenticDoctor] Research complete: ${researchOutput.researchedClaims.length} claims verified`);
 
         yield { type: 'log', message: `Research complete: ${researchOutput.researchedClaims.length} claims verified, ${researchOutput.unsupportedClaims.length} unsupported` };
@@ -476,225 +483,13 @@ ${analysisContent}
     }
 
     // ========================================================================
-    // Phase 5: Synthesis
-    // Merges analysis, cross-system insights, and research into cohesive narrative
-    // ========================================================================
-    yield { type: 'step', name: 'Synthesis', status: 'running' };
-    yield { type: 'log', message: 'Synthesizing final analysis...' };
-
-    const finalAnalysisPath = path.join(storageDir, 'final_analysis.md');
-    let finalAnalysisContent = '';
-
-    try {
-      const synthesizerSkill = loadSynthesizerSkill();
-
-      // Include research findings in synthesis if available
-      const researchSection = researchOutput.researchedClaims.length > 0
-        ? `\n\n### Research Findings (Verified Claims with Citations)\n<research>\n${researchMarkdown}\n</research>`
-        : '';
-
-      const synthesisPrompt = `${synthesizerSkill}
-
----
-
-${prompt ? `### Patient's Original Question\n${prompt}\n\n` : ''}### Original Extracted Data (Source of Truth)
-<extracted_data>
-${allExtractedContent}
-</extracted_data>
-
-### Initial Medical Analysis
-<analysis>
-${analysisContent}
-</analysis>
-
-### Cross-System Connections
-<cross_systems>
-${crossSystemsContent}
-</cross_systems>${researchSection}`;
-
-      const synthesisStream = await this.llmClient.sendMessageStream(
-        synthesisPrompt,
-        `${sessionId}-synthesis`,
-        undefined,
-        { model: REALM_CONFIG.models.doctor }
-      );
-
-      for await (const chunk of synthesisStream) {
-        finalAnalysisContent += chunk;
-      }
-
-      if (finalAnalysisContent.trim().length === 0) {
-        throw new Error('LLM returned empty synthesis');
-      }
-
-      // Strip thinking text
-      finalAnalysisContent = stripThinkingText(finalAnalysisContent, /^#\s+.+$/m);
-
-      await fs.promises.writeFile(finalAnalysisPath, finalAnalysisContent, 'utf-8');
-      console.log(`[AgenticDoctor] Synthesized analysis: ${finalAnalysisContent.length} chars`);
-
-      yield { type: 'log', message: 'Synthesis complete.' };
-      yield { type: 'step', name: 'Synthesis', status: 'completed' };
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('[AgenticDoctor] Synthesis failed:', errorMessage);
-      yield { type: 'log', message: `Synthesis failed: ${errorMessage}. Using basic analysis.` };
-      yield { type: 'step', name: 'Synthesis', status: 'failed' };
-      // Fallback to basic analysis
-      finalAnalysisContent = analysisContent;
-      await fs.promises.writeFile(finalAnalysisPath, finalAnalysisContent, 'utf-8');
-    }
-
-    // ========================================================================
-    // Phase 6: Validation with Feedback Loop
-    // Validates analysis, and if issues found, sends corrections back to synthesizer
-    // Maximum 1 correction cycle to avoid infinite loops
-    // ========================================================================
-    yield { type: 'step', name: 'Validation', status: 'running' };
-    yield { type: 'log', message: 'Validating analysis completeness...' };
-
-    const validationPath = path.join(storageDir, 'validation.md');
-    const MAX_CORRECTION_CYCLES = 1;
-    let correctionCycle = 0;
-    let validationPassed = false;
-
-    while (correctionCycle <= MAX_CORRECTION_CYCLES && !validationPassed) {
-      try {
-        const validatorSkill = loadValidatorSkill();
-
-        const validationPrompt = `${validatorSkill}
-
----
-
-${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Original Extracted Data (Source of Truth)
-<extracted_data>
-${allExtractedContent}
-</extracted_data>
-
-### Final Synthesized Analysis (To Validate)
-<final_analysis>
-${finalAnalysisContent}
-</final_analysis>`;
-
-        let validationContent = '';
-        const validationStream = await this.llmClient.sendMessageStream(
-          validationPrompt,
-          `${sessionId}-validation-${correctionCycle}`,
-          undefined,
-          { model: REALM_CONFIG.models.doctor }
-        );
-
-        for await (const chunk of validationStream) {
-          validationContent += chunk;
-        }
-
-        if (validationContent.trim().length === 0) {
-          throw new Error('LLM returned empty validation');
-        }
-
-        // Strip thinking text
-        validationContent = stripThinkingText(validationContent, /^#\s+.+$/m);
-
-        await fs.promises.writeFile(validationPath, validationContent, 'utf-8');
-        console.log(`[AgenticDoctor] Validation report (cycle ${correctionCycle}): ${validationContent.length} chars`);
-
-        // Check if validation passed or needs revision
-        const needsRevision = validationContent.toLowerCase().includes('needs revision');
-        const hasCriticalErrors = (validationContent.match(/❌/g) || []).length > 0;
-
-        if (needsRevision || hasCriticalErrors) {
-          yield { type: 'log', message: `Validation found issues that need correction.` };
-
-          // If we haven't exceeded correction cycles, attempt to fix
-          if (correctionCycle < MAX_CORRECTION_CYCLES) {
-            yield { type: 'log', message: 'Sending corrections back to synthesizer...' };
-
-            // Extract the "Required Corrections" section if present
-            const correctionsMatch = validationContent.match(/## Required Corrections[\s\S]*?(?=##|$)/);
-            const requiredCorrections = correctionsMatch ? correctionsMatch[0] : '';
-
-            // Create correction prompt for synthesizer
-            const synthesizerSkill = loadSynthesizerSkill();
-            const correctionPrompt = `${synthesizerSkill}
-
----
-
-## CORRECTION TASK
-
-${prompt ? `### Patient's Original Question\n${prompt}\n\n` : ''}### Original Extracted Data (Source of Truth)
-<extracted_data>
-${allExtractedContent}
-</extracted_data>
-
-### Previous Synthesis (Has Issues)
-<previous_synthesis>
-${finalAnalysisContent}
-</previous_synthesis>
-
-### Validation Report
-<validation_report>
-${validationContent}
-</validation_report>
-
-${requiredCorrections ? `### Required Corrections (MUST FIX)\n${requiredCorrections}` : ''}`;
-
-            let correctedContent = '';
-            const correctionStream = await this.llmClient.sendMessageStream(
-              correctionPrompt,
-              `${sessionId}-correction-${correctionCycle}`,
-              undefined,
-              { model: REALM_CONFIG.models.doctor }
-            );
-
-            for await (const chunk of correctionStream) {
-              correctedContent += chunk;
-            }
-
-            if (correctedContent.trim().length > 0) {
-              // Strip thinking text
-              correctedContent = stripThinkingText(correctedContent, /^#\s+.+$/m);
-
-              // Update finalAnalysisContent with corrected version
-              finalAnalysisContent = correctedContent;
-              await fs.promises.writeFile(finalAnalysisPath, finalAnalysisContent, 'utf-8');
-              console.log(`[AgenticDoctor] Corrected synthesis: ${finalAnalysisContent.length} chars`);
-              yield { type: 'log', message: 'Synthesis corrected. Re-validating...' };
-            } else {
-              yield { type: 'log', message: 'Correction returned empty, keeping original.' };
-              validationPassed = true; // Exit loop, use what we have
-            }
-
-            correctionCycle++;
-          } else {
-            // Max corrections reached, proceed with warnings
-            yield { type: 'log', message: 'Max correction cycles reached. Proceeding with current analysis.' };
-            validationPassed = true;
-          }
-        } else {
-          // Validation passed
-          yield { type: 'log', message: 'Validation passed.' };
-          validationPassed = true;
-        }
-
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error('[AgenticDoctor] Validation failed:', errorMessage);
-        yield { type: 'log', message: `Validation error: ${errorMessage}. Proceeding with current analysis.` };
-        validationPassed = true; // Exit loop on error
-      }
-    }
-
-    yield { type: 'step', name: 'Validation', status: 'completed' };
-
-    // ========================================================================
-    // Phase 7: Data Structuring
-    // Extracts chart-ready JSON from all analysis data
+    // Phase 4: Data Structuring (SOURCE OF TRUTH)
+    // Extracts chart-ready JSON from analysis data
+    // This becomes the source of truth for both Validation and HTML Builder
     // ========================================================================
     yield { type: 'step', name: 'Data Structuring', status: 'running' };
     yield { type: 'log', message: 'Extracting structured data for visualizations...' };
 
-    const structuredDataPath = path.join(storageDir, 'structured_data.json');
     let structuredDataContent = '';
 
     try {
@@ -704,36 +499,32 @@ ${requiredCorrections ? `### Required Corrections (MUST FIX)\n${requiredCorrecti
 
 ---
 
-${prompt ? `#### Patient's Question/Context\n${prompt}\n\n` : ''}### Priority 1: Rich Medical Analysis (PRIMARY for diagnoses, timeline, prognosis, supplements)
+${prompt ? `#### Patient's Question/Context\n${prompt}\n\n` : ''}### Priority 1: Rich Medical Analysis (PRIMARY source - includes cross-system connections)
 <analysis>
 ${analysisContent}
 </analysis>
 
-### Priority 2: Cross-System Connections (for mechanism explanations)
-<cross_systems>
-${crossSystemsContent}
-</cross_systems>
+### Priority 2: Research Findings (for citations and verified claims)
+<research>
+${researchMarkdown}
+</research>`;
+      // NOTE: allExtractedContent intentionally EXCLUDED to keep payload manageable
+      // The analysis already interprets the raw data, so including it is redundant
+      // and causes 991KB+ payloads that timeout
 
-### Priority 3: Final Synthesized Analysis (for patient-facing narrative)
-<final_analysis>
-${finalAnalysisContent}
-</final_analysis>
+      // Log payload size for debugging network issues
+      console.log(`[AgenticDoctor] Data structuring prompt payload: ${Math.round(structurePrompt.length / 1024)}KB`);
 
-### Priority 4: Original Extracted Data (source of truth for raw values)
-<extracted_data>
-${allExtractedContent}
-</extracted_data>`;
-
-      const structureStream = await this.llmClient.sendMessageStream(
+      structuredDataContent = await streamWithRetry(
+        this.llmClient,
         structurePrompt,
         `${sessionId}-structure`,
-        undefined,
-        { model: REALM_CONFIG.models.doctor }
+        REALM_CONFIG.models.doctor,
+        {
+          operationName: 'DataStructuring',
+          maxRetries: 3,
+        }
       );
-
-      for await (const chunk of structureStream) {
-        structuredDataContent += chunk;
-      }
 
       if (structuredDataContent.trim().length === 0) {
         throw new Error('LLM returned empty structured data');
@@ -780,7 +571,7 @@ ${allExtractedContent}
         }
       }
 
-      await fs.promises.writeFile(structuredDataPath, structuredDataContent, 'utf-8');
+      await this.storage.writeFile(LegacyPaths.structuredData, structuredDataContent);
 
       yield { type: 'log', message: 'Data structuring complete.' };
       yield { type: 'step', name: 'Data Structuring', status: 'completed' };
@@ -788,71 +579,297 @@ ${allExtractedContent}
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[AgenticDoctor] Data structuring failed:', errorMessage);
-      yield { type: 'log', message: `Data structuring failed: ${errorMessage}. HTML will use narrative only.` };
+      yield { type: 'log', message: `Data structuring failed: ${errorMessage}. Cannot proceed without structured data.` };
       yield { type: 'step', name: 'Data Structuring', status: 'failed' };
-      // Continue with empty structured data - HTML can still work from narrative
-      structuredDataContent = '{}';
-      await fs.promises.writeFile(structuredDataPath, structuredDataContent, 'utf-8');
+      yield { type: 'error', content: `Data structuring failed: ${errorMessage}. The analysis cannot be visualized without structured data.` };
+      return;
+    }
+
+    // Validate structured data is not empty - abort if empty
+    try {
+      const parsedData = JSON.parse(structuredDataContent);
+      const keys = Object.keys(parsedData);
+      if (keys.length === 0) {
+        console.error('[AgenticDoctor] Structured data is empty object');
+        yield { type: 'log', message: 'Data structuring produced empty result. Cannot proceed.' };
+        yield { type: 'step', name: 'Data Structuring', status: 'failed' };
+        yield { type: 'error', content: 'Data structuring failed to extract any data from the analysis. Please try again.' };
+        return;
+      }
+      console.log(`[AgenticDoctor] Structured data has ${keys.length} top-level fields: ${keys.slice(0, 5).join(', ')}${keys.length > 5 ? '...' : ''}`);
+    } catch {
+      // JSON parse already validated above, this is just a safety check
     }
 
     // ========================================================================
-    // Phase 8: HTML Generation
+    // Phase 5: Agentic Validation with Feedback Loop
+    // Uses AgenticValidator with tool-based access for bidirectional validation
+    // Can compare source date ranges vs JSON timeline to catch missing data
+    // Maximum 1 correction cycle to avoid infinite loops
+    // ========================================================================
+    yield { type: 'step', name: 'Validation', status: 'running' };
+    yield { type: 'log', message: 'Starting agentic validation (tool-based)...' };
+
+    const MAX_CORRECTION_CYCLES = 1;
+    let correctionCycle = 0;
+    let validationPassed = false;
+    let validationContent = '';
+
+    while (correctionCycle <= MAX_CORRECTION_CYCLES && !validationPassed) {
+      try {
+        // Use AgenticValidator for tool-based validation
+        const validator = new AgenticValidator(this.billingContext);
+        const validationGenerator = validator.validate(
+          allExtractedContent,
+          structuredDataContent,
+          prompt,
+          15 // max iterations
+        );
+
+        const validationIssues: Array<{
+          category: string;
+          severity: string;
+          description: string;
+        }> = [];
+        let validationStatus = 'pass';
+        let validationSummary = '';
+
+        // Stream validation events and capture return value
+        let iterResult = await validationGenerator.next();
+        while (!iterResult.done) {
+          const event = iterResult.value as ValidatorEvent;
+          switch (event.type) {
+            case 'log':
+              yield { type: 'log', message: `[Validator] ${event.data.message}` };
+              break;
+            case 'tool_call':
+              if (event.data.toolName) {
+                console.log(`[AgenticDoctor] Validator tool: ${event.data.toolName}`);
+              }
+              break;
+            case 'issue_found':
+              if (event.data.issue) {
+                validationIssues.push(event.data.issue);
+                yield { type: 'log', message: `[Validator] Issue: [${event.data.issue.severity}] ${event.data.issue.description}` };
+              }
+              break;
+            case 'complete':
+              yield { type: 'log', message: `[Validator] ${event.data.message}` };
+              break;
+            case 'error':
+              console.error(`[AgenticDoctor] Validator error: ${event.data.message}`);
+              break;
+          }
+          iterResult = await validationGenerator.next();
+        }
+
+        // Get final result from generator return value
+        const finalResult = iterResult.value as { status: string; issues: Array<{ category: string; severity: string; description: string }>; summary: string } | undefined;
+        if (finalResult) {
+          validationStatus = finalResult.status;
+          validationSummary = finalResult.summary;
+          validationIssues.push(...finalResult.issues.filter(i =>
+            !validationIssues.some(existing => existing.description === i.description)
+          ));
+        }
+
+        // Build validation report markdown
+        const criticalIssues = validationIssues.filter(i => i.severity === 'critical');
+        const warnings = validationIssues.filter(i => i.severity === 'warning');
+
+        validationContent = `# Validation Report (Agentic)
+
+## Executive Summary
+
+**Status:** ${validationStatus.toUpperCase()}
+**Summary:** ${validationSummary}
+
+**Critical Issues:** ${criticalIssues.length}
+**Warnings:** ${warnings.length}
+**Total Issues:** ${validationIssues.length}
+
+---
+
+## Issues Found
+
+${validationIssues.length === 0 ? 'No issues found.' : validationIssues.map((issue, i) =>
+  `### ${i + 1}. [${issue.severity.toUpperCase()}] ${issue.category}\n${issue.description}`
+).join('\n\n')}
+
+---
+
+${criticalIssues.length > 0 ? `## Required Corrections\n\n${criticalIssues.map((issue, i) =>
+  `${i + 1}. ${issue.description}`
+).join('\n')}\n\n---\n` : ''}
+
+## Validation Method
+
+This validation was performed using the AgenticValidator with tool-based exploration:
+- Source data explored via tools (list_documents, search_data, get_date_range)
+- JSON timeline compared against source date range
+- Bidirectional completeness check performed
+`;
+
+        await this.storage.writeFile(LegacyPaths.validation, validationContent);
+        console.log(`[AgenticDoctor] Agentic validation complete: ${validationIssues.length} issues (${criticalIssues.length} critical)`);
+
+        // Check if we need correction
+        const needsRevision = validationStatus === 'needs_revision' || criticalIssues.length > 0;
+
+        if (needsRevision) {
+          yield { type: 'log', message: `Validation found ${criticalIssues.length} critical issues that need correction.` };
+
+          if (correctionCycle < MAX_CORRECTION_CYCLES) {
+            yield { type: 'log', message: 'Sending corrections back to data structurer...' };
+
+            // Build correction prompt with specific issues
+            const issueList = criticalIssues.map(i => `- ${i.description}`).join('\n');
+
+            const dataStructurerSkill = loadDataStructurerSkill();
+            const correctionPrompt = `${dataStructurerSkill}
+
+---
+
+## CORRECTION TASK
+
+The validation found the following critical issues that MUST be fixed:
+
+${issueList}
+
+${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Medical Analysis (Source of Truth)
+<analysis>
+${analysisContent}
+</analysis>
+
+### Previous Structured Data (Has Issues)
+<previous_structured_data>
+${structuredDataContent}
+</previous_structured_data>
+
+### Validation Issues (MUST FIX ALL)
+${criticalIssues.map(i => `- [${i.category}] ${i.description}`).join('\n')}
+
+Output the CORRECTED JSON now (starting with \`{\`):`;
+
+            let correctedContent = '';
+            const correctionStream = await this.llmClient.sendMessageStream(
+              correctionPrompt,
+              `${sessionId}-correction-${correctionCycle}`,
+              undefined,
+              { model: REALM_CONFIG.models.doctor }
+            );
+
+            for await (const chunk of correctionStream) {
+              correctedContent += chunk;
+            }
+
+            if (correctedContent.trim().length > 0) {
+              correctedContent = cleanupJson(correctedContent);
+
+              try {
+                JSON.parse(correctedContent);
+                structuredDataContent = correctedContent;
+                await this.storage.writeFile(LegacyPaths.structuredData, structuredDataContent);
+                console.log(`[AgenticDoctor] Corrected structured data: ${structuredDataContent.length} chars`);
+                yield { type: 'log', message: 'Structured data corrected. Re-validating...' };
+              } catch {
+                console.warn('[AgenticDoctor] Corrected JSON invalid, keeping original.');
+                yield { type: 'log', message: 'Correction produced invalid JSON, keeping original.' };
+                validationPassed = true;
+              }
+            } else {
+              yield { type: 'log', message: 'Correction returned empty, keeping original.' };
+              validationPassed = true;
+            }
+
+            correctionCycle++;
+          } else {
+            yield { type: 'log', message: 'Max correction cycles reached. Proceeding with current data.' };
+            validationPassed = true;
+          }
+        } else {
+          yield { type: 'log', message: `Validation ${validationStatus === 'pass' ? 'passed' : 'passed with warnings'}.` };
+          validationPassed = true;
+        }
+
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('[AgenticDoctor] Agentic validation failed after all retries:', errorMessage);
+        yield { type: 'log', message: `Validation error: ${errorMessage}` };
+
+        // No fallback - the AgenticValidator already has retry logic via retryLLM.
+        // If we reach here, all retries have been exhausted.
+        // Mark validation as failed but continue with the pipeline.
+        validationContent = `# Validation Report
+
+## Status: FAILED
+
+Validation could not be completed after all retry attempts.
+
+**Error:** ${errorMessage}
+
+**Note:** The structured data was not validated. Review the structured_data.json manually before relying on the generated HTML.
+
+---
+
+## Validation Method
+
+AgenticValidator with tool-based exploration was attempted but failed.
+All ${REALM_CONFIG.retry.llm.maxRetries} retries were exhausted.
+`;
+        await this.storage.writeFile(LegacyPaths.validation, validationContent);
+        yield { type: 'log', message: 'Validation failed. Proceeding with unvalidated data.' };
+        validationPassed = true; // Continue with pipeline despite validation failure
+      }
+    }
+
+    yield { type: 'step', name: 'Validation', status: 'completed' };
+
+    // ========================================================================
+    // Phase 6: HTML Generation
     // Uses sendMessageStream with html-builder skill
-    // Receives both narrative (final_analysis.md) and structured data (structured_data.json)
+    // DATA-DRIVEN: structured_data.json is the ONLY source - JSON drives structure
     // ========================================================================
     yield { type: 'step', name: 'Realm Generation', status: 'running' };
     yield { type: 'log', message: 'Building your Health Realm...' };
 
     const realmId = sessionId;
-    const realmDir = path.join(storageDir, 'realms', realmId);
-    const htmlPath = path.join(realmDir, 'index.html');
+    const realmPath = LegacyPaths.realm(realmId);
 
     // Ensure realm directory exists
-    if (!fs.existsSync(realmDir)) {
-      fs.mkdirSync(realmDir, { recursive: true });
-    }
+    await this.storage.ensureDir(LegacyPaths.realmDir(realmId));
 
     try {
       const htmlSkill = loadHTMLBuilderSkill();
 
-      // Use ALL sources: structured data, analysis, cross-systems, and final analysis
+      // DATA-DRIVEN: structured_data.json is the ONLY source of structure
+      // The JSON fields determine what sections to render
       const htmlPrompt = `${htmlSkill}
 
 ---
 
-${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Priority 1: Structured Data (for charts and visualizations)
+### Structured Data (SOURCE OF TRUTH)
+This JSON contains ALL data for rendering. Iterate through each field and render appropriate sections.
+Only render sections for fields that have data. Do not invent sections not in this JSON.
 <structured_data>
 ${structuredDataContent}
-</structured_data>
+</structured_data>`;
 
-### Priority 2: Rich Medical Analysis (for detailed sections)
-<analysis>
-${analysisContent}
-</analysis>
+      // Log payload size for debugging network issues
+      const payloadSizeKB = Math.round(htmlPrompt.length / 1024);
+      console.log(`[AgenticDoctor] HTML prompt payload: ${payloadSizeKB}KB (${htmlPrompt.length} chars)`);
+      yield { type: 'log', message: `Generating interactive HTML experience (${payloadSizeKB}KB payload)...` };
 
-### Priority 3: Cross-System Analysis (for mechanism explanations)
-<cross_systems>
-${crossSystemsContent}
-</cross_systems>
-
-### Priority 4: Final Synthesized Analysis (for patient-facing narrative)
-<final_analysis>
-${finalAnalysisContent}
-</final_analysis>`;
-
-      yield { type: 'log', message: 'Generating interactive HTML experience...' };
-
-      let htmlContent = '';
-      const htmlStream = await this.llmClient.sendMessageStream(
+      let htmlContent = await streamWithRetry(
+        this.llmClient,
         htmlPrompt,
         `${sessionId}-html`,
-        undefined,
-        { model: REALM_CONFIG.models.html }
+        REALM_CONFIG.models.html,
+        {
+          operationName: 'HTMLGeneration',
+          maxRetries: 3,
+        }
       );
-
-      for await (const chunk of htmlStream) {
-        htmlContent += chunk;
-      }
 
       if (htmlContent.trim().length === 0) {
         throw new Error('LLM returned empty HTML');
@@ -880,14 +897,307 @@ ${finalAnalysisContent}
       htmlContent = htmlContent.trim();
 
       // Write HTML to file
-      await fs.promises.writeFile(htmlPath, htmlContent, 'utf-8');
+      await this.storage.writeFile(realmPath, htmlContent, 'text/html');
       console.log(`[AgenticDoctor] HTML Realm: ${htmlContent.length} chars`);
+
+      yield { type: 'log', message: 'Initial HTML generation complete.' };
+      yield { type: 'step', name: 'Realm Generation', status: 'completed' };
+
+      // ========================================================================
+      // Phase 7: Content Review
+      // Compares structured_data.json against index.html to identify information loss
+      // ========================================================================
+      yield { type: 'step', name: 'Content Review', status: 'running' };
+      yield { type: 'log', message: 'Reviewing HTML for completeness...' };
+
+      let contentReviewResult: {
+        user_question_addressed?: {
+          passed: boolean;
+          user_question: string;
+          question_answered: boolean;
+          answer_prominent: boolean;
+          findings_connected: boolean;
+          narrative_framed: boolean;
+          issues: Array<{
+            type: string;
+            description: string;
+            fix_instruction: string;
+          }>;
+        };
+        detail_fidelity?: {
+          passed: boolean;
+          issues: Array<{
+            type: string;
+            severity: string;
+            source_content: string;
+            html_found: string;
+            fix_instruction: string;
+          }>;
+        };
+        content_completeness?: {
+          passed: boolean;
+          present_categories: string[];
+          missing_categories: Array<{
+            category: string;
+            source_had: string;
+            importance: string;
+            fix_instruction: string;
+          }>;
+        };
+        visual_design?: {
+          score: string;
+          strengths: string[];
+          weaknesses: string[];
+          fix_instructions: string[];
+        };
+        overall: {
+          passed: boolean;
+          summary: string;
+          action: string;
+          feedback_for_regeneration?: string;
+        };
+      } = { overall: { passed: true, summary: '', action: 'pass' } };
+
+      try {
+        const contentReviewerSkill = loadContentReviewerSkill();
+
+        const reviewPrompt = `${contentReviewerSkill}
+
+---
+
+### User's Original Question (THE PRIMARY PURPOSE)
+<user_question>
+${prompt || '(No specific question provided - general health analysis requested)'}
+</user_question>
+
+### Source of Truth (structured_data.json)
+<structured_data>
+${structuredDataContent}
+</structured_data>
+
+### Output to Validate (index.html)
+<html_content>
+${htmlContent}
+</html_content>`;
+
+        console.log(`[AgenticDoctor] Content review prompt payload: ${Math.round(reviewPrompt.length / 1024)}KB`);
+
+        let reviewContent = '';
+        const reviewStream = await this.llmClient.sendMessageStream(
+          reviewPrompt,
+          `${sessionId}-content-review`,
+          undefined,
+          { model: REALM_CONFIG.models.doctor }
+        );
+
+        for await (const chunk of reviewStream) {
+          reviewContent += chunk;
+        }
+
+        if (reviewContent.trim().length === 0) {
+          throw new Error('Content review returned empty');
+        }
+
+        // Clean up JSON
+        reviewContent = reviewContent.trim();
+        const jsonStartIndex = reviewContent.indexOf('{');
+        if (jsonStartIndex > 0) {
+          reviewContent = reviewContent.slice(jsonStartIndex);
+        }
+        if (reviewContent.startsWith('```json')) {
+          reviewContent = reviewContent.slice(7);
+        } else if (reviewContent.startsWith('```')) {
+          reviewContent = reviewContent.slice(3);
+        }
+        if (reviewContent.endsWith('```')) {
+          reviewContent = reviewContent.slice(0, -3);
+        }
+        reviewContent = reviewContent.trim();
+
+        // Parse and save
+        try {
+          contentReviewResult = JSON.parse(reviewContent);
+          await this.storage.writeFile(LegacyPaths.contentReview, JSON.stringify(contentReviewResult, null, 2));
+          console.log(`[AgenticDoctor] Content review: passed=${contentReviewResult.overall.passed}, action=${contentReviewResult.overall.action}`);
+        } catch (jsonError) {
+          console.warn('[AgenticDoctor] Content review JSON parse failed, assuming pass');
+          contentReviewResult = { overall: { passed: true, summary: '', action: 'pass' } };
+        }
+
+        if (contentReviewResult.overall.passed) {
+          yield { type: 'log', message: 'Content review passed - all four dimensions acceptable.' };
+        } else {
+          yield { type: 'log', message: 'Content review found issues:' };
+
+          // Dimension 0: User Question Addressed (MOST IMPORTANT)
+          if (contentReviewResult.user_question_addressed && !contentReviewResult.user_question_addressed.passed) {
+            yield { type: 'log', message: `[User Question] NOT ADDRESSED - ${contentReviewResult.user_question_addressed.issues.length} issue(s)` };
+            if (!contentReviewResult.user_question_addressed.question_answered) {
+              yield { type: 'log', message: '  - Question not directly answered' };
+            }
+            if (!contentReviewResult.user_question_addressed.answer_prominent) {
+              yield { type: 'log', message: '  - Answer not prominent/visible' };
+            }
+          }
+
+          // Dimension 1: Detail Fidelity
+          if (contentReviewResult.detail_fidelity && !contentReviewResult.detail_fidelity.passed) {
+            const highCount = contentReviewResult.detail_fidelity.issues.filter(i => i.severity === 'high').length;
+            yield { type: 'log', message: `[Detail Fidelity] ${contentReviewResult.detail_fidelity.issues.length} issues (${highCount} high severity)` };
+          }
+
+          // Dimension 2: Content Completeness
+          if (contentReviewResult.content_completeness && !contentReviewResult.content_completeness.passed) {
+            const missing = contentReviewResult.content_completeness.missing_categories.map(c => c.category).join(', ');
+            yield { type: 'log', message: `[Content Completeness] Missing: ${missing}` };
+          }
+
+          // Dimension 3: Visual Design
+          if (contentReviewResult.visual_design) {
+            yield { type: 'log', message: `[Visual Design] Score: ${contentReviewResult.visual_design.score}` };
+          }
+
+          if (contentReviewResult.overall.summary) {
+            yield { type: 'log', message: `Summary: ${contentReviewResult.overall.summary}` };
+          }
+        }
+
+        yield { type: 'step', name: 'Content Review', status: 'completed' };
+
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('[AgenticDoctor] Content review failed:', errorMessage);
+        yield { type: 'log', message: `Content review failed: ${errorMessage}. Proceeding with current HTML.` };
+        yield { type: 'step', name: 'Content Review', status: 'failed' };
+        contentReviewResult = { overall: { passed: true, summary: '', action: 'pass' } }; // Skip patching on error
+      }
+
+      // ========================================================================
+      // Phase 8: HTML Regeneration (if needed)
+      // If content review found issues, regenerate HTML with feedback
+      // ========================================================================
+      if (contentReviewResult.overall.action === 'regenerate_with_feedback' && contentReviewResult.overall.feedback_for_regeneration) {
+        yield { type: 'step', name: 'HTML Regeneration', status: 'running' };
+        yield { type: 'log', message: 'Regenerating HTML with reviewer feedback...' };
+
+        try {
+          const htmlSkill = loadHTMLBuilderSkill();
+
+          // Build regeneration prompt with feedback
+          const regenPrompt = `${htmlSkill}
+
+---
+
+## REGENERATION TASK
+
+Your previous HTML output had issues. You need to regenerate addressing ALL of the following:
+
+### Reviewer Feedback (MUST ADDRESS)
+<feedback>
+${contentReviewResult.overall.feedback_for_regeneration}
+</feedback>
+
+### User Question Issues (MOST IMPORTANT - FIX FIRST)
+<user_question_issues>
+User Asked: ${contentReviewResult.user_question_addressed?.user_question || prompt || 'N/A'}
+Question Answered: ${contentReviewResult.user_question_addressed?.question_answered || false}
+Answer Prominent: ${contentReviewResult.user_question_addressed?.answer_prominent || false}
+Findings Connected: ${contentReviewResult.user_question_addressed?.findings_connected || false}
+Issues: ${JSON.stringify(contentReviewResult.user_question_addressed?.issues || [], null, 2)}
+</user_question_issues>
+
+### Detail Fidelity Issues
+<detail_issues>
+${JSON.stringify(contentReviewResult.detail_fidelity?.issues || [], null, 2)}
+</detail_issues>
+
+### Missing Content Categories
+<missing_categories>
+${JSON.stringify(contentReviewResult.content_completeness?.missing_categories || [], null, 2)}
+</missing_categories>
+
+### Visual Design Feedback
+<design_feedback>
+Score: ${contentReviewResult.visual_design?.score || 'unknown'}
+Weaknesses: ${JSON.stringify(contentReviewResult.visual_design?.weaknesses || [], null, 2)}
+Fix Instructions: ${JSON.stringify(contentReviewResult.visual_design?.fix_instructions || [], null, 2)}
+</design_feedback>
+
+### Source Data (use ALL details from here)
+
+${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Structured Data (SOURCE OF TRUTH - the JSON drives all HTML sections)
+<structured_data>
+${structuredDataContent}
+</structured_data>
+
+## CRITICAL INSTRUCTIONS
+
+1. Address EVERY issue in the feedback
+2. Include ALL specific names, dosages, values, timings from the structured data
+3. Do NOT genericize or summarize - use exact details from JSON
+4. Make urgent/critical items visually prominent (callouts, warnings, colored boxes)
+5. Preserve explanatory context - the WHY matters as much as the WHAT
+6. Only render sections for fields that have data in the JSON
+
+**Output the complete regenerated HTML now.**`;
+
+          console.log(`[AgenticDoctor] Regeneration prompt payload: ${Math.round(regenPrompt.length / 1024)}KB`);
+
+          let regenHtml = '';
+          const regenStream = await this.llmClient.sendMessageStream(
+            regenPrompt,
+            `${sessionId}-html-regen`,
+            undefined,
+            { model: REALM_CONFIG.models.html }
+          );
+
+          for await (const chunk of regenStream) {
+            regenHtml += chunk;
+          }
+
+          if (regenHtml.trim().length > 0) {
+            // Clean up regenerated HTML
+            regenHtml = regenHtml.trim();
+            const regenDoctypeIndex = regenHtml.indexOf('<!DOCTYPE');
+            if (regenDoctypeIndex > 0) {
+              regenHtml = regenHtml.slice(regenDoctypeIndex);
+            }
+            if (regenHtml.startsWith('```html')) {
+              regenHtml = regenHtml.slice(7);
+            } else if (regenHtml.startsWith('```')) {
+              regenHtml = regenHtml.slice(3);
+            }
+            if (regenHtml.endsWith('```')) {
+              regenHtml = regenHtml.slice(0, -3);
+            }
+            regenHtml = regenHtml.trim();
+
+            // Validate it's valid HTML
+            if (regenHtml.includes('<!DOCTYPE') && regenHtml.includes('</html>')) {
+              htmlContent = regenHtml;
+              await this.storage.writeFile(realmPath, htmlContent, 'text/html');
+              console.log(`[AgenticDoctor] Regenerated HTML: ${htmlContent.length} chars`);
+              yield { type: 'log', message: 'HTML regenerated with fixes.' };
+            } else {
+              yield { type: 'log', message: 'Regeneration produced invalid HTML, keeping original.' };
+            }
+          } else {
+            yield { type: 'log', message: 'Regeneration returned empty, keeping original HTML.' };
+          }
+
+          yield { type: 'step', name: 'HTML Regeneration', status: 'completed' };
+
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error('[AgenticDoctor] HTML regeneration failed:', errorMessage);
+          yield { type: 'log', message: `HTML regeneration failed: ${errorMessage}. Using original HTML.` };
+          yield { type: 'step', name: 'HTML Regeneration', status: 'failed' };
+        }
+      }
 
       // Return the realm URL
       const realmUrl = `/realms/${realmId}/index.html`;
 
-      yield { type: 'log', message: 'Health Realm generation complete.' };
-      yield { type: 'step', name: 'Realm Generation', status: 'completed' };
       yield { type: 'log', message: `Health Realm ready: ${realmUrl}` };
       yield { type: 'result', url: realmUrl };
 

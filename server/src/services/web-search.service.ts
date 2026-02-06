@@ -6,6 +6,8 @@
  */
 
 import { Config } from '../../vendor/gemini-cli/packages/core/src/config/config.js';
+import { REALM_CONFIG } from '../config.js';
+import { processSequentially } from '../common/index.js';
 
 export interface WebSearchSource {
   title: string;
@@ -89,8 +91,8 @@ export function formatWebSearchAsMarkdown(result: WebSearchResult): string {
 }
 
 /**
- * Performs multiple web searches in parallel and combines results.
- * Useful for comprehensive research on a topic.
+ * Performs multiple web searches sequentially with rate limiting.
+ * Useful for comprehensive research on a topic without overwhelming the API.
  *
  * @param config - Initialized Gemini Config object
  * @param queries - Array of search queries
@@ -103,8 +105,13 @@ export async function webSearchMultiple(
   results: WebSearchResult[];
   allSources: WebSearchSource[];
 }> {
-  const results = await Promise.all(
-    queries.map(query => webSearch(config, query))
+  const throttle = REALM_CONFIG.throttle.webSearch;
+
+  // Process searches sequentially with delay to avoid rate limits
+  const results = await processSequentially(
+    queries,
+    async (query) => webSearch(config, query),
+    throttle.delayBetweenRequestsMs
   );
 
   // Deduplicate sources by URI

@@ -3,27 +3,27 @@
  *
  * This entry point runs as a Kubernetes Job spawned by forge-sentinel.
  * It fetches PDFs, processes them through the Agentic Doctor pipeline,
- * and uploads the result to Google Cloud Storage.
+ * and uploads the result to AWS S3.
  *
  * Environment Variables (injected by forge-sentinel):
  * - USER_ID: User identifier for PDF fetching
  * - CHR_ID: Unique identifier for this report generation
  * - CHR_FILENAME: User-specified filename for the report (optional, defaults to 'report')
- * - PROMPT: User's analysis prompt (optional, defaults to generic prompt)
+ * - REPORT_PROMPT: User's analysis prompt (optional, defaults to generic prompt)
  * - N1_API_BASE_URL: N1 API backend URL
  * - N1_API_KEY: Authentication key for N1 API
  * - OPENAI_API_KEY: LiteLLM API key (converted to GEMINI_API_KEY internally)
  * - OPENAI_BASE_URL: LiteLLM proxy URL (converted to GOOGLE_GEMINI_BASE_URL internally)
- * - BUCKET_NAME: GCS bucket for output storage
- * - PROJECT_ID: GCP project ID
- * - GCS_SERVICE_ACCOUNT_JSON: Service account credentials (JSON string)
+ * - STORAGE_PROVIDER: 'local' | 's3' (default: 's3' in production)
+ * - BUCKET_NAME: S3 bucket for output storage
+ * - AWS_REGION: AWS region (default: 'us-east-2')
  *
  * Note: OPENAI_API_KEY and OPENAI_BASE_URL are automatically converted to
  * GEMINI_API_KEY and GOOGLE_GEMINI_BASE_URL at startup for compatibility.
  *
  * Environment-based feature flags:
  * - ENVIRONMENT: 'development' | 'staging' | 'production' (default: production)
- *   - development: Skips GCS upload and progress tracking
+ *   - development: Skips S3 upload and progress tracking
  *   - staging/production: Full pipeline with uploads and tracking
  */
 
@@ -68,7 +68,10 @@ import { GeminiAdapter } from './adapters/gemini/gemini.adapter.js';
 import { N1ApiAdapter } from './adapters/n1-api/n1-api.adapter.js';
 import { AgenticDoctorUseCase } from './application/use-cases/agentic-doctor.use-case.js';
 import { FetchAndProcessPDFsUseCase } from './application/use-cases/fetch-and-process-pdfs.use-case.js';
-import { GcsStorageAdapter } from './adapters/gcs/gcs-storage.adapter.js';
+import { RetryableError, ValidationError } from './common/exceptions.js';
+import { createStorageAdapterFromEnv } from './adapters/storage/storage.factory.js';
+import { LegacyPaths, ProductionPaths } from './common/storage-paths.js';
+import type { StoragePort } from './application/ports/storage.port.js';
 import path from 'path';
 import fs from 'fs';
 
@@ -107,7 +110,8 @@ interface ProgressUpdate {
   stage: ProgressStage;
   progress: number;  // 0-100
   message: string;
-  errorDetails?: string;
+  errorDetails?: string; // user-facing error message
+  errorCode?: string; // structured error code (operation:transport_error)
 }
 
 // Map our pipeline steps to N1 API progress stages
@@ -121,24 +125,172 @@ const PROGRESS_MAP: Record<string, ProgressUpdate> = {
   failed:            { stage: 'Has Error',  progress: 0,   message: 'Report generation failed' },
 };
 
+const OPERATION_BY_STEP: Record<keyof typeof PROGRESS_MAP, string> = {
+  initializing: 'internal',
+  fetching_records: 'data_fetch',
+  analyzing: 'analysis',
+  generating_report: 'report_generation',
+  uploading: 'file_upload',
+  completed: 'report_generation',
+  failed: 'report_generation',
+};
+
 // Map AgenticDoctorUseCase phase names to progress updates
 // These phases are yielded as { type: 'step', name: '...', status: 'running'|'completed'|'failed' }
 const PHASE_PROGRESS_MAP: Record<string, ProgressUpdate> = {
-  'Document Extraction':    { stage: 'Preparing',  progress: 20,  message: 'Extracting content from your documents...' },
+  'Document Extraction':    { stage: 'Preparing',  progress: 15,  message: 'Extracting content from your documents...' },
   'Medical Analysis':       { stage: 'Analyzing',  progress: 30,  message: 'Performing medical analysis...' },
-  'Cross-System Analysis':  { stage: 'Analyzing',  progress: 40,  message: 'Analyzing cross-system connections...' },
-  'Research':               { stage: 'Analyzing',  progress: 50,  message: 'Researching and validating claims...' },
-  'Synthesis':              { stage: 'Writing',    progress: 60,  message: 'Synthesizing your health report...' },
-  'Validation':             { stage: 'Checking',   progress: 70,  message: 'Validating analysis completeness...' },
-  'Data Structuring':       { stage: 'Writing',    progress: 80,  message: 'Structuring data for visualization...' },
-  'Realm Generation':       { stage: 'Finalizing', progress: 90,  message: 'Building your interactive health realm...' },
+  'Research':               { stage: 'Analyzing',  progress: 45,  message: 'Researching and validating claims...' },
+  'Data Structuring':       { stage: 'Writing',    progress: 55,  message: 'Structuring data for visualization...' },
+  'Validation':             { stage: 'Checking',   progress: 65,  message: 'Validating analysis completeness...' },
+  'Realm Generation':       { stage: 'Finalizing', progress: 80,  message: 'Building your interactive health realm...' },
+  'Content Review':         { stage: 'Checking',   progress: 90,  message: 'Reviewing content completeness...' },
+  'HTML Regeneration':      { stage: 'Finalizing', progress: 95,  message: 'Refining the health realm...' },
 };
+
+// ============================================================================
+// Exit Codes + Error Classification
+// ============================================================================
+
+enum WorkflowExitCode {
+  SUCCESS = 0,
+  RETRYABLE = 1,
+  NON_RETRYABLE = 2,
+  INSUFFICIENT_DATA = 3,
+  BILLING_ERROR = 5,
+  VALIDATION_ERROR = 7,
+}
+
+interface ErrorInfo {
+  exitCode: WorkflowExitCode;
+  errorCode: string;
+  message: string;
+  retryable: boolean;
+  userMessage: string;
+}
+
+function classifyError(error: Error): ErrorInfo {
+  const errorName = error.constructor.name;
+  const errorMessage = error.message.toLowerCase();
+  const statusCode = (() => {
+    const statusCandidate = (error as { status?: unknown }).status
+      ?? (error as { statusCode?: unknown }).statusCode
+      ?? (error as { response?: { status?: unknown } }).response?.status;
+
+    if (typeof statusCandidate === 'number') {
+      return statusCandidate;
+    }
+    if (typeof statusCandidate === 'string') {
+      const parsed = Number(statusCandidate);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+
+    const match = errorMessage.match(/(?:status[:\s]*|\()(\d{3})\b/);
+    if (match) {
+      return Number(match[1]);
+    }
+
+    return undefined;
+  })();
+
+  if (error instanceof ValidationError) {
+    return {
+      exitCode: WorkflowExitCode.VALIDATION_ERROR,
+      errorCode: 'validation:invalid_input',
+      message: error.message,
+      retryable: false,
+      userMessage: 'Invalid input or configuration detected.',
+    };
+  }
+
+  if (error instanceof RetryableError) {
+    return {
+      exitCode: WorkflowExitCode.RETRYABLE,
+      errorCode: 'internal:unknown',
+      message: error.message,
+      retryable: true,
+      userMessage: 'A temporary error occurred. Please try again.',
+    };
+  }
+
+  // Rate limiting
+  if (errorName.includes('RateLimit') || errorMessage.includes('rate limit') || errorMessage.includes('429')) {
+    return {
+      exitCode: WorkflowExitCode.RETRYABLE,
+      errorCode: 'llm_service:rate_limited',
+      message: 'Service is busy, will retry',
+      retryable: true,
+      userMessage: 'Service is busy, please try again shortly.',
+    };
+  }
+
+  // Billing / insufficient funds
+  if (statusCode === 402 || (errorMessage.includes('insufficient') && errorMessage.includes('fund'))) {
+    return {
+      exitCode: WorkflowExitCode.BILLING_ERROR,
+      errorCode: 'billing:insufficient_funds',
+      message: error.message,
+      retryable: false,
+      userMessage: 'Billing issue detected. Please add credits and try again.',
+    };
+  }
+
+  // Validation
+  if (
+    errorMessage.includes('validation') ||
+    errorMessage.includes('invalid') ||
+    errorMessage.includes('missing required environment variables') ||
+    errorMessage.includes('missing s3 environment variable')
+  ) {
+    return {
+      exitCode: WorkflowExitCode.VALIDATION_ERROR,
+      errorCode: 'validation:invalid_input',
+      message: error.message,
+      retryable: false,
+      userMessage: 'Invalid input or configuration detected.',
+    };
+  }
+
+  // Insufficient data
+  if (errorMessage.includes('insufficient') && errorMessage.includes('data')) {
+    return {
+      exitCode: WorkflowExitCode.INSUFFICIENT_DATA,
+      errorCode: 'data_validation:insufficient_data',
+      message: error.message,
+      retryable: false,
+      userMessage: 'Insufficient data provided for analysis.',
+    };
+  }
+
+  // Timeout
+  if (errorName.includes('Timeout') || errorMessage.includes('timeout')) {
+    return {
+      exitCode: WorkflowExitCode.RETRYABLE,
+      errorCode: 'llm_service:timeout',
+      message: 'Request timed out, will retry',
+      retryable: true,
+      userMessage: 'Request timed out. Please try again.',
+    };
+  }
+
+  // Default: retryable
+  return {
+    exitCode: WorkflowExitCode.RETRYABLE,
+    errorCode: 'internal:unknown',
+    message: error.message,
+    retryable: true,
+    userMessage: 'An unexpected error occurred. Please try again.',
+  };
+}
 
 async function notifyProgress(
   config: { n1ApiBaseUrl: string; n1ApiKey: string; userId: string; chrId: string },
   step: keyof typeof PROGRESS_MAP,
-  customMessage?: string,
-  errorDetails?: string
+  technicalMessage?: string,
+  errorDetails?: string,
+  errorCode?: string
 ): Promise<void> {
   const update = PROGRESS_MAP[step];
   if (!update) {
@@ -146,7 +298,7 @@ async function notifyProgress(
     return;
   }
 
-  console.log(`[Progress] ${update.stage} (${update.progress}%): ${customMessage || update.message}`);
+  console.log(`[Progress] ${update.stage} (${update.progress}%): ${technicalMessage || update.message}`);
 
   // Skip API calls in development
   if (SKIP_PROGRESS_TRACKING) {
@@ -154,18 +306,21 @@ async function notifyProgress(
     return;
   }
 
+  const isError = step === 'failed';
+  const derivedErrorCode = `${OPERATION_BY_STEP[step]}:unknown`;
+
   const payload: Record<string, unknown> = {
     report_id: config.chrId,
     user_id: config.userId,
     progress: update.progress,
-    status: step === 'failed' ? 'ERROR' : (step === 'completed' ? 'completed' : 'in_progress'),
-    message: customMessage || update.message,
+    status: isError ? 'error' : (step === 'completed' ? 'completed' : 'in_progress'),
+    message: technicalMessage || update.message,
     progress_stage: update.stage,
   };
 
-  // Only include error field when there's an error (matches n1_api_client contract)
-  if (errorDetails) {
-    payload.error = errorDetails;
+  if (isError) {
+    payload.error = errorCode || derivedErrorCode;
+    payload.error_details = errorDetails || update.message;
   }
 
   try {
@@ -246,10 +401,9 @@ interface JobConfig {
   prompt: string;
   n1ApiBaseUrl: string;
   n1ApiKey: string;
-  // GCS config - optional in development
+  // S3 config - optional in development
   bucketName?: string;
-  projectId?: string;
-  gcsCredentials?: string;
+  awsRegion?: string;
 }
 
 function validateEnvironment(): JobConfig {
@@ -261,11 +415,10 @@ function validateEnvironment(): JobConfig {
     N1_API_KEY: process.env.N1_API_KEY,
   };
 
-  // GCS fields - only required in staging/production
-  const gcsFields = {
+  // S3 fields - only required in staging/production
+  const s3Fields = {
     BUCKET_NAME: process.env.BUCKET_NAME,
-    PROJECT_ID: process.env.PROJECT_ID,
-    GCS_SERVICE_ACCOUNT_JSON: process.env.GCS_SERVICE_ACCOUNT_JSON,
+    AWS_REGION: process.env.AWS_REGION || 'us-east-2',  // Default region
   };
 
   // Check core required fields
@@ -277,14 +430,17 @@ function validateEnvironment(): JobConfig {
     throw new Error(`Missing required environment variables: ${missingCore.join(', ')}`);
   }
 
-  // Check GCS fields only if uploads are enabled
+  // Check S3 fields only if uploads are enabled
   if (!SKIP_UPLOADS) {
-    const missingGcs = Object.entries(gcsFields)
-      .filter(([_, value]) => !value)
-      .map(([key]) => key);
-
-    if (missingGcs.length > 0) {
-      throw new Error(`Missing GCS environment variables (required for ${ENVIRONMENT}): ${missingGcs.join(', ')}`);
+    const storageProvider = process.env.STORAGE_PROVIDER ?? 'local';
+    if (storageProvider !== 's3') {
+      throw new Error(
+        `STORAGE_PROVIDER must be 's3' for ${ENVIRONMENT} (currently: '${storageProvider}'). ` +
+        `Set STORAGE_PROVIDER=s3 to enable S3 uploads.`
+      );
+    }
+    if (!s3Fields.BUCKET_NAME) {
+      throw new Error(`Missing S3 environment variable BUCKET_NAME (required for ${ENVIRONMENT})`);
     }
   }
 
@@ -292,13 +448,13 @@ function validateEnvironment(): JobConfig {
     userId: coreRequired.USER_ID!,
     chrId: coreRequired.CHR_ID!,
     chrFilename: process.env.CHR_FILENAME || undefined,
-    prompt: process.env.PROMPT || 'Create a comprehensive health analysis and visualization of my medical records',
+    // Accept REPORT_PROMPT (forge-sentinel uses report_prompt parameter)
+    prompt: process.env.REPORT_PROMPT || 'Create a comprehensive health analysis and visualization of my medical records',
     // Remove trailing slash to prevent double-slash URLs (e.g., /api//reports/status)
     n1ApiBaseUrl: coreRequired.N1_API_BASE_URL!.replace(/\/+$/, ''),
     n1ApiKey: coreRequired.N1_API_KEY!,
-    bucketName: gcsFields.BUCKET_NAME || undefined,
-    projectId: gcsFields.PROJECT_ID || undefined,
-    gcsCredentials: gcsFields.GCS_SERVICE_ACCOUNT_JSON || undefined,
+    bucketName: s3Fields.BUCKET_NAME || undefined,
+    awsRegion: s3Fields.AWS_REGION || undefined,
   };
 }
 
@@ -324,24 +480,53 @@ async function runJob() {
     console.log(`  Prompt: ${config.prompt.substring(0, 80)}...`);
     console.log('');
   } catch (error) {
+    const errorInfo = classifyError(error as Error);
     console.error('✗ Environment validation failed:', error);
-    process.exit(1);
+
+    // Try to notify failure even without full config (best effort)
+    const partialConfig = {
+      n1ApiBaseUrl: (process.env.N1_API_BASE_URL || '').replace(/\/+$/, ''),
+      n1ApiKey: process.env.N1_API_KEY || '',
+      userId: process.env.USER_ID || '',
+      chrId: process.env.CHR_ID || '',
+    };
+
+    // Only notify if we have the minimum required fields
+    if (partialConfig.n1ApiBaseUrl && partialConfig.n1ApiKey && partialConfig.chrId) {
+      await notifyProgress(
+        partialConfig,
+        'failed',
+        'Environment validation failed',
+        errorInfo.userMessage || (error as Error).message,
+        errorInfo.errorCode
+      );
+    } else {
+      console.error('[Progress] Cannot notify API - missing N1_API_BASE_URL, N1_API_KEY, or CHR_ID');
+    }
+
+    process.exit(errorInfo.exitCode);
   }
 
   let realmPath: string | null = null;
 
   try {
-    // Step 1: Initialize Gemini adapter
-    await notifyProgress(config, 'initializing');
-    console.log('[1/5] Initializing Gemini adapter...');
+    // Step 1: Initialize Gemini adapter and storage
+    await notifyProgress(config, 'initializing', `Setting up AI pipeline for report id ${config.chrId}`);
+    console.log('[1/5] Initializing Gemini adapter and storage...');
     const geminiAdapter = new GeminiAdapter();
     await geminiAdapter.initialize();
-    console.log('✓ Gemini adapter ready');
+
+    // Create storage adapter based on environment
+    const storage = createStorageAdapterFromEnv();
+    const storageProvider = process.env.STORAGE_PROVIDER ?? 'local';
+    const bucketName = process.env.BUCKET_NAME ?? '(none)';
+    console.log(`✓ Gemini adapter ready`);
+    console.log(`✓ Storage: provider=${storageProvider}, bucket=${bucketName}`);
     console.log('');
 
-    // Step 2: Initialize Agentic Doctor
+    // Step 2: Initialize Agentic Doctor with storage
     console.log('[2/5] Initializing Agentic Doctor pipeline...');
-    const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter);
+    const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter, storage);
     agenticDoctorUseCase.setBillingContext({
       userId: config.userId,
       chrId: config.chrId,
@@ -398,40 +583,51 @@ async function runJob() {
     console.log('✓ Processing complete');
     console.log('');
 
-    // Extract the full path to the HTML file
+    // Extract realm ID from path and read HTML from storage
     // realmPath format: "/realms/<uuid>/index.html"
-    const realmDir = path.join(process.cwd(), 'storage', 'realms', path.dirname(realmPath.replace('/realms/', '')));
-    const htmlFilePath = path.join(realmDir, 'index.html');
+    const realmId = realmPath.replace('/realms/', '').replace('/index.html', '');
+    const storagePath = LegacyPaths.realm(realmId);
 
-    if (!fs.existsSync(htmlFilePath)) {
-      throw new Error(`Generated HTML not found at: ${htmlFilePath}`);
+    // Check if HTML exists in storage
+    const htmlExists = await storage.exists(storagePath);
+    if (!htmlExists) {
+      throw new Error(`Generated HTML not found at: ${storagePath}`);
     }
 
-    let publicUrl = htmlFilePath; // Default to local path
+    let publicUrl = storagePath; // Default to storage path
 
-    // Step 5: Upload to GCS (skip in development)
+    // Step 5: Upload to production path and get signed URL (skip in development)
     if (SKIP_UPLOADS) {
-      console.log('[5/5] Skipping GCS upload (ENVIRONMENT=development)');
-      console.log(`  Local file: ${htmlFilePath}`);
+      console.log('[5/5] Skipping production upload (ENVIRONMENT=development)');
+      console.log(`  Storage path: ${storagePath}`);
     } else {
       await notifyProgress(config, 'uploading');
-      console.log('[5/5] Uploading result to Google Cloud Storage...');
-      const gcsAdapter = new GcsStorageAdapter(
-        config.bucketName!,
-        config.projectId!,
-        config.gcsCredentials!
-      );
+      console.log('[5/5] Copying to production path and generating signed URL...');
 
-      const htmlContent = fs.readFileSync(htmlFilePath, 'utf-8');
+      // Read HTML from working storage
+      const htmlContent = await storage.readFileAsString(storagePath);
 
-      // Build path: users/{userId}/chr/{chrId}/{filename}.html
-      // Strip any existing extension (e.g., .pdf, .html) from chrFilename before adding .html
+      // Build production path: users/{userId}/chr/{chrId}/{filename}.html
       const rawFilename = config.chrFilename || 'report';
       const filename = path.basename(rawFilename, path.extname(rawFilename)) || 'report';
-      const gcsPath = `users/${config.userId}/chr/${config.chrId}/${filename}.html`;
-      publicUrl = await gcsAdapter.uploadHtml(htmlContent, gcsPath);
+      const prodPath = ProductionPaths.userChr(config.userId, config.chrId, `${filename}.html`);
 
-      console.log(`✓ Uploaded to GCS: ${publicUrl}`);
+      // Write to production path
+      console.log(`  Writing to: ${prodPath}`);
+      await storage.writeFile(prodPath, htmlContent, 'text/html');
+
+      // Verify the file was written successfully
+      const writeVerified = await storage.exists(prodPath);
+      if (!writeVerified) {
+        throw new Error(`Failed to verify write to S3: ${prodPath}`);
+      }
+      console.log(`  ✓ Write verified`);
+
+      // Get signed URL for access
+      publicUrl = await storage.getSignedUrl(prodPath);
+
+      console.log(`✓ Uploaded to production: ${prodPath}`);
+      console.log(`✓ Signed URL: ${publicUrl.substring(0, 80)}...`);
     }
     console.log('');
 
@@ -447,8 +643,16 @@ async function runJob() {
 
   } catch (error) {
     // Notify failure
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    await notifyProgress(config, 'failed', undefined, errorMessage);
+    const errorInfo = classifyError(error as Error);
+    const progressMessage = errorInfo.userMessage || 'An unexpected error occurred.';
+
+    await notifyProgress(
+      config,
+      'failed',
+      progressMessage,
+      errorInfo.userMessage,
+      errorInfo.errorCode
+    );
 
     console.error('');
     console.error('================================================================================');
@@ -457,7 +661,7 @@ async function runJob() {
     console.error('Error:', error);
     console.error('================================================================================');
 
-    process.exit(1);
+    process.exit(errorInfo.exitCode);
   }
 }
 

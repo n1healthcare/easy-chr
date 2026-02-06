@@ -58,6 +58,7 @@ function isRetryable(error: unknown): boolean {
     // Quota and billing errors
     'quota exceeded', 'quota_exceeded', 'billing',
     'insufficient_quota', 'usage limit',
+    'budget', 'exceeded budget', 'exceededbudget', 'budget_exceeded', 'over budget',
     // Invalid request errors
     'invalid request', 'invalid_request', 'malformed',
     'invalid argument', 'invalid_argument',
@@ -80,8 +81,9 @@ function isRetryable(error: unknown): boolean {
     // Timeouts
     'timeout', 'timed out', 'etimedout', 'deadline exceeded',
     // Network errors
-    'econnreset', 'econnrefused', 'socket hang up', 'network error',
-    'connection refused', 'connection reset', 'epipe', 'enotfound',
+    'fetch failed', 'econnreset', 'econnrefused', 'socket hang up', 'network error',
+    'connection refused', 'connection reset', 'epipe', 'enotfound', 'eai_again',
+    'terminated', 'other side closed', 'und_err_socket',
     // Server errors
     '500', '502', '503', '504',
     'internal server error', 'bad gateway', 'service unavailable', 'gateway timeout',
