@@ -3,10 +3,10 @@
  *
  * Usage: npx tsx scripts/regenerate-html.ts [prompt]
  *
- * This script skips phases 1-6 and runs phases 7-9:
- * - Phase 7: HTML Generation (from structured_data.json)
- * - Phase 8: Content Review (compares structured_data.json vs index.html)
- * - Phase 9: HTML Regeneration (if gaps found)
+ * This script skips phases 1-5 and runs phases 6-8:
+ * - Phase 6: HTML Generation (from structured_data.json)
+ * - Phase 7: Content Review (compares structured_data.json vs index.html)
+ * - Phase 8: HTML Regeneration (if gaps found)
  *
  * Uses existing files in storage/
  */
@@ -121,14 +121,14 @@ ${structuredDataContent}
   const htmlPath = path.join(realmDir, 'index.html');
   fs.writeFileSync(htmlPath, htmlContent, 'utf-8');
 
-  console.log(`\n✅ Phase 7 complete: index.html (${htmlContent.length} chars)`);
+  console.log(`\n✅ Phase 6 complete: index.html (${htmlContent.length} chars)`);
 
   // ========================================================================
-  // Phase 8: Content Review
+  // Phase 7: Content Review
   // Compares structured_data.json against index.html to identify information loss
   // ========================================================================
   console.log('\n' + '='.repeat(60));
-  console.log('Phase 8: Content Review');
+  console.log('Phase 7: Content Review');
   console.log('='.repeat(60));
   console.log('Comparing structured_data.json against generated HTML...');
   console.log('Checking for: all JSON fields rendered, specifics preserved, visual design quality');
@@ -304,7 +304,7 @@ ${htmlContent}
       }
     }
 
-    console.log(`✅ Phase 8 complete: content_review.json`);
+    console.log(`✅ Phase 7 complete: content_review.json`);
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -314,12 +314,12 @@ ${htmlContent}
   }
 
   // ========================================================================
-  // Phase 9: HTML Regeneration (if needed)
+  // Phase 8: HTML Regeneration (if needed)
   // If content review found issues, regenerate HTML with feedback
   // ========================================================================
   if (contentReviewResult.overall.action === 'regenerate_with_feedback' && contentReviewResult.overall.feedback_for_regeneration) {
     console.log('\n' + '='.repeat(60));
-    console.log('Phase 10: HTML Regeneration');
+    console.log('Phase 8: HTML Regeneration');
     console.log('='.repeat(60));
     console.log('Regenerating HTML with reviewer feedback...');
     console.log(`Feedback: ${contentReviewResult.overall.feedback_for_regeneration!.substring(0, 200)}...`);
@@ -428,7 +428,7 @@ ${structuredDataContent}
         console.log('  ⚠️ Regeneration returned empty, keeping original HTML.');
       }
 
-      console.log(`✅ Phase 9 complete`);
+      console.log(`✅ Phase 8 complete`);
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -436,7 +436,7 @@ ${structuredDataContent}
       console.log('  Using original HTML.');
     }
   } else if (contentReviewResult.overall.passed) {
-    console.log('\nPhase 9: HTML Regeneration - Skipped (all dimensions passed)');
+    console.log('\nPhase 8: HTML Regeneration - Skipped (all dimensions passed)');
   }
 
   console.log(`\n${'='.repeat(60)}`);

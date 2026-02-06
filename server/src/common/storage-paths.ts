@@ -20,14 +20,9 @@ export const SessionPaths = {
   extracted: (sessionId: string) => `sessions/${sessionId}/extracted.md`,
 
   /**
-   * Medical analysis output
+   * Medical analysis output (includes cross-system connections)
    */
   analysis: (sessionId: string) => `sessions/${sessionId}/analysis.md`,
-
-  /**
-   * Cross-system analysis
-   */
-  crossSystems: (sessionId: string) => `sessions/${sessionId}/cross_systems.md`,
 
   /**
    * Research validation results
@@ -112,7 +107,6 @@ export const ProductionPaths = {
 export const LegacyPaths = {
   extracted: 'extracted.md',
   analysis: 'analysis.md',
-  crossSystems: 'cross_systems.md',
   research: 'research.json',
   structuredData: 'structured_data.json',
   validation: 'validation.md',

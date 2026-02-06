@@ -35,7 +35,7 @@ The examples below use `{{field.name}}` notation to SHOW you which JSON field to
 
 **CORRECT (do THIS):**
 ```html
-<p>45-year-old female experiencing chronic fatigue, brain fog, and joint pain for 6 months.</p>
+<p>[The actual patient context from the JSON - e.g., age, symptoms, concerns]</p>
 ```
 
 The `{{...}}` in examples below are documentation showing which JSON field to read. You must:
@@ -160,6 +160,18 @@ When fields exist, render in this order for optimal reading flow:
 
 Use these components to render each data type. Match the component to the JSON field.
 
+**CRITICAL: Use Plotly.js for ALL data visualizations:**
+- **Gauges** (`criticalFindings[]`) → Plotly indicator gauges (NOT SVG arcs)
+- **Line charts** (`trends[]`) → Plotly scatter/line charts with reference ranges
+- **Radar charts** (`systemsHealth`) → Plotly scatterpolar
+
+Include this script tag in the `<head>`:
+```html
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+```
+
+**Do NOT use hardcoded SVG paths for gauges.** Plotly gauges automatically handle value positioning, range coloring, and responsiveness.
+
 ### Executive Summary
 
 ```css
@@ -216,65 +228,6 @@ Use these components to render each data type. Match the component to the JSON f
 }
 .top-priority h3 { color: var(--warning-dark); }
 .top-priority p { font-weight: 700; color: var(--warning-dark); font-size: 1.05rem; }
-```
-
-### SVG Gauge (for `criticalFindings[]`)
-
-**Pre-calculated arc paths:**
-
-```
-BACKGROUND: d="M 20 80 A 60 60 0 0 1 140 80"
-
-VALUE ARCS:
-10%:  d="M 20 80 A 60 60 0 0 1 32 50"
-20%:  d="M 20 80 A 60 60 0 0 1 44 28"
-25%:  d="M 20 80 A 60 60 0 0 1 50 23"
-30%:  d="M 20 80 A 60 60 0 0 1 57 20"
-40%:  d="M 20 80 A 60 60 0 0 1 71 20"
-50%:  d="M 20 80 A 60 60 0 0 1 80 20"
-60%:  d="M 20 80 A 60 60 0 0 1 89 20"
-70%:  d="M 20 80 A 60 60 0 0 1 103 23"
-75%:  d="M 20 80 A 60 60 0 0 1 110 28"
-80%:  d="M 20 80 A 60 60 0 0 1 116 35"
-90%:  d="M 20 80 A 60 60 0 0 1 128 50"
-100%: d="M 20 80 A 60 60 0 0 1 140 80"
-```
-
-```html
-<!-- For each item in criticalFindings[] -->
-<div class="gauge-card">
-  <div class="gauge-title">{{marker}}</div>
-  <svg viewBox="0 0 160 100" class="gauge-svg">
-    <path d="M 20 80 A 60 60 0 0 1 140 80" fill="none" stroke="#E2E8F0" stroke-width="18" stroke-linecap="round"/>
-    <path d="[ARC PATH BASED ON VALUE]" fill="none" stroke="var(--{{status}})" stroke-width="18" stroke-linecap="round"/>
-  </svg>
-  <div class="gauge-value">{{value}} {{unit}}</div>
-  <div class="gauge-status">{{status}}</div>
-  <p class="gauge-description">{{implication}}</p>
-</div>
-```
-
-```css
-.gauges-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 24px;
-}
-
-.gauge-card {
-  background: linear-gradient(135deg, #FFFFFF 0%, #FAFAFA 100%);
-  border-radius: 28px;
-  padding: 30px;
-  text-align: center;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04),
-              inset 0 2px 4px rgba(255,255,255,0.8), inset 0 -2px 4px rgba(0,0,0,0.02);
-}
-
-.gauge-title { font-size: 1rem; font-weight: 800; margin-bottom: 16px; }
-.gauge-svg { width: 100%; max-width: 200px; height: auto; margin: 0 auto; display: block; }
-.gauge-value { font-size: 2.5rem; font-weight: 800; margin-top: 8px; }
-.gauge-status { font-size: 0.95rem; font-weight: 700; margin-top: 8px; }
-.gauge-description { font-size: 0.85rem; color: var(--text-muted); margin-top: 12px; line-height: 1.5; }
 ```
 
 ### Diagnosis Cards (for `diagnoses[]`)
@@ -405,9 +358,9 @@ Plotly.newPlot('trend-{{marker}}', [{
 .trend-interpretation { color: var(--text-muted); margin-top: 15px; line-height: 1.6; }
 ```
 
-### Plotly Gauge Charts (for `criticalFindings[]` - alternative to SVG)
+### Plotly Gauge Charts (for `criticalFindings[]`)
 
-For more interactive gauges with proper range coloring:
+**REQUIRED: Use Plotly for all gauge charts.** Plotly provides interactive gauges with proper range coloring, hover info, and responsive sizing:
 
 ```html
 <!-- For each item in criticalFindings[] -->
@@ -526,7 +479,7 @@ This is a CSS-based visual timeline with cards, icons, and connecting lines. Do 
           <p class="timeline-description">Event description explaining what happened</p>
           <!-- If event has keyValues -->
           <div class="timeline-values">
-            <span class="timeline-value critical">Homocysteine: 20.08</span>
+            <span class="timeline-value {{status}}">{{marker}}: {{value}}</span>
           </div>
         </div>
       </div>

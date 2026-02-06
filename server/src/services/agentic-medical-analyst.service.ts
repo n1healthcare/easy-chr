@@ -18,7 +18,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 import { REALM_CONFIG } from '../config.js';
-import { retryLLM } from '../common/index.js';
+import { retryLLM, sleep } from '../common/index.js';
 import {
   createGoogleGenAI,
   type BillingContext,
@@ -72,11 +72,31 @@ interface DocumentSection {
   endLine: number;
 }
 
+interface TimelineEvent {
+  date: string;           // ISO format: YYYY-MM-DD or YYYY-MM or YYYY
+  year: number;
+  month?: number;
+  day?: number;
+  document: string;       // Source document name
+  event: string;          // Brief description
+  snippet: string;        // Context snippet
+}
+
+interface DateRange {
+  earliest: string;
+  latest: string;
+  years: number;
+}
+
 interface ParsedExtractedData {
   sections: DocumentSection[];
   documentNames: string[];
   totalCharacters: number;
   totalSections: number;
+  // Temporal awareness
+  dateRange: DateRange | null;
+  documentsByYear: Record<number, string[]>;
+  timelineEvents: TimelineEvent[];
 }
 
 // ============================================================================
@@ -174,12 +194,145 @@ const ANALYST_TOOLS = [
       required: ['summary', 'confidence'],
     },
   },
+  // ============================================================================
+  // P0: Temporal Awareness Tools
+  // ============================================================================
+  {
+    name: 'get_date_range',
+    description: 'Get the date range of all data in the extracted documents. Use this early to understand how many years of data you have. IMPORTANT: Your timeline should have entries proportional to this range.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'list_documents_by_year',
+    description: 'List all documents grouped by year. Use this to see the temporal distribution of data and identify years you should explore.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'extract_timeline_events',
+    description: 'Get ALL dated events extracted from the documents. This provides a comprehensive timeline of tests, diagnoses, and medical events. Use this to build a complete Medical History Timeline.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        year: {
+          type: Type.NUMBER,
+          description: 'Optional: Filter events to a specific year',
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_value_history',
+    description: 'Get the history of a specific lab marker across all documents and time points. Use this to track trends for important markers.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        marker: {
+          type: Type.STRING,
+          description: 'The lab marker to track (e.g., "TSH", "Homocysteine", "Neutrophils")',
+        },
+      },
+      required: ['marker'],
+    },
+  },
 ];
 
 // ============================================================================
 // Extracted Data Parser
 // ============================================================================
 
+// ============================================================================
+// Date Extraction Helpers
+// ============================================================================
+
+/**
+ * Extract dates from text using multiple patterns
+ * Returns dates in ISO format (YYYY-MM-DD, YYYY-MM, or YYYY)
+ */
+function extractDatesFromText(text: string): Array<{ date: string; year: number; month?: number; day?: number; context: string }> {
+  const dates: Array<{ date: string; year: number; month?: number; day?: number; context: string }> = [];
+  const lines = text.split('\n');
+
+  // Date patterns to match
+  const patterns = [
+    // ISO format: 2024-03-15, 2024-03, 2024/03/15
+    /(\d{4})[-/](\d{1,2})(?:[-/](\d{1,2}))?/g,
+    // US format: 03/15/2024, 3/15/24
+    /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/g,
+    // Written: March 15, 2024 or Mar 2024 or March 2024
+    /(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})?,?\s*(\d{4})/gi,
+    // Written: 15 March 2024
+    /(\d{1,2})\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{4})/gi,
+  ];
+
+  const monthMap: Record<string, number> = {
+    'jan': 1, 'january': 1, 'feb': 2, 'february': 2, 'mar': 3, 'march': 3,
+    'apr': 4, 'april': 4, 'may': 5, 'jun': 6, 'june': 6, 'jul': 7, 'july': 7,
+    'aug': 8, 'august': 8, 'sep': 9, 'september': 9, 'oct': 10, 'october': 10,
+    'nov': 11, 'november': 11, 'dec': 12, 'december': 12
+  };
+
+  for (const line of lines) {
+    // ISO and numeric formats
+    let match;
+    const isoPattern = /(\d{4})[-/](\d{1,2})(?:[-/](\d{1,2}))?/g;
+    while ((match = isoPattern.exec(line)) !== null) {
+      const year = parseInt(match[1], 10);
+      if (year >= 1990 && year <= 2030) {
+        const month = parseInt(match[2], 10);
+        const day = match[3] ? parseInt(match[3], 10) : undefined;
+        const dateStr = day ? `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` : `${year}-${String(month).padStart(2, '0')}`;
+        dates.push({ date: dateStr, year, month, day, context: line.trim().substring(0, 100) });
+      }
+    }
+
+    // US format: MM/DD/YYYY
+    const usPattern = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/g;
+    while ((match = usPattern.exec(line)) !== null) {
+      let year = parseInt(match[3], 10);
+      if (year < 100) year += 2000; // Convert 24 to 2024
+      if (year >= 1990 && year <= 2030) {
+        const month = parseInt(match[1], 10);
+        const day = parseInt(match[2], 10);
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        dates.push({ date: dateStr, year, month, day, context: line.trim().substring(0, 100) });
+      }
+    }
+
+    // Written format: Month DD, YYYY or Month YYYY
+    const writtenPattern = /(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})?,?\s*(\d{4})/gi;
+    while ((match = writtenPattern.exec(line)) !== null) {
+      const year = parseInt(match[3], 10);
+      if (year >= 1990 && year <= 2030) {
+        const month = monthMap[match[1].toLowerCase().substring(0, 3)];
+        const day = match[2] ? parseInt(match[2], 10) : undefined;
+        const dateStr = day ? `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` : `${year}-${String(month).padStart(2, '0')}`;
+        dates.push({ date: dateStr, year, month, day, context: line.trim().substring(0, 100) });
+      }
+    }
+  }
+
+  // Deduplicate by date string
+  const seen = new Set<string>();
+  return dates.filter(d => {
+    const key = d.date + d.context;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * Parse extracted content into sections with temporal awareness
+ */
 function parseExtractedData(extractedContent: string): ParsedExtractedData {
   const sections: DocumentSection[] = [];
   const lines = extractedContent.split('\n');
@@ -226,11 +379,73 @@ function parseExtractedData(extractedContent: string): ParsedExtractedData {
   // Get unique document names
   const documentNames = [...new Set(sections.map(s => s.name))];
 
+  // ============================================================================
+  // Extract temporal data
+  // ============================================================================
+
+  const timelineEvents: TimelineEvent[] = [];
+  const documentsByYear: Record<number, string[]> = {};
+  let earliestDate: string | null = null;
+  let latestDate: string | null = null;
+
+  for (const section of sections) {
+    const dates = extractDatesFromText(section.content);
+
+    for (const dateInfo of dates) {
+      // Track timeline events
+      timelineEvents.push({
+        date: dateInfo.date,
+        year: dateInfo.year,
+        month: dateInfo.month,
+        day: dateInfo.day,
+        document: section.name,
+        event: section.name, // Use document name as event type
+        snippet: dateInfo.context,
+      });
+
+      // Track documents by year
+      if (!documentsByYear[dateInfo.year]) {
+        documentsByYear[dateInfo.year] = [];
+      }
+      if (!documentsByYear[dateInfo.year].includes(section.name)) {
+        documentsByYear[dateInfo.year].push(section.name);
+      }
+
+      // Track date range
+      if (!earliestDate || dateInfo.date < earliestDate) {
+        earliestDate = dateInfo.date;
+      }
+      if (!latestDate || dateInfo.date > latestDate) {
+        latestDate = dateInfo.date;
+      }
+    }
+  }
+
+  // Sort timeline events by date
+  timelineEvents.sort((a, b) => a.date.localeCompare(b.date));
+
+  // Calculate date range
+  let dateRange: DateRange | null = null;
+  if (earliestDate && latestDate) {
+    const earliestYear = parseInt(earliestDate.substring(0, 4), 10);
+    const latestYear = parseInt(latestDate.substring(0, 4), 10);
+    dateRange = {
+      earliest: earliestDate,
+      latest: latestDate,
+      years: latestYear - earliestYear + 1,
+    };
+  }
+
+  console.log(`[AgenticAnalyst] Parsed ${sections.length} sections, ${timelineEvents.length} timeline events, date range: ${dateRange?.earliest} to ${dateRange?.latest} (${dateRange?.years} years)`);
+
   return {
     sections,
     documentNames,
     totalCharacters: extractedContent.length,
     totalSections: sections.length,
+    dateRange,
+    documentsByYear,
+    timelineEvents,
   };
 }
 
@@ -242,8 +457,37 @@ class AnalystToolExecutor {
   private parsedData: ParsedExtractedData;
   private currentAnalysis: Map<string, string> = new Map();
 
+  // Tracking for enforcement
+  private documentsRead: Set<string> = new Set();
+  private searchesPerformed: Set<string> = new Set();
+  private dateRangeChecked: boolean = false;
+  private timelineExtracted: boolean = false;
+
   constructor(extractedContent: string) {
     this.parsedData = parseExtractedData(extractedContent);
+  }
+
+  // Get coverage stats for enforcement
+  getCoverageStats(): {
+    documentsRead: number;
+    totalDocuments: number;
+    documentCoverage: number;
+    searchesPerformed: number;
+    analysisSections: number;
+    dateRangeChecked: boolean;
+    timelineExtracted: boolean;
+  } {
+    const totalDocs = this.parsedData.documentNames.length;
+    const readCount = this.documentsRead.size;
+    return {
+      documentsRead: readCount,
+      totalDocuments: totalDocs,
+      documentCoverage: totalDocs > 0 ? Math.round((readCount / totalDocs) * 100) : 0,
+      searchesPerformed: this.searchesPerformed.size,
+      analysisSections: this.currentAnalysis.size,
+      dateRangeChecked: this.dateRangeChecked,
+      timelineExtracted: this.timelineExtracted,
+    };
   }
 
   execute(toolName: string, args: Record<string, unknown>): string {
@@ -264,6 +508,15 @@ class AnalystToolExecutor {
         );
       case 'complete_analysis':
         return this.completeAnalysis(args.summary as string, args.confidence as string);
+      // P0: Temporal Awareness Tools
+      case 'get_date_range':
+        return this.getDateRange();
+      case 'list_documents_by_year':
+        return this.listDocumentsByYear();
+      case 'extract_timeline_events':
+        return this.extractTimelineEvents(args.year as number | undefined);
+      case 'get_value_history':
+        return this.getValueHistory(args.marker as string);
       default:
         return `Unknown tool: ${toolName}`;
     }
@@ -282,6 +535,8 @@ class AnalystToolExecutor {
   }
 
   private readDocument(documentName: string): string {
+    const MAX_RESPONSE_SIZE = 50000; // 50KB max per tool response to prevent payload bloat
+
     const sections = this.parsedData.sections.filter(
       s => s.name.toLowerCase().includes(documentName.toLowerCase())
     );
@@ -290,17 +545,30 @@ class AnalystToolExecutor {
       return `Document not found: "${documentName}". Use list_documents() to see available documents.`;
     }
 
-    const content = sections
+    // Track that this document was read
+    for (const section of sections) {
+      this.documentsRead.add(section.name);
+    }
+
+    let content = sections
       .map(s => {
         const header = s.pageNumber ? `## ${s.name} - Page ${s.pageNumber}` : `## ${s.name}`;
         return `${header}\n\n${s.content}`;
       })
       .join('\n\n---\n\n');
 
+    // Truncate if too large to prevent payload bloat in conversation history
+    if (content.length > MAX_RESPONSE_SIZE) {
+      content = content.substring(0, MAX_RESPONSE_SIZE) +
+        `\n\n... [TRUNCATED - Document too large (${Math.round(content.length / 1024)}KB). Use search_data() to find specific values or read_document_section() for specific pages.]`;
+    }
+
     return content;
   }
 
   private searchData(query: string, includeContext: boolean): string {
+    // Track searches performed
+    this.searchesPerformed.add(query.toLowerCase());
     const results: { section: string; matches: string[] }[] = [];
     const queryLower = query.toLowerCase();
     const queryTerms = queryLower.split(/\s+/).filter(t => t.length > 2);
@@ -347,12 +615,21 @@ class AnalystToolExecutor {
       return `No matches found for "${query}". Try different terms or use list_documents() to see available data.`;
     }
 
-    const output = results
+    const MAX_RESPONSE_SIZE = 30000; // 30KB max for search results
+
+    let output = results
       .slice(0, 15) // Limit total sections
       .map(r => `### ${r.section}\n\n${r.matches.join('\n\n---\n\n')}`)
       .join('\n\n---\n\n');
 
-    return `# Search Results for "${query}"\n\nFound matches in ${results.length} section(s):\n\n${output}`;
+    let response = `# Search Results for "${query}"\n\nFound matches in ${results.length} section(s):\n\n${output}`;
+
+    if (response.length > MAX_RESPONSE_SIZE) {
+      response = response.substring(0, MAX_RESPONSE_SIZE) +
+        `\n\n... [TRUNCATED - Too many results. Narrow your search or use read_document() for specific documents.]`;
+    }
+
+    return response;
   }
 
   private getAnalysis(): string {
@@ -387,7 +664,240 @@ class AnalystToolExecutor {
   }
 
   private completeAnalysis(summary: string, confidence: string): string {
+    // Enforce minimum coverage requirements before allowing completion
+    const stats = this.getCoverageStats();
+    const issues: string[] = [];
+
+    // Minimum requirements
+    const MIN_DOCUMENT_COVERAGE = 50; // At least 50% of documents should be read
+    const MIN_ANALYSIS_SECTIONS = 5;  // At least 5 sections written
+    const MIN_SEARCHES = 3;           // At least 3 searches performed
+
+    if (stats.documentCoverage < MIN_DOCUMENT_COVERAGE && stats.totalDocuments > 2) {
+      issues.push(`Only ${stats.documentCoverage}% of documents read (${stats.documentsRead}/${stats.totalDocuments}). Read more documents before completing.`);
+    }
+
+    if (stats.analysisSections < MIN_ANALYSIS_SECTIONS) {
+      issues.push(`Only ${stats.analysisSections} analysis sections written. Need at least ${MIN_ANALYSIS_SECTIONS}. Required sections: Executive Summary, Key Patterns, Critical Findings, Recommendations, Timeline.`);
+    }
+
+    if (stats.searchesPerformed < MIN_SEARCHES) {
+      issues.push(`Only ${stats.searchesPerformed} searches performed. Use search_data() to cross-reference findings and find patterns.`);
+    }
+
+    if (!stats.dateRangeChecked) {
+      issues.push(`Date range not checked. Call get_date_range() to understand the temporal scope of the data.`);
+    }
+
+    if (!stats.timelineExtracted && this.parsedData.timelineEvents.length > 0) {
+      issues.push(`Timeline events not extracted. Call extract_timeline_events() to build the Medical History Timeline.`);
+    }
+
+    // If there are issues, return them instead of completing
+    if (issues.length > 0) {
+      return `# Cannot Complete Analysis Yet
+
+The following requirements are not met:
+
+${issues.map((issue, i) => `${i + 1}. ${issue}`).join('\n')}
+
+## Current Coverage Stats
+- Documents read: ${stats.documentsRead}/${stats.totalDocuments} (${stats.documentCoverage}%)
+- Searches performed: ${stats.searchesPerformed}
+- Analysis sections: ${stats.analysisSections}
+- Date range checked: ${stats.dateRangeChecked ? 'Yes' : 'No'}
+- Timeline extracted: ${stats.timelineExtracted ? 'Yes' : 'No'}
+
+Please address these issues before calling complete_analysis() again.`;
+    }
+
+    // All requirements met - allow completion
     return `ANALYSIS_COMPLETE|${confidence}|${summary}`;
+  }
+
+  // ============================================================================
+  // P0: Temporal Awareness Tools
+  // ============================================================================
+
+  private getDateRange(): string {
+    // Track that date range was checked
+    this.dateRangeChecked = true;
+
+    const { dateRange, timelineEvents } = this.parsedData;
+
+    if (!dateRange) {
+      return `# Date Range\n\nNo dates found in the extracted documents. This may indicate the documents lack explicit date markers.`;
+    }
+
+    const yearsWithData = Object.keys(this.parsedData.documentsByYear).map(Number).sort((a, b) => a - b);
+    const allYears = [];
+    for (let y = parseInt(dateRange.earliest.substring(0, 4), 10); y <= parseInt(dateRange.latest.substring(0, 4), 10); y++) {
+      allYears.push(y);
+    }
+    const missingYears = allYears.filter(y => !yearsWithData.includes(y));
+
+    return `# Date Range Summary
+
+**Earliest Date:** ${dateRange.earliest}
+**Latest Date:** ${dateRange.latest}
+**Span:** ${dateRange.years} years
+
+**Total Timeline Events Found:** ${timelineEvents.length}
+**Years with Data:** ${yearsWithData.join(', ')}
+${missingYears.length > 0 ? `**Years with No Data:** ${missingYears.join(', ')}` : '**Coverage:** Complete - data found for all years'}
+
+---
+
+**IMPORTANT:** Your Medical History Timeline should include entries proportional to this ${dateRange.years}-year span.
+If data spans 18 years, aim for at least 10-15 timeline entries, not just 2-3 recent ones.
+
+Use \`list_documents_by_year()\` to see documents per year, or \`extract_timeline_events()\` to get all dated events.`;
+  }
+
+  private listDocumentsByYear(): string {
+    const { documentsByYear, dateRange } = this.parsedData;
+
+    if (Object.keys(documentsByYear).length === 0) {
+      return `# Documents by Year\n\nNo dated documents found.`;
+    }
+
+    const years = Object.keys(documentsByYear).map(Number).sort((a, b) => a - b);
+    const output = years.map(year => {
+      const docs = documentsByYear[year];
+      return `## ${year}\n${docs.map(d => `- ${d}`).join('\n')}`;
+    }).join('\n\n');
+
+    return `# Documents by Year
+
+**Date Range:** ${dateRange?.earliest} to ${dateRange?.latest}
+**Years with Data:** ${years.length}
+
+${output}
+
+---
+
+Use \`extract_timeline_events(year)\` to get detailed events for a specific year.`;
+  }
+
+  private extractTimelineEvents(year?: number): string {
+    // Track that timeline was extracted
+    this.timelineExtracted = true;
+
+    let events = this.parsedData.timelineEvents;
+
+    if (year) {
+      events = events.filter(e => e.year === year);
+    }
+
+    if (events.length === 0) {
+      return year
+        ? `# Timeline Events for ${year}\n\nNo events found for year ${year}.`
+        : `# Timeline Events\n\nNo dated events found in the documents.`;
+    }
+
+    // Group by year for readability
+    const byYear: Record<number, TimelineEvent[]> = {};
+    for (const event of events) {
+      if (!byYear[event.year]) byYear[event.year] = [];
+      byYear[event.year].push(event);
+    }
+
+    const years = Object.keys(byYear).map(Number).sort((a, b) => a - b);
+    const output = years.map(y => {
+      const yearEvents = byYear[y];
+      const eventList = yearEvents.slice(0, 20).map(e => {
+        const dateStr = e.day ? e.date : (e.month ? `${e.year}-${String(e.month).padStart(2, '0')}` : `${e.year}`);
+        return `- **${dateStr}** - ${e.document}: ${e.snippet.substring(0, 80)}${e.snippet.length > 80 ? '...' : ''}`;
+      }).join('\n');
+      return `## ${y} (${yearEvents.length} events)\n${eventList}${yearEvents.length > 20 ? `\n... and ${yearEvents.length - 20} more` : ''}`;
+    }).join('\n\n');
+
+    return `# Timeline Events${year ? ` for ${year}` : ''}
+
+**Total Events:** ${events.length}
+${!year && this.parsedData.dateRange ? `**Date Range:** ${this.parsedData.dateRange.earliest} to ${this.parsedData.dateRange.latest}` : ''}
+
+${output}
+
+---
+
+**Use these events to build a comprehensive Medical History Timeline in your analysis.**
+Include significant events from across the entire date range, not just recent ones.`;
+  }
+
+  private getValueHistory(marker: string): string {
+    if (!marker) {
+      return `Error: Please provide a marker name (e.g., "TSH", "Homocysteine", "Neutrophils")`;
+    }
+
+    const markerLower = marker.toLowerCase();
+    const results: Array<{ date: string; value: string; unit: string; document: string; context: string }> = [];
+
+    // Search for the marker in all sections
+    for (const section of this.parsedData.sections) {
+      const lines = section.content.split('\n');
+
+      for (const line of lines) {
+        const lineLower = line.toLowerCase();
+        if (lineLower.includes(markerLower)) {
+          // Try to extract a numeric value near the marker
+          // Pattern: marker followed by number with optional unit
+          const valuePatterns = [
+            new RegExp(`${marker}[:\\s]+([\\d.,]+)\\s*(\\w*/\\w*|\\w+)?`, 'i'),
+            new RegExp(`([\\d.,]+)\\s*(\\w*/\\w*|\\w+)?\\s*${marker}`, 'i'),
+            /(\d+\.?\d*)\s*(mg\/dL|g\/dL|mmol\/L|μmol\/L|ng\/mL|pg\/mL|mIU\/L|IU\/mL|%|x10\^9\/L|cells\/μL)?/i,
+          ];
+
+          for (const pattern of valuePatterns) {
+            const match = line.match(pattern);
+            if (match && match[1]) {
+              // Try to find a date in the same section
+              const sectionDates = extractDatesFromText(section.content);
+              const date = sectionDates.length > 0 ? sectionDates[0].date : 'Unknown date';
+
+              results.push({
+                date,
+                value: match[1],
+                unit: match[2] || '',
+                document: section.name,
+                context: line.trim().substring(0, 100),
+              });
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (results.length === 0) {
+      return `# Value History for "${marker}"\n\nNo values found for marker "${marker}". Try:\n- A different spelling or abbreviation\n- search_data("${marker}") to find related content`;
+    }
+
+    // Sort by date
+    results.sort((a, b) => a.date.localeCompare(b.date));
+
+    // Deduplicate by date+value
+    const seen = new Set<string>();
+    const unique = results.filter(r => {
+      const key = `${r.date}-${r.value}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    const output = unique.map(r =>
+      `- **${r.date}**: ${r.value} ${r.unit} (${r.document})\n  Context: ${r.context}`
+    ).join('\n\n');
+
+    return `# Value History for "${marker}"
+
+**Found ${unique.length} value(s) across ${new Set(unique.map(r => r.document)).size} document(s)**
+
+${output}
+
+---
+
+Use this history to identify trends (improving, worsening, stable) in your analysis.`;
   }
 
   getFinalAnalysis(): string {
@@ -458,7 +968,7 @@ export class AgenticMedicalAnalyst {
   async *analyze(
     extractedContent: string,
     patientContext?: string,
-    maxIterations: number = 20
+    maxIterations: number = 50
   ): AsyncGenerator<AnalystEvent, string, unknown> {
     const toolExecutor = new AnalystToolExecutor(extractedContent);
 
@@ -491,6 +1001,12 @@ export class AgenticMedicalAnalyst {
 
     while (!analysisComplete && iteration < maxIterations) {
       iteration++;
+
+      // Add delay between LLM calls to prevent rate limiting (skip first iteration)
+      if (iteration > 1) {
+        const delayMs = REALM_CONFIG.throttle.llm.delayBetweenRequestsMs;
+        await sleep(delayMs);
+      }
 
       yield {
         type: 'log',

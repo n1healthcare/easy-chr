@@ -138,14 +138,14 @@ const OPERATION_BY_STEP: Record<keyof typeof PROGRESS_MAP, string> = {
 // Map AgenticDoctorUseCase phase names to progress updates
 // These phases are yielded as { type: 'step', name: '...', status: 'running'|'completed'|'failed' }
 const PHASE_PROGRESS_MAP: Record<string, ProgressUpdate> = {
-  'Document Extraction':    { stage: 'Preparing',  progress: 20,  message: 'Extracting content from your documents...' },
+  'Document Extraction':    { stage: 'Preparing',  progress: 15,  message: 'Extracting content from your documents...' },
   'Medical Analysis':       { stage: 'Analyzing',  progress: 30,  message: 'Performing medical analysis...' },
-  'Cross-System Analysis':  { stage: 'Analyzing',  progress: 40,  message: 'Analyzing cross-system connections...' },
-  'Research':               { stage: 'Analyzing',  progress: 50,  message: 'Researching and validating claims...' },
-  'Synthesis':              { stage: 'Writing',    progress: 60,  message: 'Synthesizing your health report...' },
-  'Validation':             { stage: 'Checking',   progress: 70,  message: 'Validating analysis completeness...' },
-  'Data Structuring':       { stage: 'Writing',    progress: 80,  message: 'Structuring data for visualization...' },
-  'Realm Generation':       { stage: 'Finalizing', progress: 90,  message: 'Building your interactive health realm...' },
+  'Research':               { stage: 'Analyzing',  progress: 45,  message: 'Researching and validating claims...' },
+  'Data Structuring':       { stage: 'Writing',    progress: 55,  message: 'Structuring data for visualization...' },
+  'Validation':             { stage: 'Checking',   progress: 65,  message: 'Validating analysis completeness...' },
+  'Realm Generation':       { stage: 'Finalizing', progress: 80,  message: 'Building your interactive health realm...' },
+  'Content Review':         { stage: 'Checking',   progress: 90,  message: 'Reviewing content completeness...' },
+  'HTML Regeneration':      { stage: 'Finalizing', progress: 95,  message: 'Refining the health realm...' },
 };
 
 // ============================================================================
