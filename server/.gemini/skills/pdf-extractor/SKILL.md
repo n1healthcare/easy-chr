@@ -29,12 +29,12 @@ Analyze document images and extract ALL content into clean, structured Markdown 
 - Include all headers and data rows
 - For complex tables, use the clearest representation possible
 
-**Example:**
+**Example format:**
 ```markdown
 | Test | Value | Reference | Flag |
 |------|-------|-----------|------|
-| Glucose | 95 | 70-100 | Normal |
-| HbA1c | 5.8% | <5.7% | High |
+| [Test Name] | [value] | [range] | [status] |
+| [Test Name] | [value] | [range] | [status] |
 ```
 
 ### Equations and Formulas

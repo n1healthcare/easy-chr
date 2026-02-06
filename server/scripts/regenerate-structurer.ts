@@ -3,15 +3,16 @@
  *
  * Usage: npx tsx scripts/regenerate-structurer.ts [prompt]
  *
- * This script skips phases 1-4 and runs phases 5-7:
- * - Phase 5: Data Structuring (SOURCE OF TRUTH)
- * - Phase 6: Validation (validates structured_data.json)
- * - Phase 7: HTML Generation (from structured_data.json)
+ * This script skips phases 1-3 and runs phases 4-8:
+ * - Phase 4: Data Structuring (SOURCE OF TRUTH)
+ * - Phase 5: Validation (validates structured_data.json)
+ * - Phase 6: HTML Generation (from structured_data.json)
+ * - Phase 7: Content Review (compares structured_data.json vs index.html)
+ * - Phase 8: HTML Regeneration (if gaps found)
  *
  * Uses existing files from storage/:
  * - extracted.md
- * - analysis.md
- * - cross_systems.md
+ * - analysis.md (includes cross-system connections)
  * - research.json (optional)
  */
 
@@ -19,6 +20,7 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { GeminiAdapter } from '../src/adapters/gemini/gemini.adapter.js';
+import { AgenticValidator } from '../src/services/agentic-validator.service.js';
 import { formatResearchAsMarkdown, type ResearchOutput } from '../src/services/research-agent.service.js';
 import { REALM_CONFIG } from '../src/config.js';
 
@@ -80,11 +82,11 @@ async function regenerateStructurer(userPrompt?: string) {
   const prompt = userPrompt || '';
 
   // Check required files exist
-  const requiredFiles = ['extracted.md', 'analysis.md', 'cross_systems.md'];
+  const requiredFiles = ['extracted.md', 'analysis.md'];
   for (const file of requiredFiles) {
     const filePath = path.join(storageDir, file);
     if (!fs.existsSync(filePath)) {
-      throw new Error(`Required file missing: ${file}. Run the full pipeline or regen-analysis first.`);
+      throw new Error(`Required file missing: ${file}. Run the full pipeline first.`);
     }
   }
 
@@ -92,7 +94,6 @@ async function regenerateStructurer(userPrompt?: string) {
   console.log('Loading existing files...');
   const allExtractedContent = fs.readFileSync(path.join(storageDir, 'extracted.md'), 'utf-8');
   const analysisContent = fs.readFileSync(path.join(storageDir, 'analysis.md'), 'utf-8');
-  const crossSystemsContent = fs.readFileSync(path.join(storageDir, 'cross_systems.md'), 'utf-8');
 
   // Optional: research data
   let researchOutput: ResearchOutput = { researchedClaims: [], unsupportedClaims: [], additionalFindings: [] };
@@ -107,7 +108,6 @@ async function regenerateStructurer(userPrompt?: string) {
   console.log(`Loaded:
   - extracted.md: ${allExtractedContent.length} chars
   - analysis.md: ${analysisContent.length} chars
-  - cross_systems.md: ${crossSystemsContent.length} chars
   - research.json: ${researchOutput.researchedClaims.length} claims`);
 
   // Initialize Gemini adapter
@@ -115,11 +115,11 @@ async function regenerateStructurer(userPrompt?: string) {
   await gemini.initialize();
 
   // ========================================================================
-  // Phase 5: Data Structuring (SOURCE OF TRUTH)
+  // Phase 4: Data Structuring (SOURCE OF TRUTH)
   // Extracts chart-ready JSON
   // ========================================================================
   console.log('\n' + '='.repeat(60));
-  console.log('Phase 5: Data Structuring');
+  console.log('Phase 4: Data Structuring');
   console.log('='.repeat(60));
 
   const structuredDataPath = path.join(storageDir, 'structured_data.json');
@@ -130,17 +130,12 @@ async function regenerateStructurer(userPrompt?: string) {
 
 ---
 
-${prompt ? `#### Patient's Question/Context\n${prompt}\n\n` : ''}### Priority 1: Rich Medical Analysis (PRIMARY for diagnoses, timeline, prognosis, supplements)
+${prompt ? `#### Patient's Question/Context\n${prompt}\n\n` : ''}### Priority 1: Rich Medical Analysis (PRIMARY - includes cross-system connections)
 <analysis>
 ${analysisContent}
 </analysis>
 
-### Priority 2: Cross-System Connections (for mechanism explanations)
-<cross_systems>
-${crossSystemsContent}
-</cross_systems>
-
-### Priority 3: Research Findings (for citations and verified claims)
+### Priority 2: Research Findings (for citations and verified claims)
 <research>
 ${researchMarkdown}
 </research>`;
@@ -183,83 +178,99 @@ ${researchMarkdown}
   }
 
   fs.writeFileSync(structuredDataPath, structuredDataContent, 'utf-8');
-  console.log(`✅ Phase 5 complete: structured_data.json (${structuredDataContent.length} chars)`);
+  console.log(`✅ Phase 4 complete: structured_data.json (${structuredDataContent.length} chars)`);
 
   // ========================================================================
-  // Phase 6: Validation
-  // Validates structured_data.json completeness against source data
+  // Phase 5: Agentic Validation
+  // Uses AgenticValidator with verification-focused tools to validate
+  // structured_data.json against source data without payload bloat
   // ========================================================================
   console.log('\n' + '='.repeat(60));
-  console.log('Phase 6: Validation');
+  console.log('Phase 5: Agentic Validation');
   console.log('='.repeat(60));
 
   const validationPath = path.join(storageDir, 'validation.md');
-  const MAX_CORRECTION_CYCLES = 1;
-  let correctionCycle = 0;
-  let validationPassed = false;
+  const agenticValidator = new AgenticValidator();
 
-  while (correctionCycle <= MAX_CORRECTION_CYCLES && !validationPassed) {
-    const validatorSkill = loadSkill('validator');
-    const validationPrompt = `${validatorSkill}
+  console.log('Starting agentic validation (tool-based, no payload bloat)...');
 
----
+  const validationGenerator = agenticValidator.validate(
+    allExtractedContent,
+    structuredDataContent,
+    prompt,
+    15 // maxIterations
+  );
 
-${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Original Extracted Data (Source of Truth for raw values)
-<extracted_data>
-${allExtractedContent}
-</extracted_data>
-
-### Medical Analysis (Source of Truth for clinical interpretation)
-<analysis>
-${analysisContent}
-</analysis>
-
-### Structured Data (To Validate)
-<structured_data>
-${structuredDataContent}
-</structured_data>`;
-
-    console.log(`Validating structured data (cycle ${correctionCycle})...`);
-    let validationContent = '';
-    const validationStream = await gemini.sendMessageStream(
-      validationPrompt,
-      `${sessionId}-validation-${correctionCycle}`,
-      undefined,
-      { model: REALM_CONFIG.models.doctor }
-    );
-
-    for await (const chunk of validationStream) {
-      validationContent += chunk;
-      process.stdout.write('.');
+  let validationResult = await validationGenerator.next();
+  while (!validationResult.done) {
+    const event = validationResult.value;
+    switch (event.type) {
+      case 'log':
+        console.log(`  ${event.data.message || ''}`);
+        break;
+      case 'tool_call':
+        if (event.data.toolName && !event.data.toolResult) {
+          console.log(`  [Tool] ${event.data.toolName}`);
+        }
+        break;
+      case 'issue_found':
+        if (event.data.issue) {
+          const issue = event.data.issue;
+          console.log(`  [Issue] ${issue.severity.toUpperCase()}: ${issue.description}`);
+        }
+        break;
+      case 'complete':
+        console.log(`  ${event.data.message || 'Validation complete'}`);
+        break;
+      case 'error':
+        console.error(`  [Error] ${event.data.message || 'Unknown error'}`);
+        break;
     }
-    console.log(' Done!');
+    validationResult = await validationGenerator.next();
+  }
 
-    validationContent = stripThinkingText(validationContent, /^#\s+.+$/m);
-    fs.writeFileSync(validationPath, validationContent, 'utf-8');
+  const { status: validationStatus, issues: validationIssues, summary: validationSummary } = validationResult.value;
 
-    const needsRevision = validationContent.toLowerCase().includes('needs revision');
-    const hasCriticalErrors = (validationContent.match(/❌/g) || []).length > 0;
+  // Generate validation report markdown
+  const validationReportLines = [
+    `# Validation Report`,
+    ``,
+    `**Status:** ${validationStatus}`,
+    `**Summary:** ${validationSummary}`,
+    ``,
+    `## Issues Found (${validationIssues.length})`,
+    ``
+  ];
 
-    if (needsRevision || hasCriticalErrors) {
-      console.log('  Validation found issues.');
-      if (correctionCycle < MAX_CORRECTION_CYCLES) {
-        console.log('  Sending corrections back to data structurer...');
+  if (validationIssues.length === 0) {
+    validationReportLines.push('No issues found.');
+  } else {
+    for (const issue of validationIssues) {
+      validationReportLines.push(`### [${issue.severity.toUpperCase()}] ${issue.category}`);
+      validationReportLines.push(issue.description);
+      if (issue.source_location) validationReportLines.push(`- Source: ${issue.source_location}`);
+      if (issue.json_location) validationReportLines.push(`- JSON: ${issue.json_location}`);
+      validationReportLines.push('');
+    }
+  }
 
-        const correctionsMatch = validationContent.match(/## Required Corrections[\s\S]*?(?=##|$)/);
-        const requiredCorrections = correctionsMatch ? correctionsMatch[0] : '';
+  const validationContent = validationReportLines.join('\n');
+  fs.writeFileSync(validationPath, validationContent, 'utf-8');
 
-        const correctionPrompt = `${dataStructurerSkill}
+  // Handle corrections if needed
+  const criticalIssues = validationIssues.filter(i => i.severity === 'critical');
+  if (validationStatus === 'needs_revision' && criticalIssues.length > 0) {
+    console.log(`  Validation found ${criticalIssues.length} critical issues. Sending corrections...`);
+
+    const issueDescriptions = criticalIssues.map(i => `- ${i.category}: ${i.description}`).join('\n');
+
+    const correctionPrompt = `${dataStructurerSkill}
 
 ---
 
 ## CORRECTION TASK
 
-${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Original Extracted Data (Source of Truth for raw values)
-<extracted_data>
-${allExtractedContent}
-</extracted_data>
-
-### Medical Analysis (Source of Truth for clinical interpretation)
+${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Medical Analysis (Source of Truth for clinical interpretation)
 <analysis>
 ${analysisContent}
 </analysis>
@@ -269,59 +280,47 @@ ${analysisContent}
 ${structuredDataContent}
 </previous_structured_data>
 
-### Validation Report
-<validation_report>
-${validationContent}
-</validation_report>
-
-${requiredCorrections ? `### Required Corrections (MUST FIX)\n${requiredCorrections}` : ''}
+### Critical Issues to Fix
+${issueDescriptions}
 
 Output the CORRECTED JSON now (starting with \`{\`):`;
 
-        let correctedContent = '';
-        const correctionStream = await gemini.sendMessageStream(
-          correctionPrompt,
-          `${sessionId}-correction-${correctionCycle}`,
-          undefined,
-          { model: REALM_CONFIG.models.doctor }
-        );
+    let correctedContent = '';
+    const correctionStream = await gemini.sendMessageStream(
+      correctionPrompt,
+      `${sessionId}-correction`,
+      undefined,
+      { model: REALM_CONFIG.models.doctor }
+    );
 
-        for await (const chunk of correctionStream) {
-          correctedContent += chunk;
-        }
-
-        if (correctedContent.trim().length > 0) {
-          correctedContent = cleanupJson(correctedContent);
-          try {
-            JSON.parse(correctedContent);
-            structuredDataContent = correctedContent;
-            fs.writeFileSync(structuredDataPath, structuredDataContent, 'utf-8');
-            console.log('  Structured data corrected. Re-validating...');
-          } catch {
-            console.warn('  Corrected JSON invalid, keeping original.');
-            validationPassed = true;
-          }
-        } else {
-          validationPassed = true;
-        }
-        correctionCycle++;
-      } else {
-        console.log('  Max correction cycles reached. Proceeding.');
-        validationPassed = true;
-      }
-    } else {
-      console.log('  Validation passed.');
-      validationPassed = true;
+    for await (const chunk of correctionStream) {
+      correctedContent += chunk;
     }
+
+    if (correctedContent.trim().length > 0) {
+      correctedContent = cleanupJson(correctedContent);
+      try {
+        JSON.parse(correctedContent);
+        structuredDataContent = correctedContent;
+        fs.writeFileSync(structuredDataPath, structuredDataContent, 'utf-8');
+        console.log('  Structured data corrected.');
+      } catch {
+        console.warn('  Corrected JSON invalid, keeping original.');
+      }
+    }
+  } else if (validationStatus === 'pass') {
+    console.log('  Validation passed with no issues.');
+  } else {
+    console.log(`  Validation status: ${validationStatus} (${validationIssues.length} issues)`);
   }
 
-  console.log(`✅ Phase 6 complete: validation.md`);
+  console.log(`✅ Phase 5 complete: validation.md`);
 
   // ========================================================================
-  // Phase 7: HTML Generation
+  // Phase 6: HTML Generation
   // ========================================================================
   console.log('\n' + '='.repeat(60));
-  console.log('Phase 7: HTML Generation');
+  console.log('Phase 6: HTML Generation');
   console.log('='.repeat(60));
 
   const realmId = uuidv4();
@@ -374,6 +373,167 @@ ${structuredDataContent}
 
   const htmlPath = path.join(realmDir, 'index.html');
   fs.writeFileSync(htmlPath, htmlContent, 'utf-8');
+  console.log(`✅ Phase 6 complete: index.html (${htmlContent.length} chars)`);
+
+  // ========================================================================
+  // Phase 7: Content Review
+  // Compares structured_data.json against index.html to identify information loss
+  // ========================================================================
+  console.log('\n' + '='.repeat(60));
+  console.log('Phase 7: Content Review');
+  console.log('='.repeat(60));
+  console.log('Comparing structured_data.json against generated HTML...');
+
+  const contentReviewPath = path.join(storageDir, 'content_review.json');
+  let contentReviewResult: {
+    user_question_addressed?: { passed: boolean; user_question: string; question_answered: boolean; answer_prominent: boolean; findings_connected: boolean; issues: Array<{ type: string; description: string; fix_instruction: string }> };
+    detail_fidelity?: { passed: boolean; issues: Array<{ type: string; severity: string; source_content: string; html_found: string; fix_instruction: string }> };
+    content_completeness?: { passed: boolean; present_categories: string[]; missing_categories: Array<{ category: string; source_had: string; importance: string; fix_instruction: string }> };
+    visual_design?: { score: string; strengths: string[]; weaknesses: string[]; fix_instructions: string[] };
+    overall: { passed: boolean; summary: string; action: string; feedback_for_regeneration?: string };
+  } = { overall: { passed: true, summary: '', action: 'pass' } };
+
+  try {
+    const contentReviewerSkill = loadSkill('content-reviewer');
+    const reviewPrompt = `${contentReviewerSkill}
+
+---
+
+### User's Original Question (THE PRIMARY PURPOSE)
+<user_question>
+${prompt || '(No specific question provided - general health analysis requested)'}
+</user_question>
+
+### Source of Truth (structured_data.json)
+<structured_data>
+${structuredDataContent}
+</structured_data>
+
+### Output to Validate (index.html)
+<html_content>
+${htmlContent}
+</html_content>`;
+
+    console.log(`Reviewing HTML for completeness... (payload: ${Math.round(reviewPrompt.length / 1024)}KB)`);
+
+    let reviewContent = '';
+    const reviewStream = await gemini.sendMessageStream(
+      reviewPrompt,
+      `${sessionId}-content-review`,
+      undefined,
+      { model: REALM_CONFIG.models.doctor }
+    );
+
+    for await (const chunk of reviewStream) {
+      reviewContent += chunk;
+      process.stdout.write('.');
+    }
+    console.log(' Done!');
+
+    // Clean up JSON
+    reviewContent = reviewContent.trim();
+    const jsonStartIndex = reviewContent.indexOf('{');
+    if (jsonStartIndex > 0) reviewContent = reviewContent.slice(jsonStartIndex);
+    if (reviewContent.startsWith('```json')) reviewContent = reviewContent.slice(7);
+    else if (reviewContent.startsWith('```')) reviewContent = reviewContent.slice(3);
+    if (reviewContent.endsWith('```')) reviewContent = reviewContent.slice(0, -3);
+    reviewContent = reviewContent.trim();
+
+    try {
+      contentReviewResult = JSON.parse(reviewContent);
+      fs.writeFileSync(contentReviewPath, JSON.stringify(contentReviewResult, null, 2), 'utf-8');
+      console.log(`  Content review: passed=${contentReviewResult.overall.passed}, action=${contentReviewResult.overall.action}`);
+    } catch {
+      console.warn('  Content review JSON parse failed, assuming pass');
+      contentReviewResult = { overall: { passed: true, summary: '', action: 'pass' } };
+    }
+
+    if (contentReviewResult.overall.passed) {
+      console.log('  ✅ Content review passed - all dimensions acceptable.');
+    } else {
+      console.log('  ⚠️ Content review found issues.');
+      if (contentReviewResult.overall.summary) {
+        console.log(`  Summary: ${contentReviewResult.overall.summary}`);
+      }
+    }
+    console.log(`✅ Phase 7 complete: content_review.json`);
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`  Content review failed: ${errorMessage}`);
+    console.log('  Proceeding with current HTML.');
+    contentReviewResult = { overall: { passed: true, summary: '', action: 'pass' } };
+  }
+
+  // ========================================================================
+  // Phase 8: HTML Regeneration (if needed)
+  // ========================================================================
+  if (contentReviewResult.overall.action === 'regenerate_with_feedback' && contentReviewResult.overall.feedback_for_regeneration) {
+    console.log('\n' + '='.repeat(60));
+    console.log('Phase 8: HTML Regeneration');
+    console.log('='.repeat(60));
+    console.log('Regenerating HTML with reviewer feedback...');
+
+    try {
+      const regenPrompt = `${htmlSkill}
+
+---
+
+## REGENERATION TASK
+
+Your previous HTML output had issues. Address ALL of the following:
+
+### Reviewer Feedback (MUST ADDRESS)
+<feedback>
+${contentReviewResult.overall.feedback_for_regeneration}
+</feedback>
+
+### Structured Data (SOURCE OF TRUTH)
+<structured_data>
+${structuredDataContent}
+</structured_data>
+
+## CRITICAL: Address EVERY issue. Include ALL specific values from the JSON. Output complete HTML now.`;
+
+      let regenHtml = '';
+      const regenStream = await gemini.sendMessageStream(
+        regenPrompt,
+        `${sessionId}-html-regen`,
+        undefined,
+        { model: REALM_CONFIG.models.html }
+      );
+
+      for await (const chunk of regenStream) {
+        regenHtml += chunk;
+        process.stdout.write('.');
+      }
+      console.log(' Done!');
+
+      if (regenHtml.trim().length > 0) {
+        regenHtml = regenHtml.trim();
+        const regenDoctypeIndex = regenHtml.indexOf('<!DOCTYPE');
+        if (regenDoctypeIndex > 0) regenHtml = regenHtml.slice(regenDoctypeIndex);
+        if (regenHtml.startsWith('```html')) regenHtml = regenHtml.slice(7);
+        else if (regenHtml.startsWith('```')) regenHtml = regenHtml.slice(3);
+        if (regenHtml.endsWith('```')) regenHtml = regenHtml.slice(0, -3);
+        regenHtml = regenHtml.trim();
+
+        if (regenHtml.includes('<!DOCTYPE') && regenHtml.includes('</html>')) {
+          htmlContent = regenHtml;
+          fs.writeFileSync(htmlPath, htmlContent, 'utf-8');
+          console.log(`  ✅ HTML regenerated: ${htmlContent.length} chars`);
+        } else {
+          console.log('  ⚠️ Regeneration produced invalid HTML, keeping original.');
+        }
+      }
+      console.log(`✅ Phase 8 complete`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`  HTML regeneration failed: ${errorMessage}`);
+    }
+  } else if (contentReviewResult.overall.passed) {
+    console.log('\nPhase 8: HTML Regeneration - Skipped (all dimensions passed)');
+  }
 
   console.log(`\n${'='.repeat(60)}`);
   console.log('✅ All phases complete!');

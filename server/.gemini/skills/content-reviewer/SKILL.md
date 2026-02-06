@@ -21,8 +21,8 @@ The user's question/prompt is the **entire reason this HTML exists**. Everything
 ### What to Check
 
 1. **Is the question explicitly answered?**
-   - User asks "Why am I so tired?" → HTML should have clear section addressing tiredness causes
-   - Not just "here are your lab values" but "here's why you're tired"
+   - User asks a question → HTML should have clear section addressing that question
+   - Not just "here are your lab values" but "here's why [their concern]"
 
 2. **Is the answer prominent?**
    - The answer should be easy to find, not buried
@@ -30,8 +30,8 @@ The user's question/prompt is the **entire reason this HTML exists**. Everything
    - Should have visual emphasis
 
 3. **Are findings connected to the user's concern?**
-   - Bad: "Your Vitamin D is 18 ng/mL"
-   - Good: "Your Vitamin D of 18 ng/mL is likely contributing to the fatigue you mentioned"
+   - Bad: Just listing values without context
+   - Good: Connecting each finding to the user's stated concern
 
 4. **Is the narrative framed around their question?**
    - The story should be about answering their question
@@ -41,9 +41,9 @@ The user's question/prompt is the **entire reason this HTML exists**. Everything
 
 | User Question | Good HTML | Bad HTML |
 |---|---|---|
-| "Why am I so tired?" | Opens with "Understanding Your Fatigue" section, connects each finding to energy levels | Lists lab values, mentions fatigue once in passing |
-| "What should I do about my thyroid?" | Thyroid section prominent, clear action steps for thyroid | Thyroid buried in general hormone section |
-| "Is my gut causing my skin issues?" | Explicitly addresses gut-skin connection, shows the pathway | Gut and skin discussed separately, no connection made |
+| Question about symptoms | Opens with section addressing that symptom, connects findings to it | Lists lab values, mentions symptom once in passing |
+| Question about specific condition | That condition section prominent, clear action steps | Condition buried in general section |
+| Question about system connections | Explicitly addresses the connection, shows the pathway | Systems discussed separately, no connection made |
 
 ### Failure Modes
 
@@ -62,43 +62,37 @@ The HTML builder has creative freedom in structure. But specific details must NE
 
 #### Genericization (HIGH severity)
 
+The specific names and dosages ARE the value. Generic categories are useless.
+
 | Source (Good) | HTML (Bad) |
 |---|---|
-| "Japanese Knotweed 500mg 2x/day, Cat's Claw 400mg, Cryptolepis tincture 30 drops" | "antimicrobial herbal protocol" |
-| "Vitamin D3 5000 IU, Magnesium Glycinate 400mg, Zinc Picolinate 30mg" | "foundational supplements" |
-| "Berberine, Bitter Melon, Ceylon Cinnamon" | "blood sugar support herbs" |
-
-The specific names and dosages ARE the value. Generic categories are useless.
+| Specific supplement names with exact dosages | "supplement protocol" |
+| Multiple specific herbs with amounts | "herbal support" |
+| Named interventions with timing | "treatment approach" |
 
 #### Lost Values (HIGH severity)
 
+Actual numbers with context are critical. Vague descriptors help no one.
+
 | Source (Good) | HTML (Bad) |
 |---|---|
-| "Vitamin D: 18 ng/mL (severely deficient, optimal 50-80)" | "Vitamin D: low" |
-| "Fasting glucose: 112 mg/dL (prediabetic range)" | "blood sugar issues" |
-| "TSH: 4.2 mIU/L (suboptimal, suggests hypothyroid tendency)" | "thyroid needs attention" |
-
-Actual numbers with context are critical. Vague descriptors help no one.
+| "[Marker]: [exact value] [unit] ([interpretation])" | "[Marker]: low" |
+| Specific value with reference range | "needs attention" |
+| Quantified finding with clinical context | Generic status description |
 
 #### Lost Specifics (MEDIUM severity)
 
 | Source (Good) | HTML (Bad) |
 |---|---|
-| "Ask doctor: Can we test fasting insulin, not just fasting glucose?" | "discuss testing with doctor" |
-| "Retest Vitamin D in 8 weeks after supplementation" | "follow up on levels" |
-| "Take Berberine 15 minutes before meals for glucose control" | "take with meals" |
+| Specific test to request with reasoning | "discuss testing with doctor" |
+| Retest timing with specific interval | "follow up on levels" |
+| Precise timing instructions | "take with meals" |
 
 Specific instructions, timelines, and questions must remain specific.
 
 #### Summarized Narrative (MEDIUM severity)
 
-Source explanation:
-> "Your elevated homocysteine (14.2) combined with MTHFR mutation suggests methylation issues. This affects detox pathways, neurotransmitter production, and cardiovascular health. The B-vitamin protocol specifically addresses this with methylated forms your body can use."
-
-HTML just says:
-> "Methylation support recommended"
-
-The explanation IS the value. Don't summarize it away.
+When the source has a detailed explanation connecting multiple findings with mechanisms, and the HTML reduces it to a one-liner, that's a problem. The explanation IS the value. Don't summarize it away.
 
 ---
 
@@ -110,18 +104,18 @@ Even if details are preserved, entire CATEGORIES of content might be missing.
 
 Check that EACH of these categories from the source appears in the HTML:
 
-| Category | What It Contains | Example Content |
-|---|---|---|
-| **Executive Summary** | Patient context, their question, short answer, key findings preview, top priority | MUST be first section - orients the reader |
-| **Patient Context** | Symptoms, concerns, history, goals, what they're experiencing | "Fatigue for 6 months, brain fog, weight gain despite diet" |
-| **Findings & Data** | Lab values, test results, observations with numbers | "Vitamin D: 18, TSH: 4.2, Ferritin: 22" |
-| **Diagnoses/Conditions** | What's been identified, severity, status | "Hashimoto's thyroiditis (confirmed), insulin resistance (suspected)" |
-| **Mechanism Explanations** | WHY things are happening, how systems connect | "Low stomach acid → poor B12 absorption → fatigue and brain fog" |
-| **Treatment Protocol** | Supplements, medications, lifestyle changes with specifics | "Phase 1: Gut healing, Phase 2: Nutrient repletion..." |
-| **Action Items** | Doctor questions, tests to request, specific next steps | "Ask for: fasting insulin, full thyroid panel, DUTCH test" |
-| **Warnings/Urgencies** | Contraindications, timing issues, critical notes | "Do NOT take iron within 4 hours of thyroid medication" |
-| **Positive Findings** | What's working, reassurances, good news | "Kidney function excellent, no signs of autoimmune inflammation" |
-| **Gaps/Unknowns** | What data is missing, what needs investigation | "No recent cortisol testing - recommend DUTCH or saliva panel" |
+| Category | What It Contains |
+|---|---|
+| **Executive Summary** | Patient context, their question, short answer, key findings preview, top priority - MUST be first section |
+| **Patient Context** | Symptoms, concerns, history, goals, what they're experiencing |
+| **Findings & Data** | Lab values, test results, observations with actual numbers from the data |
+| **Diagnoses/Conditions** | What's been identified, severity, status |
+| **Mechanism Explanations** | WHY things are happening, how systems connect |
+| **Treatment Protocol** | Supplements, medications, lifestyle changes with specifics |
+| **Action Items** | Doctor questions, tests to request, specific next steps |
+| **Warnings/Urgencies** | Contraindications, timing issues, critical notes |
+| **Positive Findings** | What's working, reassurances, good news |
+| **Gaps/Unknowns** | What data is missing, what needs investigation |
 
 **Executive Summary is MANDATORY** - If missing, this is an automatic content completeness failure.
 
@@ -131,7 +125,7 @@ Check that EACH of these categories from the source appears in the HTML:
 2. For each category present in source, verify it appears in HTML
 3. Flag any category that is ENTIRELY missing from HTML
 
-**Note**: The category doesn't need the same name/structure. "Patient Context" might be woven into a narrative intro. That's fine. What matters is the INFORMATION is present somewhere.
+**Note**: The category doesn't need the same name/structure. Content might be woven into a narrative. That's fine. What matters is the INFORMATION is present somewhere.
 
 ---
 
@@ -272,17 +266,7 @@ Any of these conditions:
 
 **User Question is the #1 priority.** If the HTML doesn't answer what the user asked, it fails regardless of how beautiful or detailed it is.
 
-When regenerating, combine all feedback into `feedback_for_regeneration`:
-
-> "Issues found:
->
-> 1. USER QUESTION NOT ADDRESSED: The user asked 'Why am I so tired?' but the HTML never directly addresses fatigue. Add a prominent section that explicitly answers this question, connecting findings (low Vitamin D, thyroid issues) to their tiredness.
->
-> 2. DETAIL FIDELITY: You genericized the antimicrobial herbs - list each specifically with dosage.
->
-> 3. MISSING CONTENT: The patient's reported symptoms are nowhere in the HTML.
->
-> 4. VISUAL DESIGN: The treatment section is a wall of text. Break it into phase cards."
+When regenerating, combine all feedback into `feedback_for_regeneration` with specific, actionable instructions based on the actual issues found.
 
 ---
 

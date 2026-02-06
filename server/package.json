@@ -11,7 +11,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "regen-html": "tsx scripts/regenerate-html.ts",
     "regen-analysis": "tsx scripts/regenerate-analysis.ts",
-    "regen-synthesis": "tsx scripts/regenerate-synthesis.ts"
+    "regen-structurer": "tsx scripts/regenerate-structurer.ts",
+    "regen-validation": "tsx scripts/regenerate-validation.ts"
   },
   "keywords": [],
   "author": "",

@@ -161,7 +161,6 @@ interface ExtractedClaim {
 async function extractClaimsFromAnalysis(
   config: Config,
   analysisContent: string,
-  crossSystemsContent: string,
   patientQuestion?: string
 ): Promise<ExtractedClaim[]> {
   const geminiClient = config.getGeminiClient();
@@ -181,10 +180,10 @@ async function extractClaimsFromAnalysis(
     promptTemplate = promptTemplate.replace(/\{\{#if patient_question\}\}[\s\S]*?\{\{\/if\}\}/g, '');
   }
 
-  // Substitute analysis and cross_systems
+  // Substitute analysis content (cross-system analysis is now included in analysis.md)
   const prompt = promptTemplate
     .replace(/\{\{analysis\}\}/g, analysisContent)
-    .replace(/\{\{cross_systems\}\}/g, crossSystemsContent);
+    .replace(/\{\{cross_systems\}\}/g, '(Cross-system analysis is included in the analysis above)');
 
   const response = await retryLLM(
     () => geminiClient.generateContent(
@@ -336,7 +335,6 @@ function classifySource(uri: string, title: string): ResearchSource['type'] {
 export async function* researchClaims(
   config: Config,
   analysisContent: string,
-  crossSystemsContent: string,
   patientQuestion?: string
 ): AsyncGenerator<ResearchEvent, ResearchOutput, unknown> {
   const researchedClaims: ResearchedClaim[] = [];
@@ -352,7 +350,6 @@ export async function* researchClaims(
   const claims = await extractClaimsFromAnalysis(
     config,
     analysisContent,
-    crossSystemsContent,
     patientQuestion
   );
 

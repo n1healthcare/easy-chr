@@ -37,19 +37,17 @@ Verify:
 **Every numeric value in extracted.md must appear in structured_data.json**
 
 Extract and verify:
-- Lab values (e.g., "Hemoglobin 14.6 g/dL")
-- Reference ranges (e.g., "Reference: 12.0-16.0")
-- Dates (e.g., "Test date: 2024-03-15")
-- Vitals (e.g., "Blood pressure 120/80")
-- Dosages (e.g., "Metformin 500mg twice daily")
+- Lab values (all marker names with their values and units)
+- Reference ranges (as provided in source documents)
+- Dates (test dates, collection dates)
+- Vitals (any vital signs present)
+- Dosages (medication doses and frequencies)
 - Ages, weights, measurements
 
-Example flags:
+Flag format:
 ```
-❌ MISSING NUMBER: Hemoglobin 14.6 g/dL - not found in analysis
-❌ MISSING DATE: Test date March 15, 2024 - not mentioned
-✓ FOUND: Neutrophils 1.2 - appears in Critical Findings
-✓ FOUND: Reference range 2.0-7.5 - correctly cited
+❌ MISSING NUMBER: [marker] [value] [unit] - not found in JSON
+✓ FOUND: [marker] [value] - appears in [JSON location]
 ```
 
 ---
@@ -61,31 +59,17 @@ Example flags:
 Extract and verify ALL of these categories:
 
 #### A. Symptoms & Complaints
-- Patient-reported symptoms ("fatigue", "joint pain", "brain fog")
-- Duration of symptoms ("for 3 months")
-- Severity descriptions ("severe", "mild", "intermittent")
-- Symptom patterns ("worse in the morning")
-
-Example flags:
-```
-❌ MISSING SYMPTOM: Patient reported "chronic fatigue for 6 months" - not mentioned
-❌ MISSING DETAIL: "Pain worse after eating" - context lost
-✓ FOUND: "Joint stiffness" - appears in patient history section
-```
+- Patient-reported symptoms (any symptoms mentioned)
+- Duration of symptoms
+- Severity descriptions
+- Symptom patterns
 
 #### B. Medical History
-- Past diagnoses ("history of hypothyroidism")
-- Previous conditions ("had COVID in 2022")
-- Surgeries ("appendectomy 2019")
-- Family history ("mother has diabetes")
-- Allergies ("allergic to penicillin")
-
-Example flags:
-```
-❌ MISSING HISTORY: "History of Hashimoto's thyroiditis" - critical context omitted
-❌ MISSING FAMILY HISTORY: "Father had heart attack at 55" - relevant to cardiovascular findings
-✓ FOUND: "Previous diagnosis of anemia" - mentioned in context
-```
+- Past diagnoses
+- Previous conditions
+- Surgeries
+- Family history
+- Allergies
 
 #### C. Current Medications & Supplements
 - Prescription medications (name, dose, frequency)
@@ -93,39 +77,19 @@ Example flags:
 - Supplements and vitamins
 - Recent medication changes
 
-Example flags:
-```
-❌ MISSING MEDICATION: "Currently taking Levothyroxine 50mcg" - affects thyroid interpretation
-❌ MISSING SUPPLEMENT: "Taking B12 injections monthly" - critical for B12 level interpretation
-✓ FOUND: "Metformin 500mg twice daily" - mentioned in medication context
-```
-
 #### D. Lifestyle & Context Factors
-- Diet information ("vegetarian", "keto diet")
+- Diet information
 - Exercise habits
 - Sleep patterns
 - Stress factors mentioned
 - Occupation if relevant
 - Recent life changes
 
-Example flags:
-```
-❌ MISSING CONTEXT: "Patient is vegan" - explains B12/iron findings
-❌ MISSING CONTEXT: "Works night shifts" - affects cortisol interpretation
-✓ FOUND: "High stress job" - mentioned in lifestyle factors
-```
-
 #### E. Doctor's Notes & Comments
 - Physician observations
 - Clinical impressions from source documents
 - Recommended follow-ups in original documents
 - Flagged concerns from ordering physician
-
-Example flags:
-```
-❌ MISSING NOTE: Ordering physician noted "rule out autoimmune" - important context
-✓ FOUND: Doctor's comment about concerning trend included
-```
 
 ---
 
@@ -134,35 +98,27 @@ Example flags:
 **Verify all calculated values and interpretations**
 
 #### A. Percentage Changes
-When the analysis says "increased 85%":
+When the analysis states a percentage change:
 - Find both values (before and after)
 - Calculate: (new - old) / old × 100
-- Verify the stated percentage
+- Verify the stated percentage matches
 
 #### B. Trend Descriptions
-When the analysis says "declining trend":
+When the analysis describes a trend:
 - Verify multiple data points exist
 - Confirm the direction is correct
 - Check if trend description matches data
 
 #### C. Status Labels
-When the analysis says "critically low":
+When the analysis uses severity labels:
 - Find the reference range
-- Verify the value is actually in that category
-- Check terminology accuracy (low vs. critically low vs. deficient)
+- Verify the value actually falls in that category
+- Check terminology accuracy
 
 #### D. Comparative Statements
-When the analysis says "twice the normal limit":
+When the analysis makes comparisons:
 - Calculate actual ratio
 - Verify the comparison is accurate
-
-Example flags:
-```
-❌ CALCULATION ERROR: "Homocysteine increased 50%" - actual increase is 85% (10.4 → 19.24)
-❌ WRONG INTERPRETATION: "TSH is elevated" - TSH 3.07 is within normal range 0.35-4.5
-❌ EXAGGERATION: "Extremely high cholesterol" - value 220 is only mildly elevated
-✓ CORRECT: "Neutrophils critically low at 1.2" - well below reference 2.0-7.5
-```
 
 ---
 
@@ -173,31 +129,21 @@ Example flags:
 Types of claims to verify:
 
 #### A. Diagnostic Statements
-- "You have X condition" - Is there diagnostic criteria met?
-- "This indicates Y" - Is the indication supported?
+- Is there diagnostic criteria met in the data?
+- Is the indication supported by actual findings?
 
 #### B. Causal Claims
-- "X is causing Y" - Is there evidence for causation, or just correlation?
-- "This is due to Z" - Is the mechanism supported by data?
+- Is there evidence for causation, or just correlation?
+- Is the mechanism supported by data?
 
 #### C. Prognostic Statements
-- "This will likely improve" - Based on what evidence?
-- "Risk of developing X" - Is risk quantified in data?
+- Based on what evidence?
+- Is risk quantified in data?
 
 #### D. Hypotheses vs. Facts
 - Hypotheses should be labeled as such
 - Speculation should be acknowledged
 - Certainty language should match evidence level
-
-Example flags:
-```
-❌ UNSUPPORTED DIAGNOSIS: "You have lupus" - no lupus-specific markers in data
-❌ UNSUPPORTED CAUSATION: "Stress is causing your symptoms" - no stress markers tested
-❌ UNMARKED HYPOTHESIS: "Malabsorption is the cause" stated as fact, should be hypothesis
-⚠️ OVERCLAIMED: "Definitely autoimmune" - RF positive but anti-CCP negative, not definitive
-✓ WELL SUPPORTED: "Neutropenia present" - value 1.2, ref 2.0-7.5, clearly meets criteria
-✓ PROPERLY HEDGED: "Possibly suggests malabsorption" - appropriately marked as hypothesis
-```
 
 ---
 
@@ -208,8 +154,7 @@ Example flags:
 Verify that important contextual information flows through:
 
 #### A. Medication-Lab Interactions
-- If patient takes medication X, and lab Y is affected by X, this context should be mentioned
-- Example: "Patient on biotin supplements" should appear when discussing biotin-affected labs
+- If patient takes a medication that affects labs, this context should be mentioned
 
 #### B. Temporal Context
 - When were tests done?
@@ -217,28 +162,20 @@ Verify that important contextual information flows through:
 - Is the timeline clear?
 
 #### C. Conditional Context
-- "Fasting sample" vs "non-fasting"
-- "Post-exercise" measurements
-- "During illness" vs "baseline"
+- Fasting vs non-fasting samples
+- Post-exercise measurements
+- During illness vs baseline
 
 #### D. Patient-Specific Context
 - Age-appropriate interpretations
 - Gender-specific reference ranges used correctly
 - Pregnancy status if applicable
 
-Example flags:
-```
-❌ LOST CONTEXT: Analysis interprets low B12 without mentioning patient takes metformin (which depletes B12)
-❌ LOST CONTEXT: Cholesterol interpreted without noting "non-fasting sample"
-❌ LOST CONTEXT: Elevated WBC flagged as concerning without noting "patient had cold last week"
-✓ CONTEXT PRESERVED: "Elevated liver enzymes may be related to recent alcohol use mentioned by patient"
-```
-
 ---
 
 ### 6. Internal Consistency Check
 
-**No contradictions within the analysis**
+**No contradictions within the JSON**
 
 Look for:
 
@@ -247,24 +184,16 @@ Look for:
 - Inconsistent units
 
 #### B. Status Contradictions
-- "Thyroid is normal" in one place, "thyroid dysfunction" in another
-- "Critical" vs "mild concern" for same finding
+- Conflicting assessments of the same finding
+- Severity levels that don't match
 
 #### C. Recommendation Contradictions
 - Recommending conflicting actions
 - Urgency levels that don't match findings
 
 #### D. Narrative Contradictions
-- "Overall healthy" but "multiple critical findings"
-- Tone mismatches
-
-Example flags:
-```
-❌ VALUE MISMATCH: Homocysteine listed as 19.24 in findings but 19.4 in summary
-❌ STATUS CONTRADICTION: Says "thyroid is fine" in overview but "thyroid stress evident" in details
-❌ URGENCY MISMATCH: Lists as "routine follow-up" but has critical neutropenia
-✓ CONSISTENT: All mentions of neutropenia use value 1.2 and "critical" status
-```
+- Tone mismatches between sections
+- Conflicting overall assessments
 
 ---
 
@@ -273,19 +202,10 @@ Example flags:
 **Every recommendation must tie to a specific finding**
 
 Verify:
-- Each supplement recommendation → specific deficiency documented
-- Each "see specialist" recommendation → specific concerning finding
+- Each supplement recommendation → specific deficiency documented in data
+- Each "see specialist" recommendation → specific concerning finding in data
 - Each test recommendation → specific uncertainty to resolve
-- Each lifestyle recommendation → specific relevant finding
-
-Example flags:
-```
-❌ UNTRACEABLE: "Consider stress management" - no stress markers or cortisol in data
-❌ UNTRACEABLE: "Take vitamin D" - no vitamin D level was tested
-❌ WEAK LINK: "See cardiologist" - only finding is mildly elevated homocysteine, may be excessive
-✓ TRACEABLE: "Start zinc 15-30mg" - zinc 585, ref 660-1100, documented deficiency
-✓ TRACEABLE: "See hematologist urgently" - neutrophils 1.2, critically low, appropriate referral
-```
+- Each lifestyle recommendation → specific relevant finding in data
 
 ---
 
@@ -293,22 +213,10 @@ Example flags:
 
 **If the patient asked a specific question, verify it's addressed**
 
-When patient asks "What's causing my fatigue?":
-- Does the analysis identify potential causes from the data?
-- Are fatigue-related findings prominently featured?
+When a question is provided:
+- Does the analysis identify potential answers from the data?
+- Are relevant findings prominently featured?
 - Is there a clear answer or explanation of why we can't answer yet?
-
-When patient asks "Should I be worried about X?":
-- Is X specifically addressed?
-- Is the concern validated or alleviated with evidence?
-
-Example flags:
-```
-❌ QUESTION IGNORED: Patient asked "Why am I so tired?" - fatigue not addressed despite low iron
-❌ QUESTION PARTIALLY ADDRESSED: Asked about thyroid, only briefly mentioned
-✓ QUESTION ADDRESSED: Patient asked about B12, analysis dedicates section to B12 status and implications
-✓ QUESTION ADDRESSED: Asked "Am I at risk for diabetes?" - glucose and HbA1c specifically discussed
-```
 
 ---
 
@@ -328,14 +236,14 @@ Example flags:
 ### Quick View
 | Check | Status | Issues |
 |-------|--------|--------|
-| Numeric Completeness | ✓/⚠️/❌ | [count] |
-| Qualitative Completeness | ✓/⚠️/❌ | [count] |
-| Accuracy | ✓/⚠️/❌ | [count] |
-| Claim Support | ✓/⚠️/❌ | [count] |
-| Context Preservation | ✓/⚠️/❌ | [count] |
-| Consistency | ✓/⚠️/❌ | [count] |
-| Recommendations | ✓/⚠️/❌ | [count] |
-| Question Addressed | ✓/⚠️/❌ | [count] |
+| Numeric Completeness | [status] | [count] |
+| Qualitative Completeness | [status] | [count] |
+| Accuracy | [status] | [count] |
+| Claim Support | [status] | [count] |
+| Context Preservation | [status] | [count] |
+| Consistency | [status] | [count] |
+| Recommendations | [status] | [count] |
+| Question Addressed | [status] | [count] |
 
 ---
 
@@ -346,7 +254,6 @@ Example flags:
 ### Missing Numeric Data
 | Value | Type | Source Location | Impact |
 |-------|------|-----------------|--------|
-| Hemoglobin 14.6 | Lab value | Page 1 | Should appear in findings |
 
 ### All Numeric Data Found
 [List confirmed items or state "All [X] numeric values verified"]
@@ -357,22 +264,8 @@ Example flags:
 
 **Status:** [PASS / FAIL]
 
-### Missing Symptoms/Complaints
-| Item | Source Location | Impact |
-|------|-----------------|--------|
-| "Chronic fatigue for 6 months" | Patient intake | Critical context |
-
-### Missing Medical History
-| Item | Source Location | Impact |
-|------|-----------------|--------|
-
-### Missing Medications/Supplements
-| Item | Source Location | Impact |
-|------|-----------------|--------|
-
-### Missing Lifestyle/Context
-| Item | Source Location | Impact |
-|------|-----------------|--------|
+### Missing Items by Category
+[List any missing symptoms, history, medications, or context]
 
 ---
 
@@ -380,13 +273,9 @@ Example flags:
 
 **Status:** [PASS / FAIL]
 
-### Calculation Errors
+### Issues Found
 | Claim | Stated | Actual | Correction Needed |
 |-------|--------|--------|-------------------|
-
-### Interpretation Errors
-| Item | Stated | Correct Interpretation |
-|------|--------|------------------------|
 
 ---
 
@@ -467,11 +356,11 @@ Example flags:
 
 ## Data Inventory
 
-### Verified Present (✓)
-[List all items from extracted.md that were found in analysis]
+### Verified Present
+[List items from extracted.md that were found in JSON]
 
-### Missing (❌)
-[List all items from extracted.md that were NOT found in analysis]
+### Missing
+[List items from extracted.md that were NOT found in JSON]
 ```
 
 ---
