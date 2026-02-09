@@ -23,6 +23,8 @@ import { AgenticMedicalAnalyst } from '../src/services/agentic-medical-analyst.s
 import { AgenticValidator } from '../src/services/agentic-validator.service.js';
 import { researchClaims, formatResearchAsMarkdown, type ResearchOutput } from '../src/services/research-agent.service.js';
 import { REALM_CONFIG } from '../src/config.js';
+import { extractSourceExcerpts } from '../src/utils/source-excerpts.js';
+import { deepMergeJsonPatch } from '../src/utils/json-patch-merge.js';
 
 function loadSkill(skillName: string): string {
   const skillPath = path.join(
@@ -57,6 +59,35 @@ function stripThinkingText(content: string, marker: string | RegExp): string {
     }
   }
   return content;
+}
+
+async function streamWithRetry(
+  gemini: GeminiAdapter,
+  prompt: string,
+  sessionId: string,
+  model: string,
+  operationName: string,
+  maxRetries = 3
+): Promise<string> {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    attempt++;
+    let content = '';
+    try {
+      const stream = await gemini.sendMessageStream(prompt, `${sessionId}-${attempt}`, undefined, { model });
+      for await (const chunk of stream) {
+        content += chunk;
+      }
+      return content;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn(`  [${operationName}] Attempt ${attempt}/${maxRetries} failed: ${msg}`);
+      if (attempt >= maxRetries) throw error;
+      const waitMs = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
+  }
+  return '';
 }
 
 function cleanupJson(content: string): string {
@@ -112,7 +143,7 @@ async function regenerateAnalysis(userPrompt?: string) {
   const analysisGenerator = agenticAnalyst.analyze(
     allExtractedContent,
     prompt,
-    25
+    35
   );
 
   let result = await analysisGenerator.next();
@@ -223,18 +254,7 @@ ${researchMarkdown}
   // The analysis already interprets the raw data, so including it is redundant
 
   console.log('Extracting structured data for visualizations...');
-  const structureStream = await gemini.sendMessageStream(
-    structurePrompt,
-    `${sessionId}-structure`,
-    undefined,
-    { model: REALM_CONFIG.models.doctor }
-  );
-
-  for await (const chunk of structureStream) {
-    structuredDataContent += chunk;
-    process.stdout.write('.');
-  }
-  console.log(' Done!');
+  structuredDataContent = await streamWithRetry(gemini, structurePrompt, `${sessionId}-structure`, REALM_CONFIG.models.doctor, 'DataStructuring');
 
   // Clean up JSON
   structuredDataContent = cleanupJson(structuredDataContent);
@@ -261,97 +281,103 @@ ${researchMarkdown}
   console.log(`✅ Phase 4 complete: structured_data.json (${structuredDataContent.length} chars)`);
 
   // ========================================================================
-  // Phase 5: Agentic Validation
+  // Phase 5: Agentic Validation (with correction loop)
   // Uses AgenticValidator with verification-focused tools to validate
-  // structured_data.json against source data without payload bloat
+  // structured_data.json against source data without payload bloat.
+  // Runs up to MAX_CORRECTION_CYCLES corrections, re-validating after each.
   // ========================================================================
   console.log('\n' + '='.repeat(60));
   console.log('Phase 5: Agentic Validation');
   console.log('='.repeat(60));
 
   const validationPath = path.join(storageDir, 'validation.md');
-  const agenticValidator = new AgenticValidator();
 
-  console.log('Starting agentic validation (tool-based, no payload bloat)...');
+  const MAX_CORRECTION_CYCLES = 3;
+  let correctionCycle = 0;
+  let validationPassed = false;
+  let finalValidationStatus = '';
+  let finalValidationSummary = '';
+  let allPreviouslyRaisedIssues: Array<{ category: string; severity: string; description: string }> = [];
+  const allCycleIssues: Array<{ severity: string; category: string; description: string; source_location?: string; json_location?: string; cycle: number; corrected: boolean }> = [];
 
-  const validationGenerator = agenticValidator.validate(
-    allExtractedContent,
-    structuredDataContent,
-    prompt,
-    15 // maxIterations
-  );
+  while (correctionCycle <= MAX_CORRECTION_CYCLES && !validationPassed) {
+    console.log(`\n  --- Validation cycle ${correctionCycle + 1}/${MAX_CORRECTION_CYCLES + 1} ---`);
 
-  let validationResult = await validationGenerator.next();
-  while (!validationResult.done) {
-    const event = validationResult.value;
-    switch (event.type) {
-      case 'log':
-        console.log(`  ${event.data.message || ''}`);
-        break;
-      case 'tool_call':
-        if (event.data.toolName && !event.data.toolResult) {
-          console.log(`  [Tool] ${event.data.toolName}`);
-        }
-        break;
-      case 'issue_found':
-        if (event.data.issue) {
-          const issue = event.data.issue;
-          console.log(`  [Issue] ${issue.severity.toUpperCase()}: ${issue.description}`);
-        }
-        break;
-      case 'complete':
-        console.log(`  ${event.data.message || 'Validation complete'}`);
-        break;
-      case 'error':
-        console.error(`  [Error] ${event.data.message || 'Unknown error'}`);
-        break;
+    const agenticValidator = new AgenticValidator();
+    const validationGenerator = agenticValidator.validate(
+      allExtractedContent,
+      structuredDataContent,
+      prompt,
+      15, // maxIterations
+      allPreviouslyRaisedIssues
+    );
+
+    let validationResult = await validationGenerator.next();
+    while (!validationResult.done) {
+      const event = validationResult.value;
+      switch (event.type) {
+        case 'log':
+          console.log(`  ${event.data.message || ''}`);
+          break;
+        case 'tool_call':
+          if (event.data.toolName && !event.data.toolResult) {
+            console.log(`  [Tool] ${event.data.toolName}`);
+          }
+          break;
+        case 'issue_found':
+          if (event.data.issue) {
+            const issue = event.data.issue;
+            console.log(`  [Issue] ${issue.severity.toUpperCase()}: ${issue.description}`);
+          }
+          break;
+        case 'complete':
+          console.log(`  ${event.data.message || 'Validation complete'}`);
+          break;
+        case 'error':
+          console.error(`  [Error] ${event.data.message || 'Unknown error'}`);
+          break;
+      }
+      validationResult = await validationGenerator.next();
     }
-    validationResult = await validationGenerator.next();
-  }
 
-  const { status: validationStatus, issues: validationIssues, summary: validationSummary } = validationResult.value;
+    const { status: validationStatus, issues: validationIssues, summary: validationSummary } = validationResult.value;
+    finalValidationStatus = validationStatus;
+    finalValidationSummary = validationSummary;
+    const cycleIssues = validationIssues.map((i: { severity: string; category: string; description: string; source_location?: string; json_location?: string }) => ({
+      ...i, cycle: correctionCycle + 1, corrected: false,
+    }));
+    allCycleIssues.push(...cycleIssues);
 
-  // Generate validation report markdown
-  const validationReportLines = [
-    `# Validation Report`,
-    ``,
-    `**Status:** ${validationStatus}`,
-    `**Summary:** ${validationSummary}`,
-    ``,
-    `## Issues Found (${validationIssues.length})`,
-    ``
-  ];
+    // Accumulate issues so next cycle skips previously raised ones
+    allPreviouslyRaisedIssues = [...allPreviouslyRaisedIssues, ...validationIssues];
 
-  if (validationIssues.length === 0) {
-    validationReportLines.push('No issues found.');
-  } else {
-    for (const issue of validationIssues) {
-      validationReportLines.push(`### [${issue.severity.toUpperCase()}] ${issue.category}`);
-      validationReportLines.push(issue.description);
-      if (issue.source_location) validationReportLines.push(`- Source: ${issue.source_location}`);
-      if (issue.json_location) validationReportLines.push(`- JSON: ${issue.json_location}`);
-      validationReportLines.push('');
-    }
-  }
+    const actionableIssues = validationIssues.filter((i: { severity: string }) => i.severity === 'critical' || i.severity === 'warning');
+    const needsRevision = validationStatus === 'needs_revision' || actionableIssues.length > 0;
 
-  const validationContent = validationReportLines.join('\n');
-  fs.writeFileSync(validationPath, validationContent, 'utf-8');
+    if (needsRevision && actionableIssues.length > 0) {
+      if (correctionCycle < MAX_CORRECTION_CYCLES) {
+        console.log(`  Validation found ${actionableIssues.length} actionable issues. Sending surgical correction (cycle ${correctionCycle + 1}/${MAX_CORRECTION_CYCLES})...`);
 
-  // Handle corrections if needed
-  const criticalIssues = validationIssues.filter(i => i.severity === 'critical');
-  if (validationStatus === 'needs_revision' && criticalIssues.length > 0) {
-    console.log(`  Validation found ${criticalIssues.length} critical issues. Sending corrections...`);
+        const issueDescriptions = actionableIssues.map((i: { category: string; description: string }) => `- ${i.category}: ${i.description}`).join('\n');
+        const sourceExcerpts = extractSourceExcerpts(allExtractedContent, actionableIssues);
 
-    const issueDescriptions = criticalIssues.map(i => `- ${i.category}: ${i.description}`).join('\n');
-
-    const dataStructurerSkill = loadSkill('data-structurer');
-    const correctionPrompt = `${dataStructurerSkill}
+        const correctionPrompt = `${dataStructurerSkill}
 
 ---
 
 ## CORRECTION TASK
 
-${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Medical Analysis (Source of Truth for clinical interpretation)
+The validator verified these issues against the raw source documents.
+When the validator's findings conflict with the analyst's interpretation, the SOURCE DOCUMENT EXCERPTS are the ground truth.
+
+${issueDescriptions}
+
+${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Source Document Excerpts (GROUND TRUTH — relevant sections for the issues found)
+<source_excerpts>
+${sourceExcerpts}
+</source_excerpts>
+
+### Medical Analysis (Analyst interpretation — may contain errors the validator caught)
 <analysis>
 ${analysisContent}
 </analysis>
@@ -361,41 +387,108 @@ ${analysisContent}
 ${structuredDataContent}
 </previous_structured_data>
 
-### Critical Issues to Fix
+### Validation Issues to Fix (verified against source documents)
 ${issueDescriptions}
 
-Output the CORRECTED JSON now (starting with \`{\`):`;
+Output ONLY a JSON PATCH containing the fields that need to change.
+- For fields that need updating: include the corrected value
+- For arrays that need new items added: include only the new items to append
+- For arrays that need full replacement: include the full array with {"_action": "replace"} as first element
+- Do NOT include unchanged fields — only include what needs to change
+- Output must be valid JSON starting with \`{\`
 
-    let correctedContent = '';
-    const correctionStream = await gemini.sendMessageStream(
-      correctionPrompt,
-      `${sessionId}-correction`,
-      undefined,
-      { model: REALM_CONFIG.models.doctor }
-    );
+Example: To fix a unit in criticalFindings and add a missing medication:
+\`\`\`json
+{
+  "criticalFindings": [{"_action": "replace"}, {"marker": "MarkerX", "value": 150, "unit": "mg/dL", "refRange": "70-100", "status": "high"}],
+  "qualitativeData": {
+    "medications": [{"name": "NewMed", "status": "current"}]
+  }
+}
+\`\`\`
 
-    for await (const chunk of correctionStream) {
-      correctedContent += chunk;
-    }
+Output the JSON PATCH now (starting with \`{\`):`;
 
-    if (correctedContent.trim().length > 0) {
-      correctedContent = cleanupJson(correctedContent);
-      try {
-        JSON.parse(correctedContent);
-        structuredDataContent = correctedContent;
-        fs.writeFileSync(structuredDataPath, structuredDataContent, 'utf-8');
-        console.log('  Structured data corrected.');
-      } catch {
-        console.warn('  Corrected JSON invalid, keeping original.');
+        let correctedContent = await streamWithRetry(gemini, correctionPrompt, `${sessionId}-correction-${correctionCycle}`, REALM_CONFIG.models.doctor, 'Correction');
+
+        if (correctedContent.trim().length > 0) {
+          correctedContent = cleanupJson(correctedContent);
+          try {
+            const patch = JSON.parse(correctedContent);
+            const original = JSON.parse(structuredDataContent);
+            const merged = deepMergeJsonPatch(original, patch);
+            structuredDataContent = JSON.stringify(merged, null, 2);
+            fs.writeFileSync(structuredDataPath, structuredDataContent, 'utf-8');
+            console.log(`  Surgical patch applied (${Object.keys(patch).length} fields). Result: ${structuredDataContent.length} chars. Re-validating...`);
+            for (const ci of allCycleIssues) {
+              if (ci.cycle === correctionCycle + 1 && !ci.corrected) ci.corrected = true;
+            }
+          } catch {
+            console.warn('  Correction patch invalid JSON, keeping original.');
+            validationPassed = true;
+          }
+        } else {
+          console.log('  Correction returned empty, keeping original.');
+          validationPassed = true;
+        }
+
+        correctionCycle++;
+      } else {
+        console.log(`  Max correction cycles (${MAX_CORRECTION_CYCLES}) reached. Proceeding with current data.`);
+        validationPassed = true;
       }
+    } else {
+      console.log(`  Validation ${validationStatus === 'pass' ? 'passed' : 'passed with info-only issues'}.`);
+      validationPassed = true;
     }
-  } else if (validationStatus === 'pass') {
-    console.log('  Validation passed with no issues.');
-  } else {
-    console.log(`  Validation status: ${validationStatus} (${validationIssues.length} issues)`);
   }
 
-  console.log(`✅ Phase 5 complete: validation.md`);
+  // Write final validation report with FULL history across all cycles
+  const correctedIssues = allCycleIssues.filter(i => i.corrected);
+  const uncorrectedIssues = allCycleIssues.filter(i => !i.corrected);
+  const finalStatus = uncorrectedIssues.some(i => i.severity === 'critical') ? 'needs_revision' :
+    uncorrectedIssues.length === 0 ? 'pass' : finalValidationStatus;
+
+  const validationReportLines = [
+    `# Validation Report`,
+    ``,
+    `**Status:** ${finalStatus}`,
+    `**Summary:** ${finalValidationSummary}`,
+    `**Correction Cycles:** ${correctionCycle}/${MAX_CORRECTION_CYCLES}`,
+    `**Total Issues Found:** ${allCycleIssues.length} (${correctedIssues.length} corrected, ${uncorrectedIssues.length} remaining)`,
+    ``
+  ];
+
+  if (correctedIssues.length > 0) {
+    validationReportLines.push(`## Corrected Issues (${correctedIssues.length})`, ``);
+    for (const issue of correctedIssues) {
+      validationReportLines.push(`### [${issue.severity.toUpperCase()}] ${issue.category} *(Cycle ${issue.cycle} — Corrected)*`);
+      validationReportLines.push(issue.description);
+      if (issue.source_location) validationReportLines.push(`- Source: ${issue.source_location}`);
+      if (issue.json_location) validationReportLines.push(`- JSON: ${issue.json_location}`);
+      validationReportLines.push('');
+    }
+  }
+
+  if (uncorrectedIssues.length > 0) {
+    validationReportLines.push(`## Remaining Issues (${uncorrectedIssues.length})`, ``);
+    for (const issue of uncorrectedIssues) {
+      validationReportLines.push(`### [${issue.severity.toUpperCase()}] ${issue.category} *(Cycle ${issue.cycle})*`);
+      validationReportLines.push(issue.description);
+      if (issue.source_location) validationReportLines.push(`- Source: ${issue.source_location}`);
+      if (issue.json_location) validationReportLines.push(`- JSON: ${issue.json_location}`);
+      validationReportLines.push('');
+    }
+  }
+
+  if (allCycleIssues.length === 0) {
+    validationReportLines.push(`## Issues`, ``, `No issues found.`, ``);
+  }
+
+  const validationContent = validationReportLines.join('\n');
+  fs.writeFileSync(validationPath, validationContent, 'utf-8');
+
+  console.log(`✅ Phase 5 complete: validation.md (${correctionCycle} correction cycles applied)`);
 
   // ========================================================================
   // Phase 6: HTML Generation
@@ -422,19 +515,7 @@ ${structuredDataContent}
 </structured_data>`;
 
   console.log(`Generating HTML... (payload: ${Math.round(htmlPrompt.length / 1024)}KB)`);
-  let htmlContent = '';
-  const htmlStream = await gemini.sendMessageStream(
-    htmlPrompt,
-    `${sessionId}-html`,
-    undefined,
-    { model: REALM_CONFIG.models.html }
-  );
-
-  for await (const chunk of htmlStream) {
-    htmlContent += chunk;
-    process.stdout.write('.');
-  }
-  console.log(' Done!');
+  let htmlContent = await streamWithRetry(gemini, htmlPrompt, `${sessionId}-html`, REALM_CONFIG.models.html, 'HTMLGeneration');
 
   // Clean up HTML
   htmlContent = htmlContent.trim();
@@ -497,19 +578,7 @@ ${htmlContent}
 
     console.log(`Reviewing HTML for completeness... (payload: ${Math.round(reviewPrompt.length / 1024)}KB)`);
 
-    let reviewContent = '';
-    const reviewStream = await gemini.sendMessageStream(
-      reviewPrompt,
-      `${sessionId}-content-review`,
-      undefined,
-      { model: REALM_CONFIG.models.doctor }
-    );
-
-    for await (const chunk of reviewStream) {
-      reviewContent += chunk;
-      process.stdout.write('.');
-    }
-    console.log(' Done!');
+    let reviewContent = await streamWithRetry(gemini, reviewPrompt, `${sessionId}-content-review`, REALM_CONFIG.models.doctor, 'ContentReview');
 
     // Clean up JSON
     reviewContent = reviewContent.trim();
@@ -576,19 +645,7 @@ ${structuredDataContent}
 
 ## CRITICAL: Address EVERY issue. Include ALL specific values from the JSON. Output complete HTML now.`;
 
-      let regenHtml = '';
-      const regenStream = await gemini.sendMessageStream(
-        regenPrompt,
-        `${sessionId}-html-regen`,
-        undefined,
-        { model: REALM_CONFIG.models.html }
-      );
-
-      for await (const chunk of regenStream) {
-        regenHtml += chunk;
-        process.stdout.write('.');
-      }
-      console.log(' Done!');
+      let regenHtml = await streamWithRetry(gemini, regenPrompt, `${sessionId}-html-regen`, REALM_CONFIG.models.html, 'HTMLRegeneration');
 
       if (regenHtml.trim().length > 0) {
         regenHtml = regenHtml.trim();

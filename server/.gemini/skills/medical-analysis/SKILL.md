@@ -244,6 +244,25 @@ Use `update_analysis(section, content)` to build these sections incrementally:
 - Distinguish between "this value is abnormal" and "this value is clinically significant"
 - Quantify when possible (% below range, trend direction)
 
+### Data Fidelity (CRITICAL — downstream phases depend on this)
+
+When recording lab values, biomarkers, or measurements you MUST preserve the EXACT details from the source document:
+- **Exact numeric value** as shown in the source
+- **Unit** exactly as printed (e.g., ug/gCR, mIU/L, mg/dL, x10^9/L)
+- **Reference range** exactly as printed (e.g., ref 70-100, ref <14)
+- **Status flag** if present (H, L, *H, *L)
+
+**WRONG:** "Marker X elevated (1234)" — missing unit and reference range
+**RIGHT:** "Marker X: 1234 mg/dL (ref 500-900) *H"
+
+**WRONG:** "TSH is elevated"
+**RIGHT:** "TSH: [value] mIU/L (ref [range]) *H"
+
+**WRONG:** "WBC low at [value]"
+**RIGHT:** "WBC: [value] x10^9/L (ref [range]) *L"
+
+This is critical because downstream phases (Data Structuring, Validation) rely on your analysis to extract exact values. If you drop units or reference ranges, they cannot be recovered without re-reading source documents.
+
 ### Data-Driven Analysis
 - **ONLY report findings that exist in the source documents**
 - **NEVER invent or assume data that isn't present**
@@ -263,6 +282,7 @@ Call `complete_analysis()` only when you have:
 - [ ] Formulated clinical frames with evidence FROM THIS PATIENT'S DATA
 - [ ] Documented missing data and recommended next tests
 - [ ] **Built a Medical History Timeline proportional to the data span**
+- [ ] **Every lab value mentioned includes its unit and reference range (Data Fidelity check)**
 
 ### Timeline Completeness Check (MANDATORY)
 

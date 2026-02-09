@@ -164,7 +164,7 @@ const VALIDATOR_TOOLS = [
   },
   {
     name: 'verify_value_exists',
-    description: 'COMBINED CHECK: Verify a value exists in BOTH source data AND JSON. Returns whether the value is captured correctly. This is the primary verification tool.',
+    description: 'COMBINED CHECK: Verify a value exists in BOTH source data AND JSON, then compare units, reference ranges, and status for accuracy. Returns presence check AND field-level accuracy comparison. This is the primary verification tool.',
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -645,7 +645,117 @@ ${uniqueValues.length > 0 ? uniqueValues.map(v => `- ${v}`).join('\n') : 'No num
   }
 
   /**
+   * Parse a pipe-delimited source line into structured fields.
+   * Handles formats like: | Marker | Value *H | RefRange | Unit |
+   */
+  private parseSourceLabLine(line: string): {
+    marker: string; value: string; unit: string;
+    refRange: string; status: string;
+  } | null {
+    // Split by pipe delimiter
+    const parts = line.split('|').map(p => p.trim()).filter(p => p.length > 0);
+    if (parts.length < 2) return null;
+
+    const marker = parts[0];
+
+    // Extract value and status flag from second column
+    let valueStr = parts[1] || '';
+    let status = '';
+    const flagMatch = valueStr.match(/\*{1,2}([HL])\b/i);
+    if (flagMatch) {
+      status = flagMatch[1].toUpperCase() === 'H' ? 'high' : 'low';
+      valueStr = valueStr.replace(/\s*\*{1,2}[HL]\b/i, '').trim();
+    }
+
+    // Remaining columns: identify which is unit and which is reference range
+    let unit = '';
+    let refRange = '';
+
+    for (let i = 2; i < parts.length; i++) {
+      const col = parts[i];
+      // Reference range heuristics: contains a range pattern (num - num) or comparison (< num, > num)
+      const isRange = /\d+\.?\d*\s*[-–]\s*\d+\.?\d*/.test(col) || /^[<>]\s*\d+/.test(col) || /\(\s*\d+/.test(col);
+      // Unit heuristics: contains / (like mg/dL, mmol/L) or is a known unit pattern, and is short
+      const isUnit = /[a-zA-Z]\/[a-zA-Z]/.test(col) || /^(%|Ratio|RATIO|Pos\/Neg)$/i.test(col);
+
+      if (isRange && !refRange) {
+        // Clean up range: remove parentheses, brackets
+        refRange = col.replace(/[()[\]]/g, '').trim();
+      } else if (isUnit && !unit) {
+        unit = col;
+      } else if (!refRange && !isUnit && col.match(/\d/)) {
+        // Fallback: if it has numbers and no unit assigned yet, probably range
+        refRange = col.replace(/[()[\]]/g, '').trim();
+      } else if (!unit && col.length < 20 && !col.match(/^\d+$/)) {
+        // Fallback: short non-numeric string is likely unit
+        unit = col;
+      }
+    }
+
+    // Only return if we got at least a value
+    if (!valueStr) return null;
+
+    return { marker, value: valueStr, unit, refRange, status };
+  }
+
+  /**
+   * Extract structured value details from JSON sections (allFindings, criticalFindings, trends).
+   */
+  private extractJsonValueDetails(marker: string): {
+    value: string; unit: string;
+    refMin: string; refMax: string; status: string;
+    location: string;
+  } | null {
+    const markerLower = marker.toLowerCase();
+    const sections = ['criticalFindings', 'allFindings', 'trends'] as const;
+
+    for (const section of sections) {
+      const arr = this.structuredJson[section];
+      if (!Array.isArray(arr)) continue;
+
+      for (const item of arr) {
+        const itemMarker = (item as Record<string, unknown>).marker;
+        if (typeof itemMarker !== 'string') continue;
+        if (!itemMarker.toLowerCase().includes(markerLower) && !markerLower.includes(itemMarker.toLowerCase())) continue;
+
+        const value = String((item as Record<string, unknown>).value ?? '');
+        const unit = String((item as Record<string, unknown>).unit ?? '');
+        const status = String((item as Record<string, unknown>).status ?? '');
+        const refRange = (item as Record<string, unknown>).referenceRange as Record<string, unknown> | undefined;
+
+        let refMin = '';
+        let refMax = '';
+        if (refRange && typeof refRange === 'object') {
+          refMin = String(refRange.min ?? refRange.low ?? '');
+          refMax = String(refRange.max ?? refRange.high ?? '');
+        } else if (typeof (item as Record<string, unknown>).referenceRange === 'string') {
+          // Parse string range like "150-400"
+          const rangeStr = String((item as Record<string, unknown>).referenceRange);
+          const rangeMatch = rangeStr.match(/([\d.]+)\s*[-–]\s*([\d.]+)/);
+          if (rangeMatch) {
+            refMin = rangeMatch[1];
+            refMax = rangeMatch[2];
+          }
+        }
+
+        return { value, unit, refMin, refMax, status, location: section };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Normalize a unit string for comparison (case-insensitive, common equivalents).
+   */
+  private normalizeUnit(unit: string): string {
+    return unit.trim().toLowerCase()
+      .replace(/µ/g, 'u')   // µmol → umol
+      .replace(/\s+/g, ''); // remove spaces
+  }
+
+  /**
    * COMBINED verification: Check if a value exists in BOTH source AND JSON.
+   * Also compares units, reference ranges, and status for accuracy.
    * This is THE primary verification tool - single call to verify correctness.
    */
   private verifyValueExists(marker: string, expectedValue?: string): string {
@@ -702,6 +812,91 @@ ${uniqueValues.length > 0 ? uniqueValues.map(v => `- ${v}`).join('\n') : 'No num
       status = '❌ NOT FOUND - Value not found in either source or JSON';
     }
 
+    // Field accuracy comparison (when value exists in both)
+    let accuracySection = '';
+    if (inSource && inJson) {
+      // Parse source lines for structured details
+      const sourceRawLines: string[] = [];
+      for (const section of this.parsedData.sections) {
+        const lines = section.content.split('\n');
+        for (const line of lines) {
+          if (line.toLowerCase().includes(markerLower) && line.includes('|')) {
+            sourceRawLines.push(line.trim());
+          }
+        }
+      }
+
+      const sourceParsed = sourceRawLines
+        .map(line => this.parseSourceLabLine(line))
+        .filter((p): p is NonNullable<ReturnType<typeof this.parseSourceLabLine>> => p !== null);
+
+      const jsonDetails = this.extractJsonValueDetails(marker);
+
+      if (sourceParsed.length > 0 && jsonDetails) {
+        const src = sourceParsed[0]; // Use best match
+        const checks: string[] = [];
+        let hasMismatch = false;
+
+        // Unit comparison
+        if (src.unit && jsonDetails.unit) {
+          const srcNorm = this.normalizeUnit(src.unit);
+          const jsonNorm = this.normalizeUnit(jsonDetails.unit);
+          if (srcNorm === jsonNorm) {
+            checks.push(`- Unit: MATCH (${src.unit})`);
+          } else {
+            checks.push(`- Unit: MISMATCH — Source: "${src.unit}", JSON: "${jsonDetails.unit}"`);
+            hasMismatch = true;
+          }
+        } else if (src.unit || jsonDetails.unit) {
+          checks.push(`- Unit: Source="${src.unit || '(none)'}", JSON="${jsonDetails.unit || '(none)'}"`);
+        }
+
+        // Reference range comparison
+        if (src.refRange && (jsonDetails.refMin || jsonDetails.refMax)) {
+          const srcRangeMatch = src.refRange.match(/([\d,.]+)\s*[-–]\s*([\d,.]+)/);
+          if (srcRangeMatch) {
+            const srcMin = parseFloat(srcRangeMatch[1].replace(/,/g, ''));
+            const srcMax = parseFloat(srcRangeMatch[2].replace(/,/g, ''));
+            const jsonMin = parseFloat(jsonDetails.refMin);
+            const jsonMax = parseFloat(jsonDetails.refMax);
+
+            const minMatch = !isNaN(srcMin) && !isNaN(jsonMin) && Math.abs(srcMin - jsonMin) < 0.1;
+            const maxMatch = !isNaN(srcMax) && !isNaN(jsonMax) && Math.abs(srcMax - jsonMax) < 0.1;
+
+            if (minMatch && maxMatch) {
+              checks.push(`- Reference Range: MATCH (${src.refRange})`);
+            } else {
+              checks.push(`- Reference Range: MISMATCH — Source: ${srcRangeMatch[1]}-${srcRangeMatch[2]}, JSON: ${jsonDetails.refMin}-${jsonDetails.refMax}`);
+              hasMismatch = true;
+            }
+          } else {
+            checks.push(`- Reference Range: Source="${src.refRange}", JSON="${jsonDetails.refMin}-${jsonDetails.refMax}"`);
+          }
+        }
+
+        // Status comparison
+        if (src.status && jsonDetails.status) {
+          const srcStatus = src.status.toLowerCase();
+          const jsonStatus = jsonDetails.status.toLowerCase();
+          // Map "critical" to "high" for comparison purposes
+          const jsonStatusNorm = jsonStatus === 'critical' ? 'high' : jsonStatus;
+          if (srcStatus === jsonStatusNorm || srcStatus === jsonStatus) {
+            checks.push(`- Status: MATCH (source="${src.status}", json="${jsonDetails.status}")`);
+          } else {
+            checks.push(`- Status: MISMATCH — Source: "${src.status}", JSON: "${jsonDetails.status}"`);
+            hasMismatch = true;
+          }
+        }
+
+        if (checks.length > 0) {
+          accuracySection = `\n\n## Field Accuracy (${jsonDetails.location})\n${checks.join('\n')}`;
+          if (hasMismatch) {
+            accuracySection += `\n\nACTION REQUIRED: Unit, reference range, or status in JSON does not match source. Use report_issue() to flag accuracy errors.`;
+          }
+        }
+      }
+    }
+
     return `# Verification: "${marker}"${expectedValue ? ` = ${expectedValue}` : ''}
 
 **Status:** ${status}
@@ -710,7 +905,7 @@ ${uniqueValues.length > 0 ? uniqueValues.map(v => `- ${v}`).join('\n') : 'No num
 ${sourceMatches.slice(0, 5).map(m => `- ${m}`).join('\n') || 'No matches found'}
 
 ## JSON Data (${jsonMatches.length} matches)
-${jsonMatches.slice(0, 5).map(m => `- ${m}`).join('\n') || 'No matches found'}`;
+${jsonMatches.slice(0, 5).map(m => `- ${m}`).join('\n') || 'No matches found'}${accuracySection}`;
   }
 
   private searchData(query: string): string {
@@ -1110,7 +1305,8 @@ export class AgenticValidator {
     extractedContent: string,
     structuredJsonContent: string,
     patientContext?: string,
-    maxIterations: number = 15
+    maxIterations: number = 15,
+    previouslyRaisedIssues: Array<{ category: string; severity: string; description: string }> = []
   ): AsyncGenerator<ValidatorEvent, { status: string; issues: ValidationIssue[]; summary: string }, unknown> {
     const toolExecutor = new ValidatorToolExecutor(extractedContent, structuredJsonContent);
 
@@ -1119,7 +1315,7 @@ export class AgenticValidator {
       data: { message: 'Starting agentic validation...' },
     };
 
-    const systemPrompt = this.buildSystemPrompt(patientContext);
+    const systemPrompt = this.buildSystemPrompt(patientContext, previouslyRaisedIssues);
 
     let conversationHistory: Array<{
       role: string;
@@ -1343,7 +1539,7 @@ export class AgenticValidator {
     };
   }
 
-  private buildSystemPrompt(patientContext?: string): string {
+  private buildSystemPrompt(patientContext?: string, previouslyRaisedIssues: Array<{ category: string; severity: string; description: string }> = []): string {
     let prompt = loadValidatorSkill();
 
     // Add agentic instructions with verification-focused workflow
@@ -1363,7 +1559,7 @@ You are a VERIFICATION-FOCUSED validator. Your job is to VERIFY that data was ca
 
 | Task | Use This Tool | NOT This |
 |------|--------------|----------|
-| Verify a value exists | \`verify_value_exists("marker", "value")\` | Reading full documents |
+| Verify a value + accuracy | \`verify_value_exists("marker", "value")\` | Reading full documents |
 | Check document contents | \`get_document_summary("doc")\` | \`read_document\` (deprecated) |
 | See JSON structure | \`get_json_overview()\` | \`get_structured_json\` (deprecated) |
 | Check specific JSON section | \`get_json_section_summary("section")\` | Getting full JSON |
@@ -1380,7 +1576,8 @@ You are a VERIFICATION-FOCUSED validator. Your job is to VERIFY that data was ca
    - \`get_json_section_summary("criticalFindings")\` - see what's captured
    - For each key value: \`verify_value_exists("marker", "expected_value")\`
    - This does a COMBINED check of source AND JSON in ONE call
-   - \`report_issue()\` for missing values
+   - CHECK the "Field Accuracy" section in the response — if units or reference ranges MISMATCH, use \`report_issue()\` to flag accuracy errors
+   - \`report_issue()\` for missing values AND for unit/range mismatches
 
 3. **Structure Check**
    - \`get_json_overview()\` - see what sections exist
@@ -1397,11 +1594,18 @@ You are a VERIFICATION-FOCUSED validator. Your job is to VERIFY that data was ca
 ### Key Principles
 
 - **Verify, don't explore**: You're checking if data made it to JSON, not discovering what's in documents
-- **Combined checks**: \`verify_value_exists()\` checks BOTH source AND JSON in one call
+- **Combined checks**: \`verify_value_exists()\` checks BOTH source AND JSON in one call, AND compares units/reference ranges for accuracy
 - **Summaries only**: Use \`get_document_summary()\` and \`get_json_section_summary()\`, never full content
 - **Be targeted**: Search for specific values, don't read everything
 
-${patientContext ? `\n### Patient Context\n${patientContext}\n` : ''}
+${previouslyRaisedIssues.length > 0 ? `### Previously Raised Issues (DO NOT RE-FLAG)
+
+The following issues were already raised in previous validation cycles and corrections were attempted.
+Do NOT report these issues again. Focus ONLY on finding NEW issues not already covered below.
+
+${previouslyRaisedIssues.map(i => `- [${i.severity.toUpperCase()}] ${i.category}: ${i.description}`).join('\n')}
+
+` : ''}${patientContext ? `\n### Patient Context\n${patientContext}\n` : ''}
 
 **START with \`compare_date_ranges()\` then \`get_json_overview()\`.**`;
 
