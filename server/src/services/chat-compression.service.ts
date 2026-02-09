@@ -161,30 +161,30 @@ Be EXTREMELY dense with information. Include specific values, check results, and
              - Timeline checks performed
              - Date range comparisons
              Example:
-             - Homocysteine 20.08: VERIFIED in both source and JSON
-             - TSH 2.3: MISSING FROM JSON - only in source
-             - Timeline: source spans 2007-2025, JSON only covers 2024-2025 -->
+             - [Marker] [value]: VERIFIED in both source and JSON
+             - [Marker] [value]: MISSING FROM JSON - only in source
+             - Timeline: source spans [start year]-[end year], JSON only covers [subset] -->
     </key_findings>
 
     <documents_checked>
         <!-- Which documents/sections have been verified.
-             - CHECKED: "CBC Report 2024" - 5 values verified
-             - CHECKED: "Metabolic Panel" - 3 values verified
-             - UNCHECKED: "Thyroid Panel 2008" -->
+             - CHECKED: "[Document Name]" - N values verified
+             - CHECKED: "[Document Name]" - N values verified
+             - UNCHECKED: "[Document Name]" -->
     </documents_checked>
 
     <validation_state>
         <!-- Issues logged so far and checks remaining.
-             - ISSUE [critical]: Missing 12 years of timeline data (2007-2023)
-             - ISSUE [warning]: Ceruloplasmin labeled "Low" but value is borderline
-             - COMPLETED: Timeline check, critical findings check
-             - REMAINING: Value verification, consistency check -->
+             - ISSUE [critical]: [description of critical issue found]
+             - ISSUE [warning]: [description of warning-level issue]
+             - COMPLETED: [list of completed check categories]
+             - REMAINING: [list of remaining check categories] -->
     </validation_state>
 
     <current_investigation>
         <!-- What the validator was actively checking when compression occurred.
-             - Currently verifying: trends array completeness
-             - Next planned: Check supplement recommendations against evidence -->
+             - Currently verifying: [active check description]
+             - Next planned: [next planned check description] -->
     </current_investigation>
 </state_snapshot>`;
   }
@@ -210,32 +210,32 @@ Be EXTREMELY dense with medical information. Include specific values, dates, uni
              - Status (elevated/low/normal/critical)
              - Cross-system connections identified
              Example:
-             - Homocysteine: 20.08 umol/L (ref <15) - ELEVATED - 2025-07-15
-             - TSH: 2.3 mIU/L (ref 0.4-4.0) - normal - 2024-05-10
-             - Connection: Elevated Oxalic + Glyceric acids -> possible Type II Hyperoxaluria -->
+             - [Marker]: [value] [unit] (ref [range]) - [STATUS] - [date]
+             - [Marker]: [value] [unit] (ref [range]) - [STATUS] - [date]
+             - Connection: [finding A] + [finding B] -> possible [clinical implication] -->
     </key_findings>
 
     <documents_explored>
         <!-- Which documents have been read, which remain unexplored.
-             - READ: "CBC Report 2024" - key values: WBC 5.2, RBC 4.1, Hgb 12.3
-             - READ: "Metabolic Panel" - key values: Glucose 105, BUN 18
-             - UNREAD: "Thyroid Panel 2008", "Bartonella Test"
-             - SEARCHED: "TSH" (3 results), "neutrophils" (5 results) -->
+             - READ: "[Document Name]" - key values: [marker] [value], [marker] [value]
+             - READ: "[Document Name]" - key values: [marker] [value], [marker] [value]
+             - UNREAD: "[Document Name]", "[Document Name]"
+             - SEARCHED: "[query]" (N results), "[query]" (N results) -->
     </documents_explored>
 
     <analysis_state>
         <!-- What sections of the analysis have been written. The actual analysis content
              is stored externally (not in conversation history), so just list section names and sizes.
-             - WRITTEN: Executive Summary (2KB), Critical Findings (4KB), Metabolic Analysis (3KB)
-             - IN PROGRESS: Timeline, Cross-System Connections
-             - NOT STARTED: Recommendations, Supplement Review -->
+             - WRITTEN: [Section Name] (NKB), [Section Name] (NKB), [Section Name] (NKB)
+             - IN PROGRESS: [Section Name], [Section Name]
+             - NOT STARTED: [Section Name], [Section Name] -->
     </analysis_state>
 
     <current_investigation>
         <!-- What the agent was actively investigating when compression occurred.
-             - Currently exploring: Vitamin D pathway interactions
-             - Next planned: Check copper/zinc ratio across years
-             - Hypothesis: Low ceruloplasmin may explain neurological symptoms -->
+             - Currently exploring: [active investigation topic]
+             - Next planned: [next planned investigation topic]
+             - Hypothesis: [current working hypothesis if any] -->
     </current_investigation>
 </state_snapshot>`;
 }
