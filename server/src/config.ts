@@ -69,4 +69,13 @@ export const REALM_CONFIG = {
       delayBetweenRequestsMs: parseInt(process.env.LLM_REQUEST_DELAY_MS || '150'),
     },
   },
+  compression: {
+    // Chat history compression: adapted from Gemini CLI's chatCompressionService
+    // Triggers when conversation history exceeds threshold % of token limit
+    threshold: parseFloat(process.env.COMPRESSION_THRESHOLD || '0.5'),
+    // Fraction of recent history to preserve (rest gets compressed into a summary)
+    preserveFraction: parseFloat(process.env.COMPRESSION_PRESERVE || '0.3'),
+    // Token limit for the doctor model (gemini-3-pro-preview = 1M tokens)
+    tokenLimit: parseInt(process.env.COMPRESSION_TOKEN_LIMIT || '1048576'),
+  },
 };
