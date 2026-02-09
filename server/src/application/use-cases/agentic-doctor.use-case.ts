@@ -209,7 +209,7 @@ export class AgenticDoctorUseCase {
     await this.storage.ensureDir('');
 
     console.log(`[AgenticDoctor] Session ${sessionId}: Processing ${uploadedFilePaths.length} files...`);
-    console.log(`[AgenticDoctor] User prompt: "${prompt ? prompt.substring(0, 100) : '(empty)'}"${prompt && prompt.length > 100 ? '...' : ''}`);
+    console.log(`[AgenticDoctor] User prompt: ${prompt ? `(${prompt.length} chars)` : '(empty)'}`);
 
     // ========================================================================
     // Phase 1: Document Extraction

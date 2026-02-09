@@ -477,7 +477,7 @@ async function runJob() {
     if (config.chrFilename) {
       console.log(`  CHR Filename: ${config.chrFilename}`);
     }
-    console.log(`  Prompt: ${config.prompt.substring(0, 80)}...`);
+    console.log(`  Prompt: ${config.prompt ? `(${config.prompt.length} chars)` : '(empty)'}`);
     console.log('');
   } catch (error) {
     const errorInfo = classifyError(error as Error);
