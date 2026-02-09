@@ -23,6 +23,7 @@ import {
   createGoogleGenAI,
   type BillingContext,
 } from '../utils/genai-factory.js';
+import { ChatCompressionService } from './chat-compression.service.js';
 
 // ============================================================================
 // Skill Loader
@@ -535,8 +536,6 @@ class AnalystToolExecutor {
   }
 
   private readDocument(documentName: string): string {
-    const MAX_RESPONSE_SIZE = 50000; // 50KB max per tool response to prevent payload bloat
-
     const sections = this.parsedData.sections.filter(
       s => s.name.toLowerCase().includes(documentName.toLowerCase())
     );
@@ -550,19 +549,14 @@ class AnalystToolExecutor {
       this.documentsRead.add(section.name);
     }
 
-    let content = sections
+    const content = sections
       .map(s => {
         const header = s.pageNumber ? `## ${s.name} - Page ${s.pageNumber}` : `## ${s.name}`;
         return `${header}\n\n${s.content}`;
       })
       .join('\n\n---\n\n');
 
-    // Truncate if too large to prevent payload bloat in conversation history
-    if (content.length > MAX_RESPONSE_SIZE) {
-      content = content.substring(0, MAX_RESPONSE_SIZE) +
-        `\n\n... [TRUNCATED - Document too large (${Math.round(content.length / 1024)}KB). Use search_data() to find specific values or read_document_section() for specific pages.]`;
-    }
-
+    // No size cap — chat compression service handles conversation history growth
     return content;
   }
 
@@ -615,21 +609,13 @@ class AnalystToolExecutor {
       return `No matches found for "${query}". Try different terms or use list_documents() to see available data.`;
     }
 
-    const MAX_RESPONSE_SIZE = 30000; // 30KB max for search results
-
-    let output = results
+    const output = results
       .slice(0, 15) // Limit total sections
       .map(r => `### ${r.section}\n\n${r.matches.join('\n\n---\n\n')}`)
       .join('\n\n---\n\n');
 
-    let response = `# Search Results for "${query}"\n\nFound matches in ${results.length} section(s):\n\n${output}`;
-
-    if (response.length > MAX_RESPONSE_SIZE) {
-      response = response.substring(0, MAX_RESPONSE_SIZE) +
-        `\n\n... [TRUNCATED - Too many results. Narrow your search or use read_document() for specific documents.]`;
-    }
-
-    return response;
+    // No size cap — chat compression service handles conversation history growth
+    return `# Search Results for "${query}"\n\nFound matches in ${results.length} section(s):\n\n${output}`;
   }
 
   private getAnalysis(): string {
@@ -946,6 +932,42 @@ Use this history to identify trends (improving, worsening, stable) in your analy
       searchesPerformed: 0, // Would need to track this
     };
   }
+
+  /**
+   * Get a summary of externally-stored state for the compression prompt.
+   * This tells the compressor what's stored outside conversation history
+   * (analysis sections, exploration progress) so nothing is lost.
+   */
+  getExternalStateSummary(): string {
+    const lines: string[] = [];
+
+    // Analysis sections written (stored in this.currentAnalysis Map)
+    lines.push('## Analysis Sections (stored externally)');
+    if (this.currentAnalysis.size === 0) {
+      lines.push('No sections written yet.');
+    } else {
+      for (const [section, content] of this.currentAnalysis) {
+        lines.push(`- WRITTEN: ${section} (~${Math.round(content.length / 1024)}KB)`);
+      }
+    }
+
+    // Exploration progress
+    lines.push('', '## Exploration Progress');
+    const read = [...this.documentsRead];
+    const all = this.parsedData.documentNames;
+    const unread = all.filter(d => !this.documentsRead.has(d));
+    lines.push(`Documents read: ${read.length}/${all.length}`);
+    for (const d of read) lines.push(`  - READ: ${d}`);
+    for (const d of unread) lines.push(`  - UNREAD: ${d}`);
+
+    lines.push(`Searches performed: ${this.searchesPerformed.size}`);
+    for (const s of this.searchesPerformed) lines.push(`  - "${s}"`);
+
+    lines.push(`Date range checked: ${this.dateRangeChecked ? 'Yes' : 'No'}`);
+    lines.push(`Timeline extracted: ${this.timelineExtracted ? 'Yes' : 'No'}`);
+
+    return lines.join('\n');
+  }
 }
 
 // ============================================================================
@@ -955,10 +977,12 @@ Use this history to identify trends (improving, worsening, stable) in your analy
 export class AgenticMedicalAnalyst {
   private genai: GoogleGenAI;
   private model: string;
+  private compressionService: ChatCompressionService;
 
   constructor(billingContext?: BillingContext) {
     this.genai = createGoogleGenAI(billingContext);
     this.model = REALM_CONFIG.models.doctor;
+    this.compressionService = new ChatCompressionService(this.genai, billingContext);
     console.log(`[AgenticAnalyst] Initialized with model: ${this.model}`);
   }
 
@@ -981,7 +1005,7 @@ export class AgenticMedicalAnalyst {
     const systemPrompt = this.buildSystemPrompt(patientContext);
 
     // Conversation history for multi-turn
-    const conversationHistory: Array<{
+    let conversationHistory: Array<{
       role: string;
       parts: Array<{
         text?: string;
@@ -1012,6 +1036,22 @@ export class AgenticMedicalAnalyst {
         type: 'log',
         data: { message: `Exploration cycle ${iteration}/${maxIterations}...`, iteration },
       };
+
+      // Compress conversation history if it has grown too large
+      const compression = await this.compressionService.compressIfNeeded(
+        conversationHistory,
+        { phase: 'analyst', externalState: toolExecutor.getExternalStateSummary() },
+      );
+      if (compression.compressed) {
+        conversationHistory = compression.newHistory;
+        yield {
+          type: 'log',
+          data: {
+            message: `[Compression] History compressed: ~${compression.originalTokenEstimate} -> ~${compression.newTokenEstimate} tokens`,
+            iteration,
+          },
+        };
+      }
 
       try {
         // Call the model with tools
