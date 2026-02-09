@@ -10,8 +10,10 @@ import { GeminiAdapter } from '../gemini/gemini.adapter.js';
 import { SendChatUseCase } from '../../application/use-cases/send-chat.use-case.js';
 import { AgenticDoctorUseCase } from '../../application/use-cases/agentic-doctor.use-case.js';
 import { ResearchSectionUseCase } from '../../application/use-cases/research-section.use-case.js';
+import type { StoragePort } from '../../application/ports/storage.port.js';
+import { UploadPaths } from '../../common/storage-paths.js';
 
-export async function createServer() {
+export async function createServer(storage: StoragePort) {
   const server = fastify({
     logger: true,
   });
@@ -40,8 +42,8 @@ export async function createServer() {
   const sendChatUseCase = new SendChatUseCase(geminiAdapter);
   const researchSectionUseCase = new ResearchSectionUseCase(geminiAdapter);
 
-  // Initialize the Agentic Doctor Use Case
-  const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter);
+  // Initialize the Agentic Doctor Use Case with storage
+  const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter, storage);
   await agenticDoctorUseCase.initialize();
 
   server.post('/api/chat', async (request, reply) => {

@@ -36,8 +36,14 @@ export interface ResultEvent {
   url: string;
 }
 
+export interface ErrorEvent {
+  type: 'error';
+  content: string;
+}
+
 export type RealmGenerationEvent =
   | StepEvent
   | LogEvent
   | StreamEvent
-  | ResultEvent;
+  | ResultEvent
+  | ErrorEvent;

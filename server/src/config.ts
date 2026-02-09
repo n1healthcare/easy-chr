@@ -49,4 +49,33 @@ export const REALM_CONFIG = {
       minWait: 0.5,
     } satisfies RetryPreset,
   },
+  throttle: {
+    // PDF page extraction: process pages with rate limiting
+    pdfExtraction: {
+      maxConcurrent: parseInt(process.env.PDF_BATCH_SIZE || '4'),
+      delayBetweenBatchesMs: parseInt(process.env.PDF_BATCH_DELAY_MS || '500'),
+      delayBetweenRequestsMs: parseInt(process.env.PDF_REQUEST_DELAY_MS || '100'),
+    },
+    // Web search: rate limit search requests
+    webSearch: {
+      maxConcurrent: parseInt(process.env.SEARCH_BATCH_SIZE || '3'),
+      delayBetweenBatchesMs: parseInt(process.env.SEARCH_BATCH_DELAY_MS || '500'),
+      delayBetweenRequestsMs: parseInt(process.env.SEARCH_REQUEST_DELAY_MS || '250'),
+    },
+    // General LLM calls: default throttle for any batched LLM operations
+    llm: {
+      maxConcurrent: parseInt(process.env.LLM_BATCH_SIZE || '3'),
+      delayBetweenBatchesMs: parseInt(process.env.LLM_BATCH_DELAY_MS || '800'),
+      delayBetweenRequestsMs: parseInt(process.env.LLM_REQUEST_DELAY_MS || '150'),
+    },
+  },
+  compression: {
+    // Chat history compression: adapted from Gemini CLI's chatCompressionService
+    // Triggers when conversation history exceeds threshold % of token limit
+    threshold: parseFloat(process.env.COMPRESSION_THRESHOLD || '0.5'),
+    // Fraction of recent history to preserve (rest gets compressed into a summary)
+    preserveFraction: parseFloat(process.env.COMPRESSION_PRESERVE || '0.3'),
+    // Token limit for the doctor model (gemini-3-pro-preview = 1M tokens)
+    tokenLimit: parseInt(process.env.COMPRESSION_TOKEN_LIMIT || '1048576'),
+  },
 };

@@ -2,6 +2,7 @@ import { LLMClientPort } from '../../application/ports/llm-client.port.js';
 import { Config, ConfigParameters } from '../../../vendor/gemini-cli/packages/core/src/config/config.js';
 import { GeminiChat, StreamEventType } from '../../../vendor/gemini-cli/packages/core/src/core/geminiChat.js';
 import { DEFAULT_GEMINI_MODEL } from '../../../vendor/gemini-cli/packages/core/src/config/models.js';
+import { DEFAULT_MODEL_CONFIGS } from '../../../vendor/gemini-cli/packages/core/src/config/defaultModelConfigs.js';
 import { AuthType } from '../../../vendor/gemini-cli/packages/core/src/core/contentGenerator.js';
 import path from 'path';
 import fs from 'fs';
@@ -26,12 +27,34 @@ export class GeminiAdapter implements LLMClientPort {
     const model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
     console.log(`Using Gemini Model: ${model}`);
 
+    // Get the web search model from env, defaulting to MARKDOWN_MODEL or gemini-3-flash-preview
+    const webSearchModel = process.env.WEB_SEARCH_MODEL || process.env.MARKDOWN_MODEL || 'gemini-3-flash-preview';
+    console.log(`Using Web Search Model: ${webSearchModel}`);
+
+    // Create custom model config that overrides web-search to use an available model
+    // The default uses gemini-2.5-flash which may not be available on all LiteLLM proxies
+    const modelConfigServiceConfig = {
+      aliases: {
+        ...DEFAULT_MODEL_CONFIGS.aliases,
+        // Override the base model used by web-search
+        'gemini-2.5-flash-base': {
+          extends: 'base',
+          modelConfig: {
+            model: webSearchModel,
+          },
+        },
+      },
+      overrides: DEFAULT_MODEL_CONFIGS.overrides,
+    };
+
     const configParams: ConfigParameters = {
       sessionId: 'default-session', // This is just for config init
       targetDir: process.cwd(),
       cwd: process.cwd(),
       debugMode: true,
       model: model,
+      retryFetchErrors: true, // Enable retry on "fetch failed" network errors
+      modelConfigServiceConfig,
     };
 
     this.config = new Config(configParams);
