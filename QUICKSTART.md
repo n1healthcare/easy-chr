@@ -77,5 +77,4 @@ npm run dev
 
 ## Next Steps
 
-- Read the full [README.md](README.md) for detailed documentation
-- Check [DESIGN.md](DESIGN.md) for architecture details
+- Read the full [README.md](README.md) for detailed documentation and architecture details
