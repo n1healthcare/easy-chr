@@ -174,26 +174,25 @@ export class PDFExtractionService {
           }
 
           // Forward progress events
+          const commonEventData = {
+            fileName: event.data.fileName,
+            pageNumber: event.data.pageNumber,
+            totalPages: event.data.totalPages,
+            message: event.data.message,
+          };
+
           if (event.type === 'error') {
             yield {
               type: 'error',
               data: {
-                fileName: event.data.fileName,
-                pageNumber: event.data.pageNumber,
-                totalPages: event.data.totalPages,
-                message: event.data.message,
+                ...commonEventData,
                 error: event.data.error || event.data.message,
               }
             };
           } else {
             yield {
               type: event.type,
-              data: {
-                fileName: event.data.fileName,
-                pageNumber: event.data.pageNumber,
-                totalPages: event.data.totalPages,
-                message: event.data.message,
-              }
+              data: commonEventData,
             };
           }
         }

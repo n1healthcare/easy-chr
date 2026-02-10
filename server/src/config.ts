@@ -16,10 +16,8 @@ interface RetryPreset {
 
 function parseRetryMaxWait(value: string | undefined, fallbackSeconds: number): number {
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return Math.min(fallbackSeconds, RETRY_WAIT_UPPER_LIMIT_SECONDS);
-  }
-  return Math.min(parsed, RETRY_WAIT_UPPER_LIMIT_SECONDS);
+  const effectiveValue = Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackSeconds;
+  return Math.min(effectiveValue, RETRY_WAIT_UPPER_LIMIT_SECONDS);
 }
 
 export const REALM_CONFIG = {

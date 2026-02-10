@@ -135,12 +135,14 @@ export class GeminiAdapter implements LLMClientPort {
       }
     }
 
-    const configuredTimeoutMs = Number(
-      process.env.GEMINI_STREAM_TIMEOUT_MS || String(DEFAULT_GEMINI_STREAM_TIMEOUT_MS)
-    );
-    const streamTimeoutMs = (
-      Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
-    ) ? configuredTimeoutMs : DEFAULT_GEMINI_STREAM_TIMEOUT_MS;
+    const rawStreamTimeoutMs = process.env.GEMINI_STREAM_TIMEOUT_MS;
+    let streamTimeoutMs = DEFAULT_GEMINI_STREAM_TIMEOUT_MS;
+    if (rawStreamTimeoutMs) {
+      const parsedStreamTimeoutMs = Number(rawStreamTimeoutMs);
+      if (Number.isFinite(parsedStreamTimeoutMs) && parsedStreamTimeoutMs > 0) {
+        streamTimeoutMs = parsedStreamTimeoutMs;
+      }
+    }
     const timeoutHandle = setTimeout(() => {
       console.warn(`[GeminiAdapter] Stream timeout after ${streamTimeoutMs}ms; aborting request.`);
       controller.abort();
