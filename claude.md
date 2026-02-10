@@ -463,9 +463,8 @@ All tools implemented in `server/src/services/agentic-medical-analyst.service.ts
 
 ## Reference Documentation
 
-- **README.md** - Full setup and API documentation
+- **README.md** - Full setup, pipeline documentation, and architecture details
 - **QUICKSTART.md** - 5-minute setup guide
-- **DESIGN.md** - Original architecture and design decisions
 
 ## Key Conventions
 

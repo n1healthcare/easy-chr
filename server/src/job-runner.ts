@@ -27,6 +27,10 @@
  *   - staging/production: Full pipeline with uploads and tracking
  */
 
+// Initialize OTEL first (must be before other imports for auto-instrumentation)
+import { setupOtel } from './otel.js';
+try { setupOtel(); } catch { /* OTEL is optional — never crash */ }
+
 import dotenv from 'dotenv';
 
 // Load environment variables from .env file (if present)
@@ -69,11 +73,17 @@ import { N1ApiAdapter } from './adapters/n1-api/n1-api.adapter.js';
 import { AgenticDoctorUseCase } from './application/use-cases/agentic-doctor.use-case.js';
 import { FetchAndProcessPDFsUseCase } from './application/use-cases/fetch-and-process-pdfs.use-case.js';
 import { RetryableError, ValidationError } from './common/exceptions.js';
+import { withRetry } from './common/retry.js';
+import { REALM_CONFIG } from './config.js';
 import { createStorageAdapterFromEnv } from './adapters/storage/storage.factory.js';
+import { PrefixedStorageAdapter } from './adapters/storage/prefixed-storage.adapter.js';
 import { LegacyPaths, ProductionPaths } from './common/storage-paths.js';
 import type { StoragePort } from './application/ports/storage.port.js';
+import { getLogger, createChildLogger, type AppLogger } from './logger.js';
 import path from 'path';
 import fs from 'fs';
+
+const rootLogger = getLogger();
 
 // ============================================================================
 // Environment Configuration
@@ -92,6 +102,59 @@ const ENVIRONMENT = getEnvironment();
 const IS_DEVELOPMENT = ENVIRONMENT === 'development';
 const SKIP_UPLOADS = IS_DEVELOPMENT;
 const SKIP_PROGRESS_TRACKING = IS_DEVELOPMENT;
+const MIN_STORAGE_WRITE_RETRIES = 5;
+const MIN_SIGNED_URL_RETRIES = 3;
+
+// ============================================================================
+// Blindspot Feedback Widget (staging only)
+// ============================================================================
+
+function injectBlindspotWidget(html: string): string {
+  if (ENVIRONMENT !== 'staging') return html;
+
+  try {
+    const widget = `<!-- Blindspot: n1healthcare/easy-chr -->
+  <script async src="https://pub-566620c016dc4a40b7335d3f5e387a0e.r2.dev/blindspot.min.js"></script>
+  <script>
+    (function initializeBlindspot() {
+      var maxRetries = 10;
+      var retryCount = 0;
+      var retryDelay = 500;
+
+      function tryInitialize() {
+        if (typeof Blindspot !== 'undefined' && Blindspot.init) {
+          try {
+            Blindspot.init({
+              siteId: 'f3739d9a-fbb0-403c-a1f2-52fcc0203a23',
+              color: '#1B6971',
+              text: 'Report issue'
+            });
+          } catch (e) {
+            console.error('[Blindspot] Initialization failed:', e.message);
+          }
+        } else if (retryCount < maxRetries) {
+          retryCount++;
+          setTimeout(tryInitialize, retryDelay);
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', tryInitialize);
+      } else {
+        setTimeout(tryInitialize, 100);
+      }
+      window.addEventListener('load', tryInitialize);
+    })();
+  </script>`;
+
+    const idx = html.lastIndexOf('</body>');
+    if (idx === -1) return html + widget;
+    return html.slice(0, idx) + widget + '\n' + html.slice(idx);
+  } catch {
+    console.warn('[Blindspot] Failed to inject widget, returning original HTML');
+    return html;
+  }
+}
 
 // ============================================================================
 // Progress Notification via N1 API
@@ -294,15 +357,15 @@ async function notifyProgress(
 ): Promise<void> {
   const update = PROGRESS_MAP[step];
   if (!update) {
-    console.log(`[Progress] Unknown step: ${step}`);
+    rootLogger.warn({ step }, 'Unknown progress step');
     return;
   }
 
-  console.log(`[Progress] ${update.stage} (${update.progress}%): ${technicalMessage || update.message}`);
+  rootLogger.info({ stage: update.stage, progress: update.progress }, technicalMessage || update.message);
 
   // Skip API calls in development
   if (SKIP_PROGRESS_TRACKING) {
-    console.log(`[Progress] Skipping API call (ENVIRONMENT=${ENVIRONMENT})`);
+    rootLogger.debug({ environment: ENVIRONMENT }, 'Skipping progress API call');
     return;
   }
 
@@ -334,11 +397,11 @@ async function notifyProgress(
     });
 
     if (!response.ok) {
-      console.warn(`[Progress] API call failed (${response.status}): ${await response.text()}`);
+      rootLogger.warn({ statusCode: response.status }, `Progress API call failed: ${await response.text()}`);
     }
   } catch (error) {
     // Don't fail the job if progress update fails - just log it
-    console.warn(`[Progress] API error:`, error);
+    rootLogger.warn(error, 'Progress API error');
   }
 }
 
@@ -352,15 +415,15 @@ async function notifyPhaseProgress(
 ): Promise<void> {
   const update = PHASE_PROGRESS_MAP[phaseName];
   if (!update) {
-    console.log(`[Progress] Unknown phase: ${phaseName}`);
+    rootLogger.warn({ phaseName }, 'Unknown phase progress');
     return;
   }
 
-  console.log(`[Progress] ${update.stage} (${update.progress}%): ${update.message}`);
+  rootLogger.info({ stage: update.stage, progress: update.progress, phase: phaseName }, update.message);
 
   // Skip API calls in development
   if (SKIP_PROGRESS_TRACKING) {
-    console.log(`[Progress] Skipping API call (ENVIRONMENT=${ENVIRONMENT})`);
+    rootLogger.debug({ environment: ENVIRONMENT }, 'Skipping phase progress API call');
     return;
   }
 
@@ -384,11 +447,11 @@ async function notifyPhaseProgress(
     });
 
     if (!response.ok) {
-      console.warn(`[Progress] API call failed (${response.status}): ${await response.text()}`);
+      rootLogger.warn({ statusCode: response.status }, `Phase progress API call failed: ${await response.text()}`);
     }
   } catch (error) {
     // Don't fail the job if progress update fails - just log it
-    console.warn(`[Progress] API error:`, error);
+    rootLogger.warn(error, 'Phase progress API error');
   }
 }
 
@@ -459,29 +522,16 @@ function validateEnvironment(): JobConfig {
 }
 
 async function runJob() {
-  console.log('================================================================================');
-  console.log('N1 Interface - Job Runner');
-  console.log('================================================================================');
-  console.log(`Started at: ${new Date().toISOString()}`);
-  console.log(`Environment: ${ENVIRONMENT}`);
-  console.log(`  Skip uploads: ${SKIP_UPLOADS}`);
-  console.log(`  Skip progress tracking: ${SKIP_PROGRESS_TRACKING}`);
-  console.log('');
+  rootLogger.info({ startedAt: new Date().toISOString(), environment: ENVIRONMENT, skipUploads: SKIP_UPLOADS, skipProgressTracking: SKIP_PROGRESS_TRACKING }, 'N1 Interface - Job Runner starting');
 
   let config: JobConfig;
   try {
     config = validateEnvironment();
-    console.log(`✓ Environment validated`);
-    console.log(`  User ID: ${config.userId}`);
-    console.log(`  CHR ID: ${config.chrId}`);
-    if (config.chrFilename) {
-      console.log(`  CHR Filename: ${config.chrFilename}`);
-    }
-    console.log(`  Prompt: ${config.prompt.substring(0, 80)}...`);
-    console.log('');
+    rootLogger.info({ userId: config.userId, chrId: config.chrId, chrFilename: config.chrFilename }, 'Environment validated');
+    rootLogger.debug({ prompt: config.prompt.substring(0, 80) }, 'Job prompt');
   } catch (error) {
     const errorInfo = classifyError(error as Error);
-    console.error('✗ Environment validation failed:', error);
+    rootLogger.error(error, 'Environment validation failed');
 
     // Try to notify failure even without full config (best effort)
     const partialConfig = {
@@ -501,49 +551,57 @@ async function runJob() {
         errorInfo.errorCode
       );
     } else {
-      console.error('[Progress] Cannot notify API - missing N1_API_BASE_URL, N1_API_KEY, or CHR_ID');
+      rootLogger.error('Cannot notify API - missing N1_API_BASE_URL, N1_API_KEY, or CHR_ID');
     }
 
     process.exit(errorInfo.exitCode);
   }
+
+  // Create a child logger with correlation IDs for the rest of the job
+  const logger = createChildLogger({
+    chrId: config.chrId,
+    userId: config.userId,
+  });
 
   let realmPath: string | null = null;
 
   try {
     // Step 1: Initialize Gemini adapter and storage
     await notifyProgress(config, 'initializing', `Setting up AI pipeline for report id ${config.chrId}`);
-    console.log('[1/5] Initializing Gemini adapter and storage...');
+    logger.info('[1/5] Initializing Gemini adapter and storage...');
     const geminiAdapter = new GeminiAdapter();
     await geminiAdapter.initialize();
 
-    // Create storage adapter based on environment
-    const storage = createStorageAdapterFromEnv();
+    // Create storage adapters:
+    // - baseStorage: raw S3/local adapter for production paths (users/{userId}/chr/...)
+    // - scopedStorage: prefixed adapter for pipeline files (users/{userId}/easychr_files/...)
+    const baseStorage = createStorageAdapterFromEnv();
+    const intermediatesPrefix = `users/${config.userId}/easychr_files`;
+    const scopedStorage = new PrefixedStorageAdapter(baseStorage, intermediatesPrefix);
     const storageProvider = process.env.STORAGE_PROVIDER ?? 'local';
     const bucketName = process.env.BUCKET_NAME ?? '(none)';
-    console.log(`✓ Gemini adapter ready`);
-    console.log(`✓ Storage: provider=${storageProvider}, bucket=${bucketName}`);
-    console.log('');
+    logger.info({ storageProvider, bucketName, intermediatesPrefix }, 'Gemini adapter and storage ready');
 
-    // Step 2: Initialize Agentic Doctor with storage
-    console.log('[2/5] Initializing Agentic Doctor pipeline...');
-    const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter, storage);
+    // Step 2: Initialize Agentic Doctor with scoped storage
+    // All pipeline files (extracted.md, analysis.md, etc.) go under users/{userId}/easychr_files/
+    logger.info('[2/5] Initializing Agentic Doctor pipeline...');
+    const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter, scopedStorage);
     agenticDoctorUseCase.setBillingContext({
       userId: config.userId,
       chrId: config.chrId,
     });
     await agenticDoctorUseCase.initialize();
-    console.log('✓ Agentic Doctor ready');
-    console.log('');
+    logger.info('Agentic Doctor ready');
 
     // Step 3: Initialize N1 API adapter and fetch PDFs
     await notifyProgress(config, 'fetching_records');
-    console.log('[3/5] Fetching PDFs from N1 API...');
+    logger.info('[3/5] Fetching PDFs from N1 API...');
     const n1ApiAdapter = new N1ApiAdapter(config.n1ApiBaseUrl, config.n1ApiKey);
     const fetchAndProcessUseCase = new FetchAndProcessPDFsUseCase(n1ApiAdapter, agenticDoctorUseCase);
 
     // Step 4: Process PDFs through pipeline
     await notifyProgress(config, 'analyzing');
-    console.log('[4/5] Processing PDFs through multi-agent pipeline...');
+    logger.info('[4/5] Processing PDFs through multi-agent pipeline...');
     const generator = fetchAndProcessUseCase.execute(config.userId, config.prompt);
 
     for await (const event of generator) {
@@ -553,24 +611,24 @@ async function runJob() {
         const phaseStatus = 'status' in event ? event.status : '';
 
         if (phaseStatus === 'running' && phaseName && PHASE_PROGRESS_MAP[phaseName]) {
-          console.log(`  📋 Phase: ${phaseName}`);
+          logger.info({ phase: phaseName, status: 'running' }, `Phase started: ${phaseName}`);
           // Send granular progress update to N1 API
           await notifyPhaseProgress(config, phaseName);
         } else if (phaseStatus === 'completed') {
-          console.log(`  ✓ Phase completed: ${phaseName}`);
+          logger.info({ phase: phaseName, status: 'completed' }, `Phase completed: ${phaseName}`);
         } else if (phaseStatus === 'failed') {
-          console.log(`  ✗ Phase failed: ${phaseName}`);
+          logger.error({ phase: phaseName, status: 'failed' }, `Phase failed: ${phaseName}`);
         }
       } else if (event.type === 'thought') {
-        console.log(`  💭 ${'content' in event ? event.content : ''}`);
+        logger.debug({ eventType: 'thought' }, `${'content' in event ? event.content : ''}`);
       } else if (event.type === 'log') {
-        console.log(`  📝 ${'message' in event ? event.message : ''}`);
+        logger.info({ eventType: 'log' }, `${'message' in event ? event.message : ''}`);
       } else if (event.type === 'result') {
         realmPath = 'url' in event ? event.url : '';
-        console.log(`  ✓ Realm generated: ${realmPath}`);
+        logger.info({ realmPath }, 'Realm generated');
       } else if (event.type === 'error') {
         const errorMsg = 'content' in event ? event.content : 'Unknown error';
-        console.error(`  ✗ Error: ${errorMsg}`);
+        logger.error({ eventType: 'error' }, errorMsg);
         throw new Error(errorMsg);
       }
     }
@@ -580,64 +638,73 @@ async function runJob() {
     }
 
     await notifyProgress(config, 'generating_report');
-    console.log('✓ Processing complete');
-    console.log('');
+    logger.info('Processing complete');
 
     // Extract realm ID from path and read HTML from storage
     // realmPath format: "/realms/<uuid>/index.html"
     const realmId = realmPath.replace('/realms/', '').replace('/index.html', '');
     const storagePath = LegacyPaths.realm(realmId);
 
-    // Check if HTML exists in storage
-    const htmlExists = await storage.exists(storagePath);
+    // Check if HTML exists in scoped storage (where the pipeline wrote it)
+    const htmlExists = await scopedStorage.exists(storagePath);
     if (!htmlExists) {
-      throw new Error(`Generated HTML not found at: ${storagePath}`);
+      throw new Error(`Generated HTML not found at: ${intermediatesPrefix}/${storagePath}`);
     }
 
     let publicUrl = storagePath; // Default to storage path
 
     // Step 5: Upload to production path and get signed URL (skip in development)
     if (SKIP_UPLOADS) {
-      console.log('[5/5] Skipping production upload (ENVIRONMENT=development)');
-      console.log(`  Storage path: ${storagePath}`);
+      logger.info({ storagePath, environment: ENVIRONMENT }, '[5/5] Skipping production upload (development)');
     } else {
       await notifyProgress(config, 'uploading');
-      console.log('[5/5] Copying to production path and generating signed URL...');
+      logger.info('[5/5] Copying to production path and generating signed URL...');
 
-      // Read HTML from working storage
-      const htmlContent = await storage.readFileAsString(storagePath);
+      // Read HTML from scoped storage (where the pipeline wrote it)
+      let htmlContent = await scopedStorage.readFileAsString(storagePath);
+
+      // Inject Blindspot feedback widget (staging only)
+      htmlContent = injectBlindspotWidget(htmlContent);
 
       // Build production path: users/{userId}/chr/{chrId}/{filename}.html
       const rawFilename = config.chrFilename || 'report';
       const filename = path.basename(rawFilename, path.extname(rawFilename)) || 'report';
       const prodPath = ProductionPaths.userChr(config.userId, config.chrId, `${filename}.html`);
 
-      // Write to production path
-      console.log(`  Writing to: ${prodPath}`);
-      await storage.writeFile(prodPath, htmlContent, 'text/html');
+      // Write to production path using baseStorage (not scoped)
+      logger.info({ prodPath }, 'Writing to production path');
+      await withRetry(
+        () => baseStorage.writeFile(prodPath, htmlContent, 'text/html'),
+        {
+          ...REALM_CONFIG.retry.api,
+          maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_WRITE_RETRIES),
+          operationName: 'Storage.writeFile',
+        }
+      );
 
       // Verify the file was written successfully
-      const writeVerified = await storage.exists(prodPath);
+      const writeVerified = await baseStorage.exists(prodPath);
       if (!writeVerified) {
         throw new Error(`Failed to verify write to S3: ${prodPath}`);
       }
-      console.log(`  ✓ Write verified`);
+      logger.info({ prodPath }, 'Write verified');
 
       // Get signed URL for access
-      publicUrl = await storage.getSignedUrl(prodPath);
+      publicUrl = await withRetry(
+        () => baseStorage.getSignedUrl(prodPath),
+        {
+          ...REALM_CONFIG.retry.api,
+          maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_SIGNED_URL_RETRIES),
+          operationName: 'Storage.getSignedUrl',
+        }
+      );
 
-      console.log(`✓ Uploaded to production: ${prodPath}`);
-      console.log(`✓ Signed URL: ${publicUrl.substring(0, 80)}...`);
+      logger.info({ prodPath }, 'Uploaded to production');
     }
-    console.log('');
 
     // Success - notify completion
     await notifyProgress(config, 'completed');
-    console.log('================================================================================');
-    console.log('Job completed successfully!');
-    console.log(`Finished at: ${new Date().toISOString()}`);
-    console.log(`Output: ${publicUrl}`);
-    console.log('================================================================================');
+    logger.info({ finishedAt: new Date().toISOString(), outputUrl: publicUrl }, 'Job completed successfully');
 
     process.exit(0);
 
@@ -654,12 +721,13 @@ async function runJob() {
       errorInfo.errorCode
     );
 
-    console.error('');
-    console.error('================================================================================');
-    console.error('Job failed!');
-    console.error(`Failed at: ${new Date().toISOString()}`);
-    console.error('Error:', error);
-    console.error('================================================================================');
+    logger.error({
+      failedAt: new Date().toISOString(),
+      errorCode: errorInfo.errorCode,
+      retryable: errorInfo.retryable,
+      exitCode: errorInfo.exitCode,
+      err: error,
+    }, 'Job failed');
 
     process.exit(errorInfo.exitCode);
   }

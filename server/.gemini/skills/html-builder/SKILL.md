@@ -1,11 +1,13 @@
 ---
 name: html-builder
-description: Renders structured clinical data (JSON) into a visually stunning Health Realm HTML page. Data-driven - the JSON structure determines the HTML structure.
+description: Renders structured clinical data (JSON) into a visually stunning health report HTML page. Data-driven - the JSON structure determines the HTML structure.
 ---
 
-# Health Realm Renderer
+# N1 Care Report Renderer
 
-You are a **data-driven visual renderer** that transforms `structured_data.json` into a comprehensive, professional HTML health report.
+You are a **data-driven visual renderer** that transforms `structured_data.json` into a comprehensive, professional HTML health report branded as an **N1 Care Report**.
+
+**IMPORTANT:** Never use the word "Realm" anywhere in the output. The report title should be "N1 Care Report".
 
 ---
 
@@ -87,9 +89,50 @@ You receive `structured_data.json` with this structure:
 
 ## Rendering Rules
 
+### 0. Page Header (ALWAYS render this first)
+
+Every report MUST begin with the N1 Care Report header containing the inline SVG logo. Include this exactly:
+
+```html
+<header class="report-header">
+  <div class="header-brand">
+    <svg class="n1-logo" width="44" height="48" viewBox="0 0 88 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M6.08994 95.9974C6.08994 64.6049 6.08994 33.2124 6.10519 1.81992C6.10519 1.25514 5.75442 0.355668 6.33395 0.170022C7.12444 -0.0809925 8.0827 -0.109755 8.86811 0.470716C9.03586 0.596223 9.16804 0.774025 9.32054 0.923065C12.8841 4.40589 16.407 7.93316 20.024 11.3585C22.7411 13.9287 25.4253 16.533 28.117 19.1295C30.8418 21.7546 33.5717 24.372 36.2965 26.9972C38.8967 29.5021 41.5097 31.9966 44.115 34.5015C46.8423 37.124 49.6052 39.7048 52.2843 42.3797C54.5388 44.6283 56.8747 46.7933 59.2005 48.9636C59.7393 49.4656 59.963 49.9807 59.9605 50.7468C59.9325 59.3885 59.9452 68.0276 59.93 76.6693C59.93 77.017 60.1841 77.5295 59.7241 77.6995C59.3784 77.825 59.1878 77.3543 58.9565 77.1295C55.6547 73.929 52.4037 70.6763 49.0588 67.5256C46.4941 65.1069 43.9523 62.6621 41.4105 60.2174C38.9018 57.8014 36.3524 55.4298 33.8665 52.985C31.3908 50.5481 28.8262 48.2079 26.1548 45.6873V96H6.08994V95.9974Z" fill="#196067"/>
+      <path d="M63.9843 96C63.9843 70.2426 63.9767 44.4852 64.0122 18.7252C64.0122 17.5329 63.7182 17.2453 62.5779 17.2609C57.771 17.3289 52.959 17.2897 48 17.2897C48.8692 14.2828 49.7231 11.3726 50.5466 8.45464C51.2435 5.99421 51.9327 3.53378 52.5662 1.05504C52.7588 0.299393 53.0806 7.00232e-05 53.8433 7.00232e-05C63.551 0.0288317 73.2586 0.0575934 82.9663 7.00232e-05C84.1319 -0.00777407 83.9951 0.644533 83.9951 1.39234C83.99 32.9282 83.99 64.4615 83.99 95.9974H63.9843V96Z" fill="#196067"/>
+    </svg>
+    <h1>N1 Care Report</h1>
+  </div>
+</header>
+```
+
+Style the header:
+```css
+.report-header {
+  padding: 1.5rem 2rem;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid #196067;
+}
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.header-brand h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #196067;
+  margin: 0;
+}
+.n1-logo {
+  flex-shrink: 0;
+}
+```
+
+Also set `<title>N1 Care Report</title>` in the `<head>`.
+
 ### 1. Always Start with Executive Summary (if exists)
 
-If `executiveSummary` exists in the JSON, render it FIRST:
+If `executiveSummary` exists in the JSON, render it FIRST (after the page header):
 
 ```html
 <section class="executive-summary">
@@ -1650,6 +1693,7 @@ h1, h2, h3, h4 { font-family: 'Nunito', sans-serif; font-weight: 800; }
 - Do NOT hardcode sections - let the JSON drive structure
 - Do NOT output `{{...}}` placeholders - these are documentation only, substitute actual values
 - Do NOT leave any template syntax in the final HTML
+- Do NOT include patient PII (full name, date of birth, address, phone number, SSN, insurance ID, MRN) — use "Patient" instead of any real name. The HTML must contain only clinical data, never identifying information
 
 ---
 
@@ -1666,4 +1710,4 @@ Output ONLY the complete HTML file:
 - Search your output for `{{` - if found, you have placeholders that need to be replaced with actual values
 - Every `<p>`, `<span>`, `<div>` with content should have real text, not template syntax
 
-**Render the Health Realm now by iterating through structured_data.json and substituting actual values into the HTML.**
+**Render the N1 Care Report now by iterating through structured_data.json and substituting actual values into the HTML.**

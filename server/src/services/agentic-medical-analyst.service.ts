@@ -157,7 +157,7 @@ const ANALYST_TOOLS = [
   },
   {
     name: 'update_analysis',
-    description: 'Add new content or update a section of your analysis. You can specify a section to update, or append new content.',
+    description: 'Add new content or update a section of your analysis. You can specify a section to update, or append new content. IMPORTANT: When writing findings that include lab values, ALWAYS include the exact numeric value, the unit (e.g., mg/dL, mIU/L), the reference range (e.g., ref 70-100), and the status flag (H/L) if applicable. Format: "Marker: Value Unit (ref Range) Flag". Example: "HbA1c: 5.7 % (ref 4.0-5.6) *H"',
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -179,7 +179,7 @@ const ANALYST_TOOLS = [
   },
   {
     name: 'complete_analysis',
-    description: 'Signal that your analysis is complete. Only call this when you have thoroughly explored the data and built a comprehensive analysis.',
+    description: 'Signal that your analysis is complete. IMPORTANT: You must have written ALL required sections before calling this: Executive Summary, System-by-System Analysis, Medical History Timeline, Unified Root Cause Hypothesis, Causal Chain, Keystone Findings, Recommendations, and Missing Data. You must also have at least 3 of: Competing Hypotheses, Identified Diagnoses, Supplement Schedule, Prognosis, Questions for Doctor.',
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -451,6 +451,33 @@ function parseExtractedData(extractedContent: string): ParsedExtractedData {
 }
 
 // ============================================================================
+// Analysis Completion Requirements
+// ============================================================================
+
+// These map to downstream JSON fields the structurer must populate.
+// If the analyst skips these, the structurer either halluccinates or leaves them empty.
+const REQUIRED_SECTIONS: Array<{ key: string; alternatives?: string[]; label: string }> = [
+  { key: 'executive summary', label: 'Executive Summary' },
+  { key: 'system', label: 'System-by-System Analysis' },
+  { key: 'timeline', label: 'Medical History Timeline' },
+  { key: 'root cause', alternatives: ['unified'], label: 'Unified Root Cause Hypothesis' },
+  { key: 'causal chain', label: 'Causal Chain' },
+  { key: 'keystone', label: 'Keystone Findings' },
+  { key: 'recommendations', label: 'Recommendations' },
+  { key: 'missing data', alternatives: ['data gaps', 'blind spots'], label: 'Missing Data' },
+];
+
+const EXPECTED_SECTIONS: Array<{ key: string; alternatives?: string[]; label: string }> = [
+  { key: 'competing', alternatives: ['hypotheses'], label: 'Competing Hypotheses' },
+  { key: 'diagnoses', label: 'Identified Diagnoses' },
+  { key: 'supplement', alternatives: ['schedule'], label: 'Supplement Schedule' },
+  { key: 'prognosis', alternatives: ['outlook'], label: 'Prognosis / Future Outlook' },
+  { key: 'questions for doctor', alternatives: ['doctor questions'], label: 'Questions for Doctor' },
+];
+
+const MIN_EXPECTED_SECTIONS = 3;
+
+// ============================================================================
 // Tool Execution
 // ============================================================================
 
@@ -466,6 +493,16 @@ class AnalystToolExecutor {
 
   constructor(extractedContent: string) {
     this.parsedData = parseExtractedData(extractedContent);
+  }
+
+  // Check if any written section matches a key (fuzzy match via toLowerCase().includes())
+  private hasSectionMatching(key: string, alternatives?: string[]): boolean {
+    const keys = [key, ...(alternatives || [])];
+    for (const [sectionName] of this.currentAnalysis) {
+      const lower = sectionName.toLowerCase();
+      if (keys.some(k => lower.includes(k))) return true;
+    }
+    return false;
   }
 
   // Get coverage stats for enforcement
@@ -654,17 +691,12 @@ class AnalystToolExecutor {
     const stats = this.getCoverageStats();
     const issues: string[] = [];
 
-    // Minimum requirements
-    const MIN_DOCUMENT_COVERAGE = 50; // At least 50% of documents should be read
-    const MIN_ANALYSIS_SECTIONS = 5;  // At least 5 sections written
-    const MIN_SEARCHES = 3;           // At least 3 searches performed
+    // Minimum thresholds
+    const MIN_DOCUMENT_COVERAGE = 50;
+    const MIN_SEARCHES = 3;
 
     if (stats.documentCoverage < MIN_DOCUMENT_COVERAGE && stats.totalDocuments > 2) {
       issues.push(`Only ${stats.documentCoverage}% of documents read (${stats.documentsRead}/${stats.totalDocuments}). Read more documents before completing.`);
-    }
-
-    if (stats.analysisSections < MIN_ANALYSIS_SECTIONS) {
-      issues.push(`Only ${stats.analysisSections} analysis sections written. Need at least ${MIN_ANALYSIS_SECTIONS}. Required sections: Executive Summary, Key Patterns, Critical Findings, Recommendations, Timeline.`);
     }
 
     if (stats.searchesPerformed < MIN_SEARCHES) {
@@ -677,6 +709,35 @@ class AnalystToolExecutor {
 
     if (!stats.timelineExtracted && this.parsedData.timelineEvents.length > 0) {
       issues.push(`Timeline events not extracted. Call extract_timeline_events() to build the Medical History Timeline.`);
+    }
+
+    // Required section enforcement — these map to structurer JSON fields
+    const missingRequired: string[] = [];
+    for (const req of REQUIRED_SECTIONS) {
+      if (!this.hasSectionMatching(req.key, req.alternatives)) {
+        missingRequired.push(req.label);
+      }
+    }
+    if (missingRequired.length > 0) {
+      issues.push(
+        `Missing REQUIRED sections (${missingRequired.length}): ${missingRequired.join(', ')}. ` +
+        `Use update_analysis() to write each of these before completing.`
+      );
+    }
+
+    // Expected section enforcement — at least some of these should be covered
+    const missingExpected: string[] = [];
+    for (const exp of EXPECTED_SECTIONS) {
+      if (!this.hasSectionMatching(exp.key, exp.alternatives)) {
+        missingExpected.push(exp.label);
+      }
+    }
+    const expectedPresent = EXPECTED_SECTIONS.length - missingExpected.length;
+    if (expectedPresent < MIN_EXPECTED_SECTIONS) {
+      issues.push(
+        `Only ${expectedPresent}/${EXPECTED_SECTIONS.length} expected sections written (need at least ${MIN_EXPECTED_SECTIONS}). ` +
+        `Missing: ${missingExpected.join(', ')}. Write at least ${MIN_EXPECTED_SECTIONS - expectedPresent} more.`
+      );
     }
 
     // If there are issues, return them instead of completing
@@ -896,10 +957,30 @@ Use this history to identify trends (improving, worsening, stable) in your analy
       'Executive Summary',
       'At a Glance',
       'The Big Picture',
+      'Patient Context',
+      'Key Metrics',
       'Critical Findings',
       'Urgent Findings',
       'Key Patterns',
       'Primary Clinical Frames',
+      'System',
+      'Diagnoses',
+      'Timeline',
+      'Root Cause',
+      'Unified',
+      'Causal Chain',
+      'Keystone',
+      'Cross-System',
+      'Competing',
+      'Integrative',
+      'Prognosis',
+      'Outlook',
+      'Supplement',
+      'Lifestyle',
+      'Recommendations',
+      'Questions for Doctor',
+      'Missing Data',
+      'Data Gaps',
     ];
 
     const orderedSections: string[] = [];

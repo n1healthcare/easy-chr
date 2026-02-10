@@ -8,6 +8,8 @@ import path from 'path';
 import fs from 'fs';
 import { retryLLM } from '../../common/index.js';
 
+const DEFAULT_GEMINI_STREAM_TIMEOUT_MS = 120000;
+
 export class GeminiAdapter implements LLMClientPort {
   private config: Config | null = null;
   private chatSessions: Map<string, GeminiChat> = new Map();
@@ -133,19 +135,53 @@ export class GeminiAdapter implements LLMClientPort {
       }
     }
 
-    const stream = await retryLLM(
-      () => chat.sendMessageStream(modelConfigKey, parts, 'user-prompt-id', controller.signal),
-      { operationName: 'GeminiAdapter.sendMessageStream' }
-    );
+    const rawStreamTimeoutMs = process.env.GEMINI_STREAM_TIMEOUT_MS;
+    let streamTimeoutMs = DEFAULT_GEMINI_STREAM_TIMEOUT_MS;
+    if (rawStreamTimeoutMs) {
+      const parsedStreamTimeoutMs = Number(rawStreamTimeoutMs);
+      if (Number.isFinite(parsedStreamTimeoutMs) && parsedStreamTimeoutMs > 0) {
+        streamTimeoutMs = parsedStreamTimeoutMs;
+      }
+    }
+    // Per-chunk inactivity timeout: resets every time a chunk arrives.
+    // Detects stalled streams without killing long-running active generations.
+    let timeoutHandle = setTimeout(() => {
+      console.warn(`[GeminiAdapter] Stream stalled — no chunks received for ${streamTimeoutMs}ms; aborting.`);
+      controller.abort();
+    }, streamTimeoutMs);
+
+    function resetTimeout() {
+      clearTimeout(timeoutHandle);
+      timeoutHandle = setTimeout(() => {
+        console.warn(`[GeminiAdapter] Stream stalled — no chunks received for ${streamTimeoutMs}ms; aborting.`);
+        controller.abort();
+      }, streamTimeoutMs);
+    }
+
+    let stream: AsyncIterable<any>;
+    try {
+      stream = await retryLLM(
+        () => chat.sendMessageStream(modelConfigKey, parts, 'user-prompt-id', controller.signal),
+        { operationName: 'GeminiAdapter.sendMessageStream' }
+      );
+    } catch (error) {
+      clearTimeout(timeoutHandle);
+      throw error;
+    }
 
     async function* generator() {
-      for await (const event of stream) {
-        if (event.type === StreamEventType.CHUNK) {
-          const text = event.value.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (text) {
-            yield text;
+      try {
+        for await (const event of stream) {
+          if (event.type === StreamEventType.CHUNK) {
+            resetTimeout();
+            const text = event.value.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text) {
+              yield text;
+            }
           }
         }
+      } finally {
+        clearTimeout(timeoutHandle);
       }
     }
 
