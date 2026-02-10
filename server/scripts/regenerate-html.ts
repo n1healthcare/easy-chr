@@ -35,6 +35,35 @@ function loadSkill(skillName: string): string {
   }
 }
 
+async function streamWithRetry(
+  gemini: GeminiAdapter,
+  prompt: string,
+  sessionId: string,
+  model: string,
+  operationName: string,
+  maxRetries = 3
+): Promise<string> {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    attempt++;
+    let content = '';
+    try {
+      const stream = await gemini.sendMessageStream(prompt, `${sessionId}-${attempt}`, undefined, { model });
+      for await (const chunk of stream) {
+        content += chunk;
+      }
+      return content;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn(`  [${operationName}] Attempt ${attempt}/${maxRetries} failed: ${msg}`);
+      if (attempt >= maxRetries) throw error;
+      const waitMs = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+      await new Promise(resolve => setTimeout(resolve, waitMs));
+    }
+  }
+  return '';
+}
+
 async function regenerateHtml(userPrompt?: string) {
   const storageDir = path.join(process.cwd(), 'storage');
 
@@ -82,20 +111,7 @@ ${structuredDataContent}
   await gemini.initialize();
   const sessionId = uuidv4();
 
-  let htmlContent = '';
-  const stream = await gemini.sendMessageStream(
-    htmlPrompt,
-    `regenerate-${sessionId}`,
-    undefined,
-    { model: REALM_CONFIG.models.html }
-  );
-
-  process.stdout.write('Streaming: ');
-  for await (const chunk of stream) {
-    htmlContent += chunk;
-    process.stdout.write('.');
-  }
-  console.log(' Done!');
+  let htmlContent = await streamWithRetry(gemini, htmlPrompt, `regenerate-${sessionId}`, REALM_CONFIG.models.html, 'HTMLGeneration');
 
   // Clean up HTML
   htmlContent = htmlContent.trim();
@@ -206,19 +222,7 @@ ${htmlContent}
 
     console.log(`Reviewing HTML for completeness... (payload: ${Math.round(reviewPrompt.length / 1024)}KB)`);
 
-    let reviewContent = '';
-    const reviewStream = await gemini.sendMessageStream(
-      reviewPrompt,
-      `${sessionId}-content-review`,
-      undefined,
-      { model: REALM_CONFIG.models.doctor }
-    );
-
-    for await (const chunk of reviewStream) {
-      reviewContent += chunk;
-      process.stdout.write('.');
-    }
-    console.log(' Done!');
+    let reviewContent = await streamWithRetry(gemini, reviewPrompt, `${sessionId}-content-review`, REALM_CONFIG.models.doctor, 'ContentReview');
 
     if (reviewContent.trim().length === 0) {
       throw new Error('Content review returned empty');
@@ -385,19 +389,7 @@ ${structuredDataContent}
 
       console.log(`Regenerating HTML... (payload: ${Math.round(regenPrompt.length / 1024)}KB)`);
 
-      let regenHtml = '';
-      const regenStream = await gemini.sendMessageStream(
-        regenPrompt,
-        `${sessionId}-html-regen`,
-        undefined,
-        { model: REALM_CONFIG.models.html }
-      );
-
-      for await (const chunk of regenStream) {
-        regenHtml += chunk;
-        process.stdout.write('.');
-      }
-      console.log(' Done!');
+      let regenHtml = await streamWithRetry(gemini, regenPrompt, `${sessionId}-html-regen`, REALM_CONFIG.models.html, 'HTMLRegeneration');
 
       if (regenHtml.trim().length > 0) {
         // Clean up regenerated HTML
