@@ -101,6 +101,8 @@ const ENVIRONMENT = getEnvironment();
 const IS_DEVELOPMENT = ENVIRONMENT === 'development';
 const SKIP_UPLOADS = IS_DEVELOPMENT;
 const SKIP_PROGRESS_TRACKING = IS_DEVELOPMENT;
+const MIN_STORAGE_WRITE_RETRIES = 5;
+const MIN_SIGNED_URL_RETRIES = 3;
 
 // ============================================================================
 // Blindspot Feedback Widget (staging only)
@@ -669,7 +671,7 @@ async function runJob() {
         () => storage.writeFile(prodPath, htmlContent, 'text/html'),
         {
           ...REALM_CONFIG.retry.api,
-          maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, 5),
+          maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_WRITE_RETRIES),
           operationName: 'Storage.writeFile',
         }
       );
@@ -686,7 +688,7 @@ async function runJob() {
         () => storage.getSignedUrl(prodPath),
         {
           ...REALM_CONFIG.retry.api,
-          maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, 3),
+          maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_SIGNED_URL_RETRIES),
           operationName: 'Storage.getSignedUrl',
         }
       );

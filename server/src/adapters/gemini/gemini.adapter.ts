@@ -8,6 +8,8 @@ import path from 'path';
 import fs from 'fs';
 import { retryLLM } from '../../common/index.js';
 
+const DEFAULT_GEMINI_STREAM_TIMEOUT_MS = 120000;
+
 export class GeminiAdapter implements LLMClientPort {
   private config: Config | null = null;
   private chatSessions: Map<string, GeminiChat> = new Map();
@@ -133,10 +135,12 @@ export class GeminiAdapter implements LLMClientPort {
       }
     }
 
-    const configuredTimeoutMs = Number(process.env.GEMINI_STREAM_TIMEOUT_MS || '120000');
+    const configuredTimeoutMs = Number(
+      process.env.GEMINI_STREAM_TIMEOUT_MS || String(DEFAULT_GEMINI_STREAM_TIMEOUT_MS)
+    );
     const streamTimeoutMs = (
       Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
-    ) ? configuredTimeoutMs : 120000;
+    ) ? configuredTimeoutMs : DEFAULT_GEMINI_STREAM_TIMEOUT_MS;
     const timeoutHandle = setTimeout(() => {
       console.warn(`[GeminiAdapter] Stream timeout after ${streamTimeoutMs}ms; aborting request.`);
       controller.abort();

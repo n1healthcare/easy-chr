@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import { RETRY_WAIT_UPPER_LIMIT_SECONDS } from './common/retry.constants.js';
 
 // Load .env file from server root if not already loaded
 // Note: In this monorepo structure, CWD is often root, but we should be safe
@@ -12,8 +13,6 @@ interface RetryPreset {
   minWait: number; // seconds
   maxWait: number; // seconds
 }
-
-const RETRY_WAIT_UPPER_LIMIT_SECONDS = 600;
 
 function parseRetryMaxWait(value: string | undefined, fallbackSeconds: number): number {
   const parsed = Number(value);

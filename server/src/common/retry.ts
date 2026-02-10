@@ -10,6 +10,7 @@
 
 import { RetryableError, ValidationError } from './exceptions.js';
 import { REALM_CONFIG } from '../config.js';
+import { RETRY_WAIT_UPPER_LIMIT_SECONDS } from './retry.constants.js';
 
 // ============================================================================
 // Types
@@ -22,8 +23,6 @@ export interface RetryConfig {
   maxWait?: number; // seconds (hard-capped to 600s)
   operationName?: string;
 }
-
-const RETRY_WAIT_UPPER_LIMIT_SECONDS = 600;
 
 // ============================================================================
 // Error Classification

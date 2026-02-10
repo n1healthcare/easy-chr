@@ -1,0 +1,1 @@
+export const RETRY_WAIT_UPPER_LIMIT_SECONDS = 600;
