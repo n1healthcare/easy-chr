@@ -7,7 +7,7 @@
  * Phase 3: Research - Web search to validate claims with external sources → research.json
  * Phase 4: Data Structuring - LLM extracts chart-ready JSON (SOURCE OF TRUTH) → structured_data.json
  * Phase 5: Validation - LLM validates structured_data.json completeness → validation.md (with correction loop)
- * Phase 6: Realm Generation - LLM with html-builder skill → interactive Health Realm (index.html)
+ * Phase 6: Report Generation - LLM with html-builder skill → interactive N1 Care Report (index.html)
  * Phase 7: Content Review - LLM compares structured_data.json vs index.html for gaps → content_review.json
  * Phase 8: HTML Regeneration - If gaps found, LLM regenerates HTML with feedback
  */
@@ -877,8 +877,8 @@ This validation was performed using the AgenticValidator with tool-based explora
     // Uses sendMessageStream with html-builder skill
     // DATA-DRIVEN: structured_data.json is the ONLY source - JSON drives structure
     // ========================================================================
-    yield { type: 'step', name: 'Realm Generation', status: 'running' };
-    yield { type: 'log', message: 'Building your Health Realm...' };
+    yield { type: 'step', name: 'Report Generation', status: 'running' };
+    yield { type: 'log', message: 'Building your N1 Care Report...' };
 
     const realmId = sessionId;
     const realmPath = LegacyPaths.realm(realmId);
@@ -945,10 +945,10 @@ ${structuredDataContent}
 
       // Write HTML to file
       await this.storage.writeFile(realmPath, htmlContent, 'text/html');
-      console.log(`[AgenticDoctor] HTML Realm: ${htmlContent.length} chars`);
+      console.log(`[AgenticDoctor] HTML report: ${htmlContent.length} chars`);
 
       yield { type: 'log', message: 'Initial HTML generation complete.' };
-      yield { type: 'step', name: 'Realm Generation', status: 'completed' };
+      yield { type: 'step', name: 'Report Generation', status: 'completed' };
 
       // ========================================================================
       // Phase 7: Content Review
@@ -1245,15 +1245,15 @@ ${structuredDataContent}
       // Return the realm URL
       const realmUrl = `/realms/${realmId}/index.html`;
 
-      yield { type: 'log', message: `Health Realm ready: ${realmUrl}` };
+      yield { type: 'log', message: `N1 Care Report ready: ${realmUrl}` };
       yield { type: 'result', url: realmUrl };
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[AgenticDoctor] HTML generation failed:', errorMessage);
-      yield { type: 'log', message: `Realm generation failed: ${errorMessage}` };
-      yield { type: 'step', name: 'Realm Generation', status: 'failed' };
-      yield { type: 'error', content: `HTML realm generation failed: ${errorMessage}` };
+      yield { type: 'log', message: `Report generation failed: ${errorMessage}` };
+      yield { type: 'step', name: 'Report Generation', status: 'failed' };
+      yield { type: 'error', content: `Report generation failed: ${errorMessage}` };
     }
   }
 }
