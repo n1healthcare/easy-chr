@@ -57,7 +57,7 @@ export function setupOtel(): boolean {
 
     // Graceful shutdown — best-effort, never throws
     const shutdownHandler = () => {
-      sdk.shutdown().catch(() => {});
+      sdk.shutdown().catch((err) => { console.warn('[otel] Shutdown error (non-fatal):', err); });
     };
     process.on('SIGTERM', shutdownHandler);
     process.on('SIGINT', shutdownHandler);

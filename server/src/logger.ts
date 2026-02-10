@@ -44,15 +44,17 @@ function initLogger(): PinoLogger | null {
           options: { colorize: true, translateTime: 'HH:MM:ss' },
         };
       } catch {
-        // pino-pretty not available in dev — use JSON (fine)
+        // pino-pretty not available in dev — use JSON
+        console.warn('[logger] pino-pretty not found, using JSON output in development.');
       }
     }
 
     _rootLogger = pino.default ? pino.default(options) : pino(options);
     _pinoAvailable = true;
     return _rootLogger;
-  } catch {
+  } catch (err) {
     // pino not available — fall through to console fallback
+    console.warn(`[logger] pino not available, using console fallback: ${err instanceof Error ? err.message : String(err)}`);
     _pinoAvailable = false;
     return null;
   }
