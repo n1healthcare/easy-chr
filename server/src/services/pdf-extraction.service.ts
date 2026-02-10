@@ -89,6 +89,7 @@ interface InternalExtractionEvent {
 
 // Legacy constants - now driven by REALM_CONFIG.throttle.pdfExtraction
 const getThrottleConfig = () => REALM_CONFIG.throttle.pdfExtraction;
+const PDFJS_VERBOSITY_ERRORS_ONLY = 0; // pdf.js VerbosityLevel.ERRORS
 
 // ============================================================================
 // Service Implementation
@@ -247,7 +248,13 @@ export class PDFExtractionService {
     const pages: Buffer[] = [];
 
     // pdf-to-img returns an async iterable of page images
-    const document = await pdf(pdfBuffer, { scale: 2.0 }); // Higher scale for better quality
+    const document = await pdf(pdfBuffer, {
+      scale: 2.0, // Higher scale for better quality
+      docInitParams: {
+        // Suppress non-fatal pdf.js warnings (e.g. JPX/OpenJPEG/font warnings) that spam logs.
+        verbosity: PDFJS_VERBOSITY_ERRORS_ONLY,
+      },
+    });
 
     for await (const page of document) {
       pages.push(page);
