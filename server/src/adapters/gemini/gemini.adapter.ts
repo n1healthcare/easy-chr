@@ -143,10 +143,20 @@ export class GeminiAdapter implements LLMClientPort {
         streamTimeoutMs = parsedStreamTimeoutMs;
       }
     }
-    const timeoutHandle = setTimeout(() => {
-      console.warn(`[GeminiAdapter] Stream timeout after ${streamTimeoutMs}ms; aborting request.`);
+    // Per-chunk inactivity timeout: resets every time a chunk arrives.
+    // Detects stalled streams without killing long-running active generations.
+    let timeoutHandle = setTimeout(() => {
+      console.warn(`[GeminiAdapter] Stream stalled — no chunks received for ${streamTimeoutMs}ms; aborting.`);
       controller.abort();
     }, streamTimeoutMs);
+
+    function resetTimeout() {
+      clearTimeout(timeoutHandle);
+      timeoutHandle = setTimeout(() => {
+        console.warn(`[GeminiAdapter] Stream stalled — no chunks received for ${streamTimeoutMs}ms; aborting.`);
+        controller.abort();
+      }, streamTimeoutMs);
+    }
 
     let stream: AsyncIterable<any>;
     try {
@@ -163,6 +173,7 @@ export class GeminiAdapter implements LLMClientPort {
       try {
         for await (const event of stream) {
           if (event.type === StreamEventType.CHUNK) {
+            resetTimeout();
             const text = event.value.candidates?.[0]?.content?.parts?.[0]?.text;
             if (text) {
               yield text;
