@@ -98,14 +98,6 @@ export class GeminiAdapter implements LLMClientPort {
     };
 
     const controller = new AbortController();
-    const configuredTimeoutMs = Number(process.env.GEMINI_STREAM_TIMEOUT_MS || '120000');
-    const streamTimeoutMs = (
-      Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
-    ) ? configuredTimeoutMs : 120000;
-    const timeoutHandle = setTimeout(() => {
-      console.warn(`[GeminiAdapter] Stream timeout after ${streamTimeoutMs}ms; aborting request.`);
-      controller.abort();
-    }, streamTimeoutMs);
 
     let parts: any[] = [{ text: message }];
 
@@ -140,6 +132,15 @@ export class GeminiAdapter implements LLMClientPort {
         });
       }
     }
+
+    const configuredTimeoutMs = Number(process.env.GEMINI_STREAM_TIMEOUT_MS || '120000');
+    const streamTimeoutMs = (
+      Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
+    ) ? configuredTimeoutMs : 120000;
+    const timeoutHandle = setTimeout(() => {
+      console.warn(`[GeminiAdapter] Stream timeout after ${streamTimeoutMs}ms; aborting request.`);
+      controller.abort();
+    }, streamTimeoutMs);
 
     let stream: AsyncIterable<any>;
     try {
