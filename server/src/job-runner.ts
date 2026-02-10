@@ -101,6 +101,57 @@ const SKIP_UPLOADS = IS_DEVELOPMENT;
 const SKIP_PROGRESS_TRACKING = IS_DEVELOPMENT;
 
 // ============================================================================
+// Blindspot Feedback Widget (staging only)
+// ============================================================================
+
+function injectBlindspotWidget(html: string): string {
+  if (ENVIRONMENT !== 'staging') return html;
+
+  try {
+    const widget = `<!-- Blindspot: n1healthcare/easy-chr -->
+  <script async src="https://pub-566620c016dc4a40b7335d3f5e387a0e.r2.dev/blindspot.min.js"></script>
+  <script>
+    (function initializeBlindspot() {
+      var maxRetries = 10;
+      var retryCount = 0;
+      var retryDelay = 500;
+
+      function tryInitialize() {
+        if (typeof Blindspot !== 'undefined' && Blindspot.init) {
+          try {
+            Blindspot.init({
+              siteId: 'f3739d9a-fbb0-403c-a1f2-52fcc0203a23',
+              color: '#1B6971',
+              text: 'Report issue'
+            });
+          } catch (e) {
+            console.error('[Blindspot] Initialization failed:', e.message);
+          }
+        } else if (retryCount < maxRetries) {
+          retryCount++;
+          setTimeout(tryInitialize, retryDelay);
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', tryInitialize);
+      } else {
+        setTimeout(tryInitialize, 100);
+      }
+      window.addEventListener('load', tryInitialize);
+    })();
+  </script>`;
+
+    const idx = html.lastIndexOf('</body>');
+    if (idx === -1) return html + widget;
+    return html.slice(0, idx) + widget + '\n' + html.slice(idx);
+  } catch {
+    console.warn('[Blindspot] Failed to inject widget, returning original HTML');
+    return html;
+  }
+}
+
+// ============================================================================
 // Progress Notification via N1 API
 // ============================================================================
 
@@ -600,7 +651,10 @@ async function runJob() {
       logger.info('[5/5] Copying to production path and generating signed URL...');
 
       // Read HTML from working storage
-      const htmlContent = await storage.readFileAsString(storagePath);
+      let htmlContent = await storage.readFileAsString(storagePath);
+
+      // Inject Blindspot feedback widget (staging only)
+      htmlContent = injectBlindspotWidget(htmlContent);
 
       // Build production path: users/{userId}/chr/{chrId}/{filename}.html
       const rawFilename = config.chrFilename || 'report';
