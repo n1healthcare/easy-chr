@@ -248,7 +248,7 @@ export class AgenticDoctorUseCase {
             yield { type: 'log', message: event.data.message || '' };
           } else if (event.type === 'page_complete') {
             const pageMessage = event.data.message
-              || `[${event.data.fileName}] Page ${event.data.pageNumber}/${event.data.totalPages} processed`;
+              || `Page ${event.data.pageNumber}/${event.data.totalPages} processed`;
             yield {
               type: 'log',
               message: `[${event.data.fileName}] ${pageMessage}`
