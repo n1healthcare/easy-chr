@@ -76,6 +76,7 @@ import { RetryableError, ValidationError } from './common/exceptions.js';
 import { withRetry } from './common/retry.js';
 import { REALM_CONFIG } from './config.js';
 import { createStorageAdapterFromEnv } from './adapters/storage/storage.factory.js';
+import { PrefixedStorageAdapter } from './adapters/storage/prefixed-storage.adapter.js';
 import { LegacyPaths, ProductionPaths } from './common/storage-paths.js';
 import type { StoragePort } from './application/ports/storage.port.js';
 import { getLogger, createChildLogger, type AppLogger } from './logger.js';
@@ -571,15 +572,20 @@ async function runJob() {
     const geminiAdapter = new GeminiAdapter();
     await geminiAdapter.initialize();
 
-    // Create storage adapter based on environment
-    const storage = createStorageAdapterFromEnv();
+    // Create storage adapters:
+    // - baseStorage: raw S3/local adapter for production paths (users/{userId}/chr/...)
+    // - scopedStorage: prefixed adapter for pipeline files (users/{userId}/easychr_files/...)
+    const baseStorage = createStorageAdapterFromEnv();
+    const intermediatesPrefix = `users/${config.userId}/easychr_files`;
+    const scopedStorage = new PrefixedStorageAdapter(baseStorage, intermediatesPrefix);
     const storageProvider = process.env.STORAGE_PROVIDER ?? 'local';
     const bucketName = process.env.BUCKET_NAME ?? '(none)';
-    logger.info({ storageProvider, bucketName }, 'Gemini adapter and storage ready');
+    logger.info({ storageProvider, bucketName, intermediatesPrefix }, 'Gemini adapter and storage ready');
 
-    // Step 2: Initialize Agentic Doctor with storage
+    // Step 2: Initialize Agentic Doctor with scoped storage
+    // All pipeline files (extracted.md, analysis.md, etc.) go under users/{userId}/easychr_files/
     logger.info('[2/5] Initializing Agentic Doctor pipeline...');
-    const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter, storage);
+    const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter, scopedStorage);
     agenticDoctorUseCase.setBillingContext({
       userId: config.userId,
       chrId: config.chrId,
@@ -639,10 +645,10 @@ async function runJob() {
     const realmId = realmPath.replace('/realms/', '').replace('/index.html', '');
     const storagePath = LegacyPaths.realm(realmId);
 
-    // Check if HTML exists in storage
-    const htmlExists = await storage.exists(storagePath);
+    // Check if HTML exists in scoped storage (where the pipeline wrote it)
+    const htmlExists = await scopedStorage.exists(storagePath);
     if (!htmlExists) {
-      throw new Error(`Generated HTML not found at: ${storagePath}`);
+      throw new Error(`Generated HTML not found at: ${intermediatesPrefix}/${storagePath}`);
     }
 
     let publicUrl = storagePath; // Default to storage path
@@ -654,8 +660,8 @@ async function runJob() {
       await notifyProgress(config, 'uploading');
       logger.info('[5/5] Copying to production path and generating signed URL...');
 
-      // Read HTML from working storage
-      let htmlContent = await storage.readFileAsString(storagePath);
+      // Read HTML from scoped storage (where the pipeline wrote it)
+      let htmlContent = await scopedStorage.readFileAsString(storagePath);
 
       // Inject Blindspot feedback widget (staging only)
       htmlContent = injectBlindspotWidget(htmlContent);
@@ -665,10 +671,10 @@ async function runJob() {
       const filename = path.basename(rawFilename, path.extname(rawFilename)) || 'report';
       const prodPath = ProductionPaths.userChr(config.userId, config.chrId, `${filename}.html`);
 
-      // Write to production path
+      // Write to production path using baseStorage (not scoped)
       logger.info({ prodPath }, 'Writing to production path');
       await withRetry(
-        () => storage.writeFile(prodPath, htmlContent, 'text/html'),
+        () => baseStorage.writeFile(prodPath, htmlContent, 'text/html'),
         {
           ...REALM_CONFIG.retry.api,
           maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_WRITE_RETRIES),
@@ -677,7 +683,7 @@ async function runJob() {
       );
 
       // Verify the file was written successfully
-      const writeVerified = await storage.exists(prodPath);
+      const writeVerified = await baseStorage.exists(prodPath);
       if (!writeVerified) {
         throw new Error(`Failed to verify write to S3: ${prodPath}`);
       }
@@ -685,7 +691,7 @@ async function runJob() {
 
       // Get signed URL for access
       publicUrl = await withRetry(
-        () => storage.getSignedUrl(prodPath),
+        () => baseStorage.getSignedUrl(prodPath),
         {
           ...REALM_CONFIG.retry.api,
           maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_SIGNED_URL_RETRIES),

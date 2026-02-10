@@ -18,6 +18,8 @@ export type { LocalStorageConfig } from './local-storage.adapter.js';
 export { S3StorageAdapter } from './s3-storage.adapter.js';
 export type { S3StorageConfig } from './s3-storage.adapter.js';
 
+export { PrefixedStorageAdapter } from './prefixed-storage.adapter.js';
+
 // Factory
 export {
   createStorageAdapter,
