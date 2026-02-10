@@ -247,12 +247,15 @@ export class AgenticDoctorUseCase {
           if (event.type === 'log' || event.type === 'progress') {
             yield { type: 'log', message: event.data.message || '' };
           } else if (event.type === 'page_complete') {
+            const pageMessage = event.data.message
+              || `[${event.data.fileName}] Page ${event.data.pageNumber}/${event.data.totalPages} processed`;
             yield {
               type: 'log',
-              message: `[${event.data.fileName}] Page ${event.data.pageNumber}/${event.data.totalPages} extracted`
+              message: `[${event.data.fileName}] ${pageMessage}`
             };
           } else if (event.type === 'error') {
-            yield { type: 'log', message: `Warning: ${event.data.message}` };
+            const errorDetails = event.data.error ? ` (${event.data.error})` : '';
+            yield { type: 'log', message: `Warning: ${event.data.message}${errorDetails}` };
           }
         }
 
