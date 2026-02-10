@@ -20,6 +20,12 @@ export class PrefixedStorageAdapter implements StoragePort {
   ) {}
 
   private prefixed(path: string): string {
+    if (path.includes('..')) {
+      throw new Error('Path traversal using ".." is not allowed.');
+    }
+    if (path.startsWith('/')) {
+      throw new Error('Absolute paths are not allowed.');
+    }
     if (!this.prefix) return path;
     return `${this.prefix}/${path}`.replace(/\/+/g, '/');
   }
