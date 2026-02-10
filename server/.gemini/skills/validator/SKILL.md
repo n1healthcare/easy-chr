@@ -384,6 +384,7 @@ When a question is provided:
 - Recommendations with weak but present links
 
 **NEEDS REVISION:**
+- **Patient PII present** (full name, DOB, address, phone, SSN, insurance ID, MRN found in JSON)
 - Missing critical lab values (especially abnormal ones)
 - Missing symptoms the patient reported
 - Missing medications that affect interpretation
@@ -409,13 +410,19 @@ When a question is provided:
 - Quantify what's missing
 
 **Prioritize by patient safety:**
-1. Missing abnormal values (dangerous)
-2. Missing medications (affects interpretation)
-3. Unsupported treatment recommendations
-4. Missing symptoms patient reported
-5. Calculation errors
-6. Lost context
-7. Missing normal values (least critical)
+1. **Patient PII exposure** — Scan the JSON for any patient identifiers: full name, date of birth, home address, phone number, SSN, insurance ID, MRN. For EACH instance found, report an issue with:
+   - The exact JSON field path (e.g., `executiveSummary.shortAnswer`)
+   - The PII value found (e.g., `"John Smith"`)
+   - The replacement text (e.g., `"Patient"` for names, remove entirely for SSN/address/phone)
+   - Example issue description: `PII: Patient name "John Smith" found in executiveSummary.shortAnswer — replace with "Patient"`
+   Flag every PII instance as severity: critical, category: inconsistency.
+2. Missing abnormal values (dangerous)
+3. Missing medications (affects interpretation)
+4. Unsupported treatment recommendations
+5. Missing symptoms patient reported
+6. Calculation errors
+7. Lost context
+8. Missing normal values (least critical)
 
 **Think like a patient advocate:**
 - Would a patient be misled by this analysis?

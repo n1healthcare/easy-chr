@@ -30,6 +30,7 @@ Output:
 - **NEVER invent values, dates, markers, or findings**
 - If a section has no data, use empty arrays `[]` or `null`
 - Your output drives the HTML generation - only include what's actually present
+- **NEVER include patient PII** (full name, date of birth, address, phone number, SSN, insurance ID, MRN). Use "Patient" instead of any real name. Strip all identifying information — only clinical data should appear in the JSON
 
 ---
 
