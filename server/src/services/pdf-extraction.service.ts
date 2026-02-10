@@ -72,13 +72,14 @@ interface PageExtractionResult {
 
 // Internal event type for extractSinglePDF (includes result for page_complete events)
 interface InternalExtractionEvent {
-  type: 'log' | 'page_complete';
+  type: 'log' | 'page_complete' | 'error';
   data: {
     fileName: string;
     pageNumber?: number;
     totalPages?: number;
     message: string;
     result?: PageExtractionResult;
+    error?: string;
   };
 }
 
@@ -138,6 +139,7 @@ export class PDFExtractionService {
 
     let totalPagesExtracted = 0;
     let successCount = 0;
+    let extractionErrorCount = 0;
 
     // Process each PDF file
     for (const pdfPath of pdfPaths) {
@@ -160,16 +162,40 @@ export class PDFExtractionService {
             }
           }
 
+          if (event.type === 'error') {
+            extractionErrorCount++;
+            contentBuffer.push(
+              this.buildExtractionErrorComment(
+                event.data.fileName,
+                event.data.error || event.data.message,
+                event.data.pageNumber
+              )
+            );
+          }
+
           // Forward progress events
-          yield {
-            type: event.type,
-            data: {
-              fileName: event.data.fileName,
-              pageNumber: event.data.pageNumber,
-              totalPages: event.data.totalPages,
-              message: event.data.message,
-            }
-          };
+          if (event.type === 'error') {
+            yield {
+              type: 'error',
+              data: {
+                fileName: event.data.fileName,
+                pageNumber: event.data.pageNumber,
+                totalPages: event.data.totalPages,
+                message: event.data.message,
+                error: event.data.error || event.data.message,
+              }
+            };
+          } else {
+            yield {
+              type: event.type,
+              data: {
+                fileName: event.data.fileName,
+                pageNumber: event.data.pageNumber,
+                totalPages: event.data.totalPages,
+                message: event.data.message,
+              }
+            };
+          }
         }
 
         yield {
@@ -179,9 +205,8 @@ export class PDFExtractionService {
 
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-
-        // Add error note to buffer
-        contentBuffer.push(`\n<!-- ERROR: Failed to process ${fileName}: ${errorMessage} -->\n\n`);
+        extractionErrorCount++;
+        contentBuffer.push(this.buildExtractionErrorComment(fileName, errorMessage));
 
         yield {
           type: 'error',
@@ -195,11 +220,11 @@ export class PDFExtractionService {
     }
 
     // Add footer with final stats
-    contentBuffer.push(this.buildFooter(totalPagesExtracted, successCount));
+    contentBuffer.push(this.buildFooter(totalPagesExtracted, successCount, extractionErrorCount));
 
     // Write all content at once to storage
     const fullContent = contentBuffer.join('');
-    await this.storage.writeFile(LegacyPaths.extracted, fullContent);
+    await this.storage.writeFile(LegacyPaths.extracted, fullContent, 'text/markdown');
     console.log(`[PDFExtraction] Wrote ${fullContent.length} chars to ${LegacyPaths.extracted}`);
 
     yield {
@@ -242,7 +267,6 @@ export class PDFExtractionService {
     };
 
     // Process pages in batches with rate limiting from config
-    const results: PageExtractionResult[] = [];
     const throttle = getThrottleConfig();
     const batchSize = throttle.maxConcurrent;
 
@@ -274,8 +298,6 @@ export class PDFExtractionService {
 
       // Yield results for each page
       for (const result of batchResults) {
-        results.push(result);
-
         yield {
           type: 'page_complete',
           data: {
@@ -288,6 +310,19 @@ export class PDFExtractionService {
             result,
           }
         };
+
+        if (!result.success) {
+          yield {
+            type: 'error',
+            data: {
+              fileName,
+              pageNumber: result.pageNumber,
+              totalPages,
+              message: `Extraction failed for page ${result.pageNumber}/${totalPages}`,
+              error: result.error || 'Unknown extraction error',
+            }
+          };
+        }
       }
 
       // Add delay between batches to avoid rate limits (except for last batch)
@@ -383,11 +418,30 @@ export class PDFExtractionService {
   /**
    * Build the footer content with final stats
    */
-  private buildFooter(totalPages: number, successCount: number): string {
+  private buildFooter(totalPages: number, successCount: number, extractionErrorCount: number): string {
     let footer = '';
     footer += `<!-- END EXTRACTION -->\n`;
     footer += `<!-- Total Pages: ${totalPages} | Successful: ${successCount} -->\n`;
+    footer += `<!-- Extraction Errors: ${extractionErrorCount} -->\n`;
     footer += `<!-- Extraction completed at: ${new Date().toISOString()} -->\n`;
     return footer;
+  }
+
+  /**
+   * Build a structured extraction failure HTML comment.
+   */
+  private buildExtractionErrorComment(fileName: string, errorMessage: string, pageNumber?: number): string {
+    const safeFileName = fileName
+      .replace(/\s+/g, ' ')
+      .replace(/--/g, '- -')
+      .replace(/"/g, '\'')
+      .trim();
+    const safeMessage = errorMessage
+      .replace(/\s+/g, ' ')
+      .replace(/--/g, '- -')
+      .replace(/"/g, '\'')
+      .trim();
+    const pageSegment = pageNumber !== undefined ? ` page="${pageNumber}"` : '';
+    return `<!-- EXTRACTION_ERROR file="${safeFileName}"${pageSegment} message="${safeMessage}" -->\n`;
   }
 }

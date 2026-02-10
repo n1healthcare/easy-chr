@@ -98,6 +98,14 @@ export class GeminiAdapter implements LLMClientPort {
     };
 
     const controller = new AbortController();
+    const configuredTimeoutMs = Number(process.env.GEMINI_STREAM_TIMEOUT_MS || '120000');
+    const streamTimeoutMs = (
+      Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
+    ) ? configuredTimeoutMs : 120000;
+    const timeoutHandle = setTimeout(() => {
+      console.warn(`[GeminiAdapter] Stream timeout after ${streamTimeoutMs}ms; aborting request.`);
+      controller.abort();
+    }, streamTimeoutMs);
 
     let parts: any[] = [{ text: message }];
 
@@ -133,19 +141,29 @@ export class GeminiAdapter implements LLMClientPort {
       }
     }
 
-    const stream = await retryLLM(
-      () => chat.sendMessageStream(modelConfigKey, parts, 'user-prompt-id', controller.signal),
-      { operationName: 'GeminiAdapter.sendMessageStream' }
-    );
+    let stream: AsyncIterable<any>;
+    try {
+      stream = await retryLLM(
+        () => chat.sendMessageStream(modelConfigKey, parts, 'user-prompt-id', controller.signal),
+        { operationName: 'GeminiAdapter.sendMessageStream' }
+      );
+    } catch (error) {
+      clearTimeout(timeoutHandle);
+      throw error;
+    }
 
     async function* generator() {
-      for await (const event of stream) {
-        if (event.type === StreamEventType.CHUNK) {
-          const text = event.value.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (text) {
-            yield text;
+      try {
+        for await (const event of stream) {
+          if (event.type === StreamEventType.CHUNK) {
+            const text = event.value.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text) {
+              yield text;
+            }
           }
         }
+      } finally {
+        clearTimeout(timeoutHandle);
       }
     }
 

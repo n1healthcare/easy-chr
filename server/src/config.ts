@@ -10,6 +10,17 @@ interface RetryPreset {
   maxRetries: number;
   baseMultiplier: number; // seconds
   minWait: number; // seconds
+  maxWait: number; // seconds
+}
+
+const RETRY_WAIT_UPPER_LIMIT_SECONDS = 600;
+
+function parseRetryMaxWait(value: string | undefined, fallbackSeconds: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return Math.min(fallbackSeconds, RETRY_WAIT_UPPER_LIMIT_SECONDS);
+  }
+  return Math.min(parsed, RETRY_WAIT_UPPER_LIMIT_SECONDS);
 }
 
 export const REALM_CONFIG = {
@@ -35,18 +46,21 @@ export const REALM_CONFIG = {
       maxRetries: 8,
       baseMultiplier: 10, // seconds
       minWait: 0.5, // seconds
+      maxWait: parseRetryMaxWait(process.env.LLM_RETRY_MAX_WAIT_SECONDS, 600),
     } satisfies RetryPreset,
     // API calls: moderate retries
     api: {
       maxRetries: 3,
       baseMultiplier: 5,
       minWait: 0.5,
+      maxWait: parseRetryMaxWait(process.env.API_RETRY_MAX_WAIT_SECONDS, 120),
     } satisfies RetryPreset,
     // Vision API calls: balance between LLM and API
     vision: {
       maxRetries: 5,
       baseMultiplier: 5,
       minWait: 0.5,
+      maxWait: parseRetryMaxWait(process.env.VISION_RETRY_MAX_WAIT_SECONDS, 180),
     } satisfies RetryPreset,
   },
   throttle: {

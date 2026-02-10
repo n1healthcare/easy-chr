@@ -73,6 +73,8 @@ import { N1ApiAdapter } from './adapters/n1-api/n1-api.adapter.js';
 import { AgenticDoctorUseCase } from './application/use-cases/agentic-doctor.use-case.js';
 import { FetchAndProcessPDFsUseCase } from './application/use-cases/fetch-and-process-pdfs.use-case.js';
 import { RetryableError, ValidationError } from './common/exceptions.js';
+import { withRetry } from './common/retry.js';
+import { REALM_CONFIG } from './config.js';
 import { createStorageAdapterFromEnv } from './adapters/storage/storage.factory.js';
 import { LegacyPaths, ProductionPaths } from './common/storage-paths.js';
 import type { StoragePort } from './application/ports/storage.port.js';
@@ -663,7 +665,14 @@ async function runJob() {
 
       // Write to production path
       logger.info({ prodPath }, 'Writing to production path');
-      await storage.writeFile(prodPath, htmlContent, 'text/html');
+      await withRetry(
+        () => storage.writeFile(prodPath, htmlContent, 'text/html'),
+        {
+          ...REALM_CONFIG.retry.api,
+          maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, 5),
+          operationName: 'Storage.writeFile',
+        }
+      );
 
       // Verify the file was written successfully
       const writeVerified = await storage.exists(prodPath);
@@ -673,7 +682,14 @@ async function runJob() {
       logger.info({ prodPath }, 'Write verified');
 
       // Get signed URL for access
-      publicUrl = await storage.getSignedUrl(prodPath);
+      publicUrl = await withRetry(
+        () => storage.getSignedUrl(prodPath),
+        {
+          ...REALM_CONFIG.retry.api,
+          maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, 3),
+          operationName: 'Storage.getSignedUrl',
+        }
+      );
 
       logger.info({ prodPath }, 'Uploaded to production');
     }
