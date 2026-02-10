@@ -33,6 +33,7 @@ import {
   createGoogleGenAI,
   type BillingContext,
 } from '../utils/genai-factory.js';
+import { ChatCompressionService } from './chat-compression.service.js';
 
 // ============================================================================
 // Skill Loader
@@ -1093,10 +1094,12 @@ ${issueList}`;
 export class AgenticValidator {
   private genai: GoogleGenAI;
   private model: string;
+  private compressionService: ChatCompressionService;
 
   constructor(billingContext?: BillingContext) {
     this.genai = createGoogleGenAI(billingContext);
     this.model = REALM_CONFIG.models.doctor;
+    this.compressionService = new ChatCompressionService(this.genai, billingContext);
     console.log(`[AgenticValidator] Initialized with model: ${this.model}`);
   }
 
@@ -1118,7 +1121,7 @@ export class AgenticValidator {
 
     const systemPrompt = this.buildSystemPrompt(patientContext);
 
-    const conversationHistory: Array<{
+    let conversationHistory: Array<{
       role: string;
       parts: Array<{ text?: string; functionCall?: unknown; functionResponse?: unknown }>;
     }> = [
@@ -1145,6 +1148,29 @@ export class AgenticValidator {
         type: 'log',
         data: { message: `Validation cycle ${iteration}/${maxIterations}...`, iteration },
       };
+
+      // Compress conversation history if it has grown too large
+      const compression = await this.compressionService.compressIfNeeded(
+        conversationHistory,
+        {
+          phase: 'validator',
+          externalState: toolExecutor.getIssues().length > 0
+            ? `## Tracked Issues (stored externally)\n${toolExecutor.getIssues().map((issue, i) =>
+                `${i + 1}. [${issue.severity.toUpperCase()}] ${issue.category}: ${issue.description}`
+              ).join('\n')}`
+            : undefined,
+        },
+      );
+      if (compression.compressed) {
+        conversationHistory = compression.newHistory;
+        yield {
+          type: 'log',
+          data: {
+            message: `[Compression] History compressed: ~${compression.originalTokenEstimate} -> ~${compression.newTokenEstimate} tokens`,
+            iteration,
+          },
+        };
+      }
 
       try {
         // Use limited retries (3 total attempts) to fail fast and skip validation
