@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import { RETRY_WAIT_UPPER_LIMIT_SECONDS } from './common/retry.constants.js';
 
 // Load .env file from server root if not already loaded
 // Note: In this monorepo structure, CWD is often root, but we should be safe
@@ -10,6 +11,13 @@ interface RetryPreset {
   maxRetries: number;
   baseMultiplier: number; // seconds
   minWait: number; // seconds
+  maxWait: number; // seconds
+}
+
+function parseRetryMaxWait(value: string | undefined, fallbackSeconds: number): number {
+  const parsed = Number(value);
+  const effectiveValue = Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackSeconds;
+  return Math.min(effectiveValue, RETRY_WAIT_UPPER_LIMIT_SECONDS);
 }
 
 export const REALM_CONFIG = {
@@ -35,18 +43,21 @@ export const REALM_CONFIG = {
       maxRetries: 8,
       baseMultiplier: 10, // seconds
       minWait: 0.5, // seconds
+      maxWait: parseRetryMaxWait(process.env.LLM_RETRY_MAX_WAIT_SECONDS, 600),
     } satisfies RetryPreset,
     // API calls: moderate retries
     api: {
       maxRetries: 3,
       baseMultiplier: 5,
       minWait: 0.5,
+      maxWait: parseRetryMaxWait(process.env.API_RETRY_MAX_WAIT_SECONDS, 120),
     } satisfies RetryPreset,
     // Vision API calls: balance between LLM and API
     vision: {
       maxRetries: 5,
       baseMultiplier: 5,
       minWait: 0.5,
+      maxWait: parseRetryMaxWait(process.env.VISION_RETRY_MAX_WAIT_SECONDS, 180),
     } satisfies RetryPreset,
   },
   throttle: {

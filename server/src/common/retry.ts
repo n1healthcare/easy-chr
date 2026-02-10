@@ -10,6 +10,7 @@
 
 import { RetryableError, ValidationError } from './exceptions.js';
 import { REALM_CONFIG } from '../config.js';
+import { RETRY_WAIT_UPPER_LIMIT_SECONDS } from './retry.constants.js';
 
 // ============================================================================
 // Types
@@ -19,6 +20,7 @@ export interface RetryConfig {
   maxRetries: number;
   baseMultiplier: number; // seconds
   minWait: number; // seconds
+  maxWait?: number; // seconds (hard-capped to 600s)
   operationName?: string;
 }
 
@@ -150,13 +152,23 @@ function getSafeErrorSummary(error: unknown): string {
 /**
  * Calculates wait time with exponential backoff and jitter.
  *
- * Formula: max(minWait, baseMultiplier * 2^attempt * (0.5 + random(0, 0.5)))
+ * Formula: clamp(max(minWait, baseMultiplier * 2^attempt * jitter), minWait, maxWait)
  */
 function calculateWaitTime(attempt: number, config: RetryConfig): number {
+  const configuredMaxWait = config.maxWait;
+  const maxWait = (
+    typeof configuredMaxWait === 'number' &&
+    Number.isFinite(configuredMaxWait) &&
+    configuredMaxWait > 0
+  )
+    ? Math.min(configuredMaxWait, RETRY_WAIT_UPPER_LIMIT_SECONDS)
+    : RETRY_WAIT_UPPER_LIMIT_SECONDS;
+
   const exponentialWait = config.baseMultiplier * Math.pow(2, attempt);
   const jitter = 0.5 + Math.random() * 0.5; // 0.5 to 1.0
   const waitTime = exponentialWait * jitter;
-  return Math.max(config.minWait, waitTime);
+  const minWait = Math.min(config.minWait, maxWait);
+  return Math.min(maxWait, Math.max(minWait, waitTime));
 }
 
 /**
