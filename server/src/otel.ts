@@ -47,9 +47,17 @@ export function setupOtel(): boolean {
       url: endpoint,
     });
 
+    const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
+    const spanProcessor = new BatchSpanProcessor(traceExporter, {
+      maxQueueSize: 4096,
+      maxExportBatchSize: 256,
+      scheduledDelayMillis: 2000,
+      exportTimeoutMillis: 60000,
+    });
+
     const sdk = new NodeSDK({
       resource,
-      traceExporter,
+      spanProcessors: [spanProcessor],
       instrumentations: [new HttpInstrumentation()],
     });
 
