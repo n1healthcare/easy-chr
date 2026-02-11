@@ -168,27 +168,14 @@ describe('processInBatches', () => {
     ).rejects.toThrow('processor failed');
   });
 
-  it('processes items in correct batch groups', async () => {
-    const batchGroups: number[][] = [];
-    let currentBatch: number[] = [];
-    let batchIndex = 0;
-
+  it('preserves result order across multiple batches', async () => {
     const config: ThrottleConfig = {
       maxConcurrent: 3,
       delayBetweenBatchesMs: 50,
       delayBetweenRequestsMs: 0,
     };
 
-    // Use 7 items with maxConcurrent 3: batches of [3, 3, 1]
-    await processInBatches(
-      [1, 2, 3, 4, 5, 6, 7],
-      async (item) => {
-        return item;
-      },
-      config,
-    );
-
-    // Verify result order is preserved
+    // 7 items with maxConcurrent 3 = batches of [3, 3, 1]
     const results = await processInBatches(
       [10, 20, 30, 40, 50, 60, 70],
       async (item) => item + 1,

@@ -148,6 +148,12 @@ describe('PathUtils', () => {
     it('returns empty string for bare filename', () => {
       expect(PathUtils.dirname('file.txt')).toBe('');
     });
+
+    it('returns empty string for root path (known limitation)', () => {
+      // NOTE: dirname('/') returns '' rather than '/' due to simple split/pop/join impl.
+      // This is acceptable since storage paths never use bare '/' as input.
+      expect(PathUtils.dirname('/')).toBe('');
+    });
   });
 
   describe('join', () => {
