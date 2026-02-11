@@ -9,7 +9,7 @@
  */
 
 import type { Logger as PinoLogger } from 'pino';
-import { sanitizeLogMessage } from './utils/pii-sanitizer.js';
+import { sanitizeLogMessage, sanitizeObjectValues } from './utils/pii-sanitizer.js';
 
 let _rootLogger: PinoLogger | null = null;
 let _pinoAvailable = false;
@@ -36,7 +36,7 @@ function initLogger(): PinoLogger | null {
         level: (label: string) => ({ level: label.toUpperCase() }),
       },
       hooks: {
-        // Sanitize PII from log messages before serialization
+        // Sanitize PII from log messages and objects before serialization
         logMethod(
           this: PinoLogger,
           inputArgs: [Record<string, unknown> | string, ...unknown[]],
@@ -45,8 +45,11 @@ function initLogger(): PinoLogger | null {
           // pino calling convention: (msg), (obj, msg), (obj, msg, ...interpolation)
           if (inputArgs.length > 0 && typeof inputArgs[0] === 'string') {
             inputArgs[0] = sanitizeLogMessage(inputArgs[0]);
-          } else if (inputArgs.length > 1 && typeof inputArgs[1] === 'string') {
-            inputArgs[1] = sanitizeLogMessage(inputArgs[1] as string);
+          } else if (inputArgs.length > 0 && typeof inputArgs[0] === 'object' && inputArgs[0] !== null) {
+            inputArgs[0] = sanitizeObjectValues(inputArgs[0] as Record<string, unknown>);
+            if (inputArgs.length > 1 && typeof inputArgs[1] === 'string') {
+              inputArgs[1] = sanitizeLogMessage(inputArgs[1] as string);
+            }
           }
           method.apply(this, inputArgs as unknown[]);
         },
@@ -81,7 +84,13 @@ function initLogger(): PinoLogger | null {
  * Sanitize string arguments for PII before passing to console methods.
  */
 function sanitizeArgs(args: unknown[]): unknown[] {
-  return args.map((arg) => (typeof arg === 'string' ? sanitizeLogMessage(arg) : arg));
+  return args.map((arg) => {
+    if (typeof arg === 'string') return sanitizeLogMessage(arg);
+    if (typeof arg === 'object' && arg !== null && !Array.isArray(arg)) {
+      return sanitizeObjectValues(arg as Record<string, unknown>);
+    }
+    return arg;
+  });
 }
 
 /**

@@ -36,14 +36,15 @@ const PATTERNS: Array<{ regex: RegExp; replacement: string }> = [
   },
   // Names in assignment/log format (safe — requires explicit label)
   {
-    regex: /\b(first_name|last_name|patient_name|user_name|full_name|name)\s*[=:]\s*['"]?([A-Za-z][A-Za-z\s]*?)['"]?(?=\s|,|$|\)|\]|})/gi,
-    replacement: '$1=[REDACTED-NAME]',
+    regex: /\b(first_name|last_name|patient_name|user_name|full_name|name)(\s*[=:]\s*)['"]?([A-Za-z][A-Za-z\s]*?)['"]?(?=\s|,|$|\)|\]|})/gi,
+    replacement: '$1$2[REDACTED-NAME]',
   },
 ];
 
 // Keys that should be fully redacted when found in objects
 const SENSITIVE_KEYS = new Set([
   'email',
+  'name',
   'first_name',
   'last_name',
   'phone',
