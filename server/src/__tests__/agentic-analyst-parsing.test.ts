@@ -447,7 +447,7 @@ describe('applyPatientContext', () => {
     expect(result).toBe('Simple prompt with no conditionals.');
   });
 
-  it('handles empty patient context string as truthy (still substitutes)', () => {
+  it('handles empty patient context string as falsy (removes block)', () => {
     // Empty string is falsy in JS, so it takes the else branch
     const result = applyPatientContext(templateWithConditional, '');
     // Empty string is falsy, so the conditional block is removed
