@@ -258,7 +258,7 @@ const ANALYST_TOOLS = [
  * Extract dates from text using multiple patterns
  * Returns dates in ISO format (YYYY-MM-DD, YYYY-MM, or YYYY)
  */
-function extractDatesFromText(text: string): Array<{ date: string; year: number; month?: number; day?: number; context: string }> {
+export function extractDatesFromText(text: string): Array<{ date: string; year: number; month?: number; day?: number; context: string }> {
   const dates: Array<{ date: string; year: number; month?: number; day?: number; context: string }> = [];
   const lines = text.split('\n');
 
@@ -334,7 +334,7 @@ function extractDatesFromText(text: string): Array<{ date: string; year: number;
 /**
  * Parse extracted content into sections with temporal awareness
  */
-function parseExtractedData(extractedContent: string): ParsedExtractedData {
+export function parseExtractedData(extractedContent: string): ParsedExtractedData {
   const sections: DocumentSection[] = [];
   const lines = extractedContent.split('\n');
 
@@ -1264,21 +1264,24 @@ export class AgenticMedicalAnalyst {
 
   private buildSystemPrompt(patientContext?: string): string {
     // Load the comprehensive skill from file (includes task instructions and placeholders)
-    let prompt = loadMedicalAnalysisSkill();
+    const prompt = loadMedicalAnalysisSkill();
+    return applyPatientContext(prompt, patientContext);
+  }
+}
 
-    // Substitute the {{patient_question}} placeholder in SKILL.md
-    // This ensures patient context appears BEFORE "Begin Exploration" command
-    if (patientContext) {
-      // Remove the {{#if}} and {{/if}} markers, keep the content, substitute the variable
-      prompt = prompt
-        .replace(/\{\{#if patient_question\}\}/g, '')
-        .replace(/\{\{\/if\}\}/g, '')
-        .replace(/\{\{patient_question\}\}/g, patientContext);
-    } else {
-      // Remove the entire conditional block if no patient context
-      prompt = prompt.replace(/\{\{#if patient_question\}\}[\s\S]*?\{\{\/if\}\}/g, '');
-    }
-
-    return prompt;
+/**
+ * Apply patient context to a skill template.
+ * Exported for testing the template substitution logic independently.
+ */
+export function applyPatientContext(prompt: string, patientContext?: string): string {
+  if (patientContext) {
+    // Remove the {{#if}} and {{/if}} markers, keep the content, substitute the variable
+    return prompt
+      .replace(/\{\{#if patient_question\}\}/g, '')
+      .replace(/\{\{\/if\}\}/g, '')
+      .replace(/\{\{patient_question\}\}/g, patientContext);
+  } else {
+    // Remove the entire conditional block if no patient context
+    return prompt.replace(/\{\{#if patient_question\}\}[\s\S]*?\{\{\/if\}\}/g, '');
   }
 }

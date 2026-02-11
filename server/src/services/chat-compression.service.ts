@@ -63,7 +63,7 @@ export interface CompressionContext {
 const ASCII_TOKENS_PER_CHAR = 0.25;
 const NON_ASCII_TOKENS_PER_CHAR = 1.3;
 
-function estimateTokenCount(history: ConversationEntry[]): number {
+export function estimateTokenCount(history: ConversationEntry[]): number {
   let tokens = 0;
   for (const entry of history) {
     const serialized = JSON.stringify(entry);
@@ -93,7 +93,7 @@ function estimateTokenCount(history: ConversationEntry[]): number {
  * @param compressFraction - Fraction of history to compress (e.g., 0.7 = oldest 70%)
  * @returns Index to split at (compress [0, index), keep [index, end))
  */
-function findSplitPoint(
+export function findSplitPoint(
   contents: ConversationEntry[],
   compressFraction: number,
 ): number {
@@ -139,7 +139,7 @@ function findSplitPoint(
 // Compression Prompt
 // ============================================================================
 
-function getMedicalCompressionPrompt(phase: 'analyst' | 'validator'): string {
+export function getMedicalCompressionPrompt(phase: 'analyst' | 'validator'): string {
   if (phase === 'validator') {
     return `You are a conversation history compressor for a medical data validation agent.
 
