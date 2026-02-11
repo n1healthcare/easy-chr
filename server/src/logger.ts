@@ -9,6 +9,7 @@
  */
 
 import type { Logger as PinoLogger } from 'pino';
+import { sanitizeLogMessage, sanitizeObjectValues } from './utils/pii-sanitizer.js';
 
 let _rootLogger: PinoLogger | null = null;
 let _pinoAvailable = false;
@@ -33,6 +34,25 @@ function initLogger(): PinoLogger | null {
       timestamp: () => `,"timestamp":"${new Date().toISOString()}"`,
       formatters: {
         level: (label: string) => ({ level: label.toUpperCase() }),
+      },
+      hooks: {
+        // Sanitize PII from log messages and objects before serialization
+        logMethod(
+          this: PinoLogger,
+          inputArgs: [Record<string, unknown> | string, ...unknown[]],
+          method: (...args: unknown[]) => void,
+        ) {
+          // pino calling convention: (msg), (obj, msg), (obj, msg, ...interpolation)
+          if (inputArgs.length > 0 && typeof inputArgs[0] === 'string') {
+            inputArgs[0] = sanitizeLogMessage(inputArgs[0]);
+          } else if (inputArgs.length > 0 && typeof inputArgs[0] === 'object' && inputArgs[0] !== null) {
+            inputArgs[0] = sanitizeObjectValues(inputArgs[0] as Record<string, unknown>);
+            if (inputArgs.length > 1 && typeof inputArgs[1] === 'string') {
+              inputArgs[1] = sanitizeLogMessage(inputArgs[1] as string);
+            }
+          }
+          method.apply(this, inputArgs as unknown[]);
+        },
       },
     };
 
@@ -61,28 +81,41 @@ function initLogger(): PinoLogger | null {
 }
 
 /**
+ * Sanitize string arguments for PII before passing to console methods.
+ */
+function sanitizeArgs(args: unknown[]): unknown[] {
+  return args.map((arg) => {
+    if (typeof arg === 'string') return sanitizeLogMessage(arg);
+    if (typeof arg === 'object' && arg !== null && !Array.isArray(arg)) {
+      return sanitizeObjectValues(arg as Record<string, unknown>);
+    }
+    return arg;
+  });
+}
+
+/**
  * Console-based fallback logger that matches the pino interface.
- * Used when pino is not available.
+ * Used when pino is not available. Includes PII sanitization.
  */
 const consoleFallback = {
-  info: (...args: unknown[]) => console.log('[INFO]', ...args),
-  warn: (...args: unknown[]) => console.warn('[WARN]', ...args),
-  error: (...args: unknown[]) => console.error('[ERROR]', ...args),
-  debug: (...args: unknown[]) => console.debug('[DEBUG]', ...args),
-  fatal: (...args: unknown[]) => console.error('[FATAL]', ...args),
-  trace: (...args: unknown[]) => console.debug('[TRACE]', ...args),
+  info: (...args: unknown[]) => console.log('[INFO]', ...sanitizeArgs(args)),
+  warn: (...args: unknown[]) => console.warn('[WARN]', ...sanitizeArgs(args)),
+  error: (...args: unknown[]) => console.error('[ERROR]', ...sanitizeArgs(args)),
+  debug: (...args: unknown[]) => console.debug('[DEBUG]', ...sanitizeArgs(args)),
+  fatal: (...args: unknown[]) => console.error('[FATAL]', ...sanitizeArgs(args)),
+  trace: (...args: unknown[]) => console.debug('[TRACE]', ...sanitizeArgs(args)),
   child: (bindings: Record<string, unknown>) => {
     // Return a new fallback that prefixes bindings
     const prefix = Object.entries(bindings)
       .map(([k, v]) => `${k}=${v}`)
       .join(' ');
     return {
-      info: (...args: unknown[]) => console.log(`[INFO] [${prefix}]`, ...args),
-      warn: (...args: unknown[]) => console.warn(`[WARN] [${prefix}]`, ...args),
-      error: (...args: unknown[]) => console.error(`[ERROR] [${prefix}]`, ...args),
-      debug: (...args: unknown[]) => console.debug(`[DEBUG] [${prefix}]`, ...args),
-      fatal: (...args: unknown[]) => console.error(`[FATAL] [${prefix}]`, ...args),
-      trace: (...args: unknown[]) => console.debug(`[TRACE] [${prefix}]`, ...args),
+      info: (...args: unknown[]) => console.log(`[INFO] [${prefix}]`, ...sanitizeArgs(args)),
+      warn: (...args: unknown[]) => console.warn(`[WARN] [${prefix}]`, ...sanitizeArgs(args)),
+      error: (...args: unknown[]) => console.error(`[ERROR] [${prefix}]`, ...sanitizeArgs(args)),
+      debug: (...args: unknown[]) => console.debug(`[DEBUG] [${prefix}]`, ...sanitizeArgs(args)),
+      fatal: (...args: unknown[]) => console.error(`[FATAL] [${prefix}]`, ...sanitizeArgs(args)),
+      trace: (...args: unknown[]) => console.debug(`[TRACE] [${prefix}]`, ...sanitizeArgs(args)),
       child: (moreBindings: Record<string, unknown>) =>
         consoleFallback.child({ ...bindings, ...moreBindings }),
     };
