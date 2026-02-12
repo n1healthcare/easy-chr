@@ -24,6 +24,7 @@ import {
   type BillingContext,
 } from '../utils/genai-factory.js';
 import { ChatCompressionService } from './chat-compression.service.js';
+import type { AnalysisMode } from '../domain/types.js';
 
 // ============================================================================
 // Skill Loader
@@ -517,6 +518,10 @@ const QUESTION_DRIVEN_EXPECTED_SECTIONS: Array<{ key: string; alternatives?: str
 
 const QUESTION_DRIVEN_MIN_EXPECTED = 1;
 
+// Coverage thresholds per mode
+const COMPREHENSIVE_MIN_DOCUMENT_COVERAGE = 50;
+const FOCUSED_MIN_DOCUMENT_COVERAGE = 30;
+
 // ============================================================================
 // Tool Execution
 // ============================================================================
@@ -532,9 +537,9 @@ class AnalystToolExecutor {
   private dateRangeChecked: boolean = false;
   private timelineExtracted: boolean = false;
 
-  constructor(extractedContent: string, hasPatientQuestion: boolean = false) {
+  constructor(extractedContent: string, mode: 'focused' | 'comprehensive' = 'comprehensive') {
     this.parsedData = parseExtractedData(extractedContent);
-    this.questionDriven = hasPatientQuestion;
+    this.questionDriven = mode === 'focused';
   }
 
   // Check if any written section matches a key (fuzzy match via toLowerCase().includes())
@@ -733,8 +738,7 @@ class AnalystToolExecutor {
     const stats = this.getCoverageStats();
     const issues: string[] = [];
 
-    // Thresholds adapt based on whether patient asked a specific question
-    const MIN_DOCUMENT_COVERAGE = this.questionDriven ? 30 : 50;
+    const MIN_DOCUMENT_COVERAGE = this.questionDriven ? FOCUSED_MIN_DOCUMENT_COVERAGE : COMPREHENSIVE_MIN_DOCUMENT_COVERAGE;
     const MIN_SEARCHES = 3;
 
     if (stats.documentCoverage < MIN_DOCUMENT_COVERAGE && stats.totalDocuments > 2) {
@@ -1121,20 +1125,21 @@ export class AgenticMedicalAnalyst {
   async *analyze(
     extractedContent: string,
     patientContext?: string,
-    maxIterations: number = 50
+    analysisMode?: AnalysisMode
   ): AsyncGenerator<AnalystEvent, string, unknown> {
-    const hasPatientQuestion = !!patientContext && !isDefaultPrompt(patientContext);
-    const toolExecutor = new AnalystToolExecutor(extractedContent, hasPatientQuestion);
+    const mode = analysisMode?.mode ?? 'comprehensive';
+    const maxIterations = analysisMode?.maxIterations ?? 50;
+    const toolExecutor = new AnalystToolExecutor(extractedContent, mode);
 
-    console.log(`[AgenticAnalyst] Analysis mode: ${hasPatientQuestion ? 'question-driven' : 'comprehensive'}`);
+    console.log(`[AgenticAnalyst] Analysis mode: ${mode}`);
 
     yield {
       type: 'log',
-      data: { message: `Starting agentic medical analysis (${hasPatientQuestion ? 'question-driven' : 'comprehensive'})...` },
+      data: { message: `Starting agentic medical analysis (${mode})...` },
     };
 
     // Build the system prompt
-    const systemPrompt = this.buildSystemPrompt(patientContext);
+    const systemPrompt = this.buildSystemPrompt(patientContext, analysisMode);
 
     // Conversation history for multi-turn
     let conversationHistory: Array<{
@@ -1394,14 +1399,15 @@ export class AgenticMedicalAnalyst {
     return finalAnalysis;
   }
 
-  private buildSystemPrompt(patientContext?: string): string {
+  private buildSystemPrompt(patientContext?: string, analysisMode?: AnalysisMode): string {
     // Load the comprehensive skill from file (includes task instructions and placeholders)
     const prompt = loadMedicalAnalysisSkill();
     let result = applyPatientContext(prompt, patientContext);
 
-    // When the patient asks a specific question (not a default prompt), inject
-    // stronger scoping instructions so the LLM focuses depth over breadth.
-    if (patientContext && !isDefaultPrompt(patientContext)) {
+    // When the orchestrator determined focused mode, inject stronger scoping
+    // instructions so the LLM focuses depth over breadth.
+    if (analysisMode?.mode === 'focused') {
+      const maxIter = analysisMode.maxIterations;
       result += `
 
 ---
@@ -1412,7 +1418,7 @@ The patient asked a specific question. Your analysis should be **focused on answ
 
 ### What changes:
 1. **Depth over breadth** — Go DEEP on topics relevant to the patient's question. Skip unrelated body systems.
-2. **Fewer cycles** — Aim for ~18 iterations, not 35. Spend them on the question topic.
+2. **Fewer cycles** — Aim for ~${maxIter} iterations. Spend them on the question topic.
 3. **Required sections**: Executive Summary, Focused Analysis (on the question topic), Recommendations, Other Notable Findings
 4. **Safety net REQUIRED** — Write an "Other Notable Findings" section listing any CRITICAL or URGENT values you encounter outside the question's scope (one-liners only).
 

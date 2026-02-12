@@ -35,6 +35,15 @@ import type { BillingContext } from '../../utils/billing.js';
 export type { RealmGenerationEvent };
 
 // ============================================================================
+// Analysis Mode Constants
+// ============================================================================
+
+const FOCUSED_ANALYSIS_MAX_ITERATIONS = 18;
+const COMPREHENSIVE_ANALYSIS_MAX_ITERATIONS = 35;
+const FOCUSED_VALIDATOR_MAX_ITERATIONS = 10;
+const COMPREHENSIVE_VALIDATOR_MAX_ITERATIONS = 15;
+
+// ============================================================================
 // Skill Loaders
 // ============================================================================
 
@@ -329,8 +338,8 @@ export class AgenticDoctorUseCase {
     const isFocused = !!prompt && !isDefaultPrompt(prompt);
     const analysisMode: AnalysisMode = {
       mode: isFocused ? 'focused' : 'comprehensive',
-      maxIterations: isFocused ? 18 : 35,
-      validatorMaxIterations: isFocused ? 10 : 15,
+      maxIterations: isFocused ? FOCUSED_ANALYSIS_MAX_ITERATIONS : COMPREHENSIVE_ANALYSIS_MAX_ITERATIONS,
+      validatorMaxIterations: isFocused ? FOCUSED_VALIDATOR_MAX_ITERATIONS : COMPREHENSIVE_VALIDATOR_MAX_ITERATIONS,
     };
 
     console.log(`[AgenticDoctor] Analysis mode: ${analysisMode.mode} (maxIter=${analysisMode.maxIterations}, validatorIter=${analysisMode.validatorMaxIterations})`);
@@ -356,7 +365,7 @@ export class AgenticDoctorUseCase {
       const analysisGenerator = agenticAnalyst.analyze(
         allExtractedContent,
         prompt, // Patient context/question
-        analysisMode.maxIterations
+        analysisMode
       );
 
       // Consume the generator and capture the return value

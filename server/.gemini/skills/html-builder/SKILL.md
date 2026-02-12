@@ -1478,8 +1478,8 @@ Render this section when `safetyNet.urgentFindings` exists and has items. It sur
   <div class="safety-net-findings">
     <!-- For each item in safetyNet.urgentFindings -->
     <div class="safety-net-item {{severity}}">
-      <div class="safety-net-finding">Finding description</div>
-      <div class="safety-net-recommendation">Recommendation text</div>
+      <div class="safety-net-finding">{{finding}}</div>
+      <div class="safety-net-recommendation">{{recommendation}}</div>
     </div>
   </div>
 </div>
@@ -1487,10 +1487,10 @@ Render this section when `safetyNet.urgentFindings` exists and has items. It sur
 
 ```css
 .safety-net-section {
-  background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+  background: linear-gradient(135deg, var(--warning-bg, #FFFBEB) 0%, var(--warning-light, #FEF3C7) 100%);
   border-radius: 28px;
   padding: 35px;
-  border: 2px solid #F59E0B;
+  border: 2px solid var(--warning, #F59E0B);
   margin: 40px 0;
 }
 
@@ -1503,16 +1503,16 @@ Render this section when `safetyNet.urgentFindings` exists and has items. It sur
 
 .safety-net-icon {
   font-size: 1.8rem;
-  color: #D97706;
+  color: var(--warning-dark, #D97706);
 }
 
 .safety-net-header h2 {
-  color: #92400E;
+  color: var(--warning-darker, #92400E);
   margin: 0;
 }
 
 .safety-net-note {
-  color: #78350F;
+  color: var(--warning-darker, #78350F);
   font-size: 0.95rem;
   margin-bottom: 20px;
   font-style: italic;
@@ -1528,22 +1528,22 @@ Render this section when `safetyNet.urgentFindings` exists and has items. It sur
   background: white;
   border-radius: 16px;
   padding: 18px 22px;
-  border-left: 4px solid #F59E0B;
+  border-left: 4px solid var(--warning, #F59E0B);
 }
 
 .safety-net-item.critical {
-  border-left-color: #EF4444;
-  background: linear-gradient(135deg, white 0%, #FEF2F2 100%);
+  border-left-color: var(--danger, #EF4444);
+  background: linear-gradient(135deg, white 0%, var(--danger-bg, #FEF2F2) 100%);
 }
 
 .safety-net-finding {
   font-weight: 700;
-  color: #1E293B;
+  color: var(--text-main, #1E293B);
   margin-bottom: 6px;
 }
 
 .safety-net-recommendation {
-  color: #64748B;
+  color: var(--text-muted, #64748B);
   font-size: 0.9rem;
 }
 ```
