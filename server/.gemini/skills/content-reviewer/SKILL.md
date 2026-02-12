@@ -358,6 +358,18 @@ You will receive:
 
 ---
 
+## Question-Driven Analysis Adjustment
+
+When the structured data contains a `safetyNet` field or the analysis was clearly focused on a specific patient question:
+
+- **Do NOT flag missing comprehensive sections as failures.** A question-driven analysis intentionally skips unrelated body systems.
+- **DO check the patient's question is thoroughly answered** — this is even MORE important in question-driven mode.
+- **DO check that `safetyNet` is present** if the structured data contains critical findings outside the question scope.
+- **DO check detail fidelity** for the focus area — values, units, reference ranges must be preserved.
+- **Relax content completeness** — missing categories like `systemsHealth`, `lifestyleOptimizations`, or `integrativeReasoning` are expected when the analysis is focused.
+
+---
+
 ## Remember
 
 You are evaluating FOUR things, in order of priority:

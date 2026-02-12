@@ -21,18 +21,27 @@ import type { StoragePort } from '../ports/storage.port.js';
 import { LegacyPaths } from '../../common/storage-paths.js';
 import { readFileWithEncoding } from '../../../vendor/gemini-cli/packages/core/src/utils/fileUtils.js';
 import { PDFExtractionService } from '../../services/pdf-extraction.service.js';
-import { AgenticMedicalAnalyst, type AnalystEvent } from '../../services/agentic-medical-analyst.service.js';
+import { AgenticMedicalAnalyst, type AnalystEvent, isDefaultPrompt } from '../../services/agentic-medical-analyst.service.js';
 import { AgenticValidator, type ValidatorEvent } from '../../services/agentic-validator.service.js';
 import { researchClaims, formatResearchAsMarkdown, type ResearchOutput, type ResearchEvent } from '../../services/research-agent.service.js';
 import { REALM_CONFIG } from '../../config.js';
 import { extractSourceExcerpts, extractLabSections } from '../../utils/source-excerpts.js';
 import { deepMergeJsonPatch } from '../../utils/json-patch-merge.js';
-import type { RealmGenerationEvent } from '../../domain/types.js';
+import type { RealmGenerationEvent, AnalysisMode } from '../../domain/types.js';
 // Note: Retry logic is handled at the adapter level (GeminiAdapter.sendMessageStream)
 // No need to wrap LLM calls here - they are already protected by retryLLM in the adapter
 import type { BillingContext } from '../../utils/billing.js';
 
 export type { RealmGenerationEvent };
+
+// ============================================================================
+// Analysis Mode Constants
+// ============================================================================
+
+const FOCUSED_ANALYSIS_MAX_ITERATIONS = 18;
+const COMPREHENSIVE_ANALYSIS_MAX_ITERATIONS = 35;
+const FOCUSED_VALIDATOR_MAX_ITERATIONS = 10;
+const COMPREHENSIVE_VALIDATOR_MAX_ITERATIONS = 15;
 
 // ============================================================================
 // Skill Loaders
@@ -323,13 +332,33 @@ export class AgenticDoctorUseCase {
     yield { type: 'log', message: `Extraction complete. Output: ${LegacyPaths.extracted}` };
 
     // ========================================================================
+    // Mode Detection: Focused vs Comprehensive
+    // Detect whether the patient asked a specific question or wants a full report
+    // ========================================================================
+    const isFocused = !!prompt && !isDefaultPrompt(prompt);
+    const analysisMode: AnalysisMode = isFocused
+      ? {
+          mode: 'focused',
+          maxIterations: FOCUSED_ANALYSIS_MAX_ITERATIONS,
+          validatorMaxIterations: FOCUSED_VALIDATOR_MAX_ITERATIONS,
+        }
+      : {
+          mode: 'comprehensive',
+          maxIterations: COMPREHENSIVE_ANALYSIS_MAX_ITERATIONS,
+          validatorMaxIterations: COMPREHENSIVE_VALIDATOR_MAX_ITERATIONS,
+        };
+
+    console.log(`[AgenticDoctor] Analysis mode: ${analysisMode.mode} (maxIter=${analysisMode.maxIterations}, validatorIter=${analysisMode.validatorMaxIterations})`);
+    yield { type: 'log', message: `Analysis mode: ${analysisMode.mode}` };
+
+    // ========================================================================
     // Phase 2: Agentic Medical Analysis
     // Uses iterative tool-based exploration instead of single-pass analysis
     // The agent explores the data, forms hypotheses, seeks evidence, and builds
     // comprehensive analysis through multiple exploration cycles
     // ========================================================================
     yield { type: 'step', name: 'Medical Analysis', status: 'running' };
-    yield { type: 'log', message: 'Starting agentic medical analysis...' };
+    yield { type: 'log', message: `Starting agentic medical analysis (${analysisMode.mode})...` };
 
     let analysisContent = '';
 
@@ -342,7 +371,7 @@ export class AgenticDoctorUseCase {
       const analysisGenerator = agenticAnalyst.analyze(
         allExtractedContent,
         prompt, // Patient context/question
-        35 // Max iterations for thorough exploration
+        analysisMode
       );
 
       // Consume the generator and capture the return value
@@ -638,7 +667,7 @@ ${labSections}
           allExtractedContent,
           structuredDataContent,
           prompt,
-          15, // max iterations
+          analysisMode.validatorMaxIterations,
           allPreviouslyRaisedIssues
         );
 

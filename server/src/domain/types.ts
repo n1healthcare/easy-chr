@@ -47,3 +47,14 @@ export type RealmGenerationEvent =
   | StreamEvent
   | ResultEvent
   | ErrorEvent;
+
+// ============================================================================
+// Analysis Mode Types
+// ============================================================================
+
+export interface AnalysisMode {
+  mode: 'focused' | 'comprehensive';
+  maxIterations: number;
+  validatorMaxIterations: number;
+}
+
