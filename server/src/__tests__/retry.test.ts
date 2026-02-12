@@ -204,6 +204,62 @@ describe('Error classification via withRetry', () => {
     expect(result).toBe('ok');
     expect(calls).toBe(2);
   });
+
+  it('retries when statusCode is 503 even if message is generic', async () => {
+    let calls = 0;
+    const op = async () => {
+      calls++;
+      if (calls === 1) {
+        const err = new Error('upload failed');
+        (err as Error & { statusCode?: number }).statusCode = 503;
+        throw err;
+      }
+      return 'ok';
+    };
+    const result = await withRetry(op, fastConfig);
+    expect(result).toBe('ok');
+    expect(calls).toBe(2);
+  });
+
+  it('retries on retryable SDK error code (SlowDown)', async () => {
+    let calls = 0;
+    const op = async () => {
+      calls++;
+      if (calls === 1) {
+        const err = new Error('request failed');
+        (err as Error & { code?: string }).code = 'SlowDown';
+        throw err;
+      }
+      return 'ok';
+    };
+    const result = await withRetry(op, fastConfig);
+    expect(result).toBe('ok');
+    expect(calls).toBe(2);
+  });
+
+  it('does NOT retry on non-retryable SDK error code (AccessDenied)', async () => {
+    let calls = 0;
+    const op = async () => {
+      calls++;
+      const err = new Error('request failed');
+      (err as Error & { code?: string }).code = 'AccessDenied';
+      throw err;
+    };
+    await expect(withRetry(op, fastConfig)).rejects.toThrow('request failed');
+    expect(calls).toBe(1);
+  });
+
+  it('does NOT retry when structured status is 404', async () => {
+    let calls = 0;
+    const op = async () => {
+      calls++;
+      const err = new Error('request failed');
+      (err as Error & { status?: number }).status = 404;
+      throw err;
+    };
+    await expect(withRetry(op, fastConfig)).rejects.toThrow('request failed');
+    expect(calls).toBe(1);
+  });
 });
 
 // ============================================================================

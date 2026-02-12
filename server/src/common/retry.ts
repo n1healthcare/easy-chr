@@ -45,6 +45,57 @@ function isRetryable(error: unknown): boolean {
 
   const errorMessage = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
   const errorName = error instanceof Error ? error.name : '';
+  const statusCode = getStatusCode(error);
+  const errorCode = getErrorCode(error);
+
+  // Structured status codes from SDKs/HTTP clients are more reliable than message parsing.
+  if (statusCode !== undefined) {
+    if (statusCode === 429 || statusCode === 408 || statusCode >= 500) {
+      return true;
+    }
+    if (statusCode >= 400 && statusCode < 500) {
+      return false;
+    }
+  }
+
+  // Structured error codes from storage/network SDKs.
+  const nonRetryableCodes = [
+    'accessdenied',
+    'invalidaccesskeyid',
+    'signaturedoesnotmatch',
+    'nobucket',
+    'nosuchbucket',
+    'nosuchkey',
+    'notfound',
+    'invalidargument',
+    'missingrequiredparameter',
+    'forbidden',
+    'unauthorized',
+  ];
+  if (errorCode && nonRetryableCodes.includes(errorCode)) {
+    return false;
+  }
+
+  const retryableCodes = [
+    'slowdown',
+    'requesttimeout',
+    'requesttimeoutexception',
+    'throttling',
+    'throttlingexception',
+    'toomanyrequestsexception',
+    'serviceunavailable',
+    'internalerror',
+    'internalservererror',
+    'econnreset',
+    'econnrefused',
+    'enotfound',
+    'eai_again',
+    'etimedout',
+    'epipe',
+  ];
+  if (errorCode && retryableCodes.includes(errorCode)) {
+    return true;
+  }
 
   // Check for non-retryable conditions first (fail fast)
   const nonRetryablePatterns = [
@@ -115,6 +166,38 @@ function isRetryable(error: unknown): boolean {
   // Default: do NOT retry unknown errors to avoid masking bugs
   // If an error should be retried, add it to the retryablePatterns list
   return false;
+}
+
+function getStatusCode(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') {
+    return undefined;
+  }
+
+  const statusCandidate = (error as { status?: unknown }).status
+    ?? (error as { statusCode?: unknown }).statusCode
+    ?? (error as { response?: { status?: unknown } }).response?.status;
+
+  if (typeof statusCandidate === 'number' && Number.isFinite(statusCandidate)) {
+    return statusCandidate;
+  }
+
+  if (typeof statusCandidate === 'string') {
+    const parsed = Number(statusCandidate);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return undefined;
+}
+
+function getErrorCode(error: unknown): string {
+  if (!error || typeof error !== 'object') {
+    return '';
+  }
+
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' ? code.toLowerCase() : '';
 }
 
 // ============================================================================
