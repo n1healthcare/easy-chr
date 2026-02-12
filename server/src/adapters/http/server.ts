@@ -11,7 +11,34 @@ import { SendChatUseCase } from '../../application/use-cases/send-chat.use-case.
 import { AgenticDoctorUseCase } from '../../application/use-cases/agentic-doctor.use-case.js';
 import { ResearchSectionUseCase } from '../../application/use-cases/research-section.use-case.js';
 import type { StoragePort } from '../../application/ports/storage.port.js';
-import { UploadPaths } from '../../common/storage-paths.js';
+import type { BillingContext } from '../../utils/billing.js';
+
+export function getHeaderValue(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return typeof value[0] === 'string' ? value[0] : undefined;
+  }
+  return undefined;
+}
+
+export function extractBillingContext(headers: Record<string, unknown>): BillingContext | undefined {
+  const userId = getHeaderValue(headers['x-subject-user-id']);
+  const chrId = getHeaderValue(headers['x-chr-id']);
+  if (!userId) {
+    return undefined;
+  }
+
+  return {
+    userId,
+    ...(chrId && { chrId }),
+  };
+}
+
+export function isMissingBillingContextAllowed(): boolean {
+  return process.env.ALLOW_MISSING_BILLING_CONTEXT === 'true';
+}
 
 export async function createServer(storage: StoragePort) {
   const server = fastify({
@@ -42,16 +69,21 @@ export async function createServer(storage: StoragePort) {
   const sendChatUseCase = new SendChatUseCase(geminiAdapter);
   const researchSectionUseCase = new ResearchSectionUseCase(geminiAdapter);
 
-  // Initialize the Agentic Doctor Use Case with storage
-  const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter, storage);
-  await agenticDoctorUseCase.initialize();
-
   server.post('/api/chat', async (request, reply) => {
     const { message, sessionId } = request.body as { message: string, sessionId?: string };
     const finalSessionId = sessionId || 'default-session';
+    const billingContext = extractBillingContext(request.headers as Record<string, unknown>);
+    if (!billingContext && !isMissingBillingContextAllowed()) {
+      return reply.status(400).send({
+        error: 'Missing billing context header: x-subject-user-id',
+      });
+    }
+    if (!billingContext) {
+      request.log.warn('Missing billing context for /api/chat request');
+    }
 
     try {
-      const stream = await sendChatUseCase.execute(message, finalSessionId);
+      const stream = await sendChatUseCase.execute(message, finalSessionId, billingContext);
       const readableStream = Readable.from(stream);
       return reply.send(readableStream);
     } catch (error) {
@@ -71,9 +103,18 @@ export async function createServer(storage: StoragePort) {
 
   server.post('/api/research', { schema: { body: researchBodySchema } }, async (request, reply) => {
     const { sectionContext, userQuery } = request.body as { sectionContext: string, userQuery?: string };
+    const billingContext = extractBillingContext(request.headers as Record<string, unknown>);
+    if (!billingContext && !isMissingBillingContextAllowed()) {
+      return reply.status(400).send({
+        error: 'Missing billing context header: x-subject-user-id',
+      });
+    }
+    if (!billingContext) {
+      request.log.warn('Missing billing context for /api/research request');
+    }
 
     try {
-      const stream = researchSectionUseCase.execute(sectionContext, userQuery);
+      const stream = researchSectionUseCase.execute(sectionContext, userQuery, billingContext);
       const readableStream = Readable.from(stream);
       return reply.send(readableStream);
     } catch (error) {
@@ -83,6 +124,15 @@ export async function createServer(storage: StoragePort) {
   });
 
   server.post('/api/realm', async (request, reply) => {
+    const billingContext = extractBillingContext(request.headers as Record<string, unknown>);
+    if (!billingContext && !isMissingBillingContextAllowed()) {
+      return reply.status(400).send({
+        error: 'Missing billing context header: x-subject-user-id',
+      });
+    }
+    if (!billingContext) {
+      request.log.warn('Missing billing context for /api/realm request');
+    }
     const parts = request.parts();
     const uploadedFilePaths: string[] = [];
     let prompt = "Visualize this document.";
@@ -107,6 +157,12 @@ export async function createServer(storage: StoragePort) {
     }
 
     try {
+      const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter, storage);
+      if (billingContext) {
+        agenticDoctorUseCase.setBillingContext(billingContext);
+      }
+      await agenticDoctorUseCase.initialize();
+
       // Set SSE headers
       reply.raw.setHeader('Content-Type', 'text/event-stream');
       reply.raw.setHeader('Cache-Control', 'no-cache');

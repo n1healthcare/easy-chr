@@ -31,6 +31,12 @@ if (process.env.OPENAI_BASE_URL) {
   logger.warn('Neither OPENAI_BASE_URL nor GOOGLE_GEMINI_BASE_URL is set');
 }
 
+// Ensure non-job startup has a default service header for vendor gemini-cli paths.
+// Per-request user/chr billing headers are attached in HTTP routes when provided.
+if (!process.env.GEMINI_CLI_CUSTOM_HEADERS) {
+  process.env.GEMINI_CLI_CUSTOM_HEADERS = 'x-service-name:workflow-easy-chr';
+}
+
 const start = async () => {
   try {
     // Initialize storage adapter based on environment

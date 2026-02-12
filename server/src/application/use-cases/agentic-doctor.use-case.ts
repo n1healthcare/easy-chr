@@ -107,6 +107,7 @@ interface StreamWithRetryOptions {
   maxRetries?: number;
   operationName: string;
   onRetry?: (attempt: number, error: string) => void;
+  billingContext?: BillingContext;
 }
 
 async function streamWithRetry(
@@ -129,7 +130,10 @@ async function streamWithRetry(
         prompt,
         `${sessionId}-${attempt}`,
         undefined,
-        { model }
+        {
+          model,
+          billingContext: options.billingContext,
+        }
       );
 
       for await (const chunk of stream) {
@@ -426,7 +430,7 @@ export class AgenticDoctorUseCase {
 
     try {
       // Get the Gemini config from the LLM client
-      const geminiConfig = this.llmClient.getConfig();
+      const geminiConfig = await this.llmClient.getConfig(this.billingContext);
 
       if (geminiConfig) {
         const researchGenerator = researchClaims(
@@ -535,6 +539,7 @@ ${labSections}
         {
           operationName: 'DataStructuring',
           maxRetries: 3,
+          billingContext: this.billingContext,
         }
       );
 
@@ -768,7 +773,10 @@ Output the JSON PATCH now (starting with \`{\`):`;
               correctionPrompt,
               `${sessionId}-correction-${correctionCycle}`,
               undefined,
-              { model: REALM_CONFIG.models.doctor }
+              {
+                model: REALM_CONFIG.models.doctor,
+                billingContext: this.billingContext,
+              }
             );
 
             for await (const chunk of correctionStream) {
@@ -918,6 +926,7 @@ ${structuredDataContent}
         {
           operationName: 'HTMLGeneration',
           maxRetries: 3,
+          billingContext: this.billingContext,
         }
       );
 
@@ -1037,7 +1046,10 @@ ${htmlContent}
           reviewPrompt,
           `${sessionId}-content-review`,
           undefined,
-          { model: REALM_CONFIG.models.doctor }
+          {
+            model: REALM_CONFIG.models.doctor,
+            billingContext: this.billingContext,
+          }
         );
 
         for await (const chunk of reviewStream) {
@@ -1198,7 +1210,10 @@ ${structuredDataContent}
             regenPrompt,
             `${sessionId}-html-regen`,
             undefined,
-            { model: REALM_CONFIG.models.html }
+            {
+              model: REALM_CONFIG.models.html,
+              billingContext: this.billingContext,
+            }
           );
 
           for await (const chunk of regenStream) {

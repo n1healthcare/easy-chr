@@ -261,6 +261,7 @@ export interface SandboxConfig {
 export interface ConfigParameters {
   sessionId: string;
   embeddingModel?: string;
+  customHeaders?: Record<string, string>;
   sandbox?: SandboxConfig;
   targetDir: string;
   debugMode: boolean;
@@ -463,6 +464,7 @@ export class Config {
   private readonly introspectionAgentSettings: IntrospectionAgentSettings;
   private readonly continueOnFailedApiCall: boolean;
   private readonly retryFetchErrors: boolean;
+  private readonly customHeaders: Record<string, string>;
   private readonly enableShellOutputEfficiency: boolean;
   private readonly shellToolInactivityTimeout: number;
   readonly fakeResponses?: string;
@@ -498,6 +500,7 @@ export class Config {
     this.sessionId = params.sessionId;
     this.embeddingModel =
       params.embeddingModel ?? DEFAULT_GEMINI_EMBEDDING_MODEL;
+    this.customHeaders = params.customHeaders ?? {};
     this.fileSystemService = new StandardFileSystemService();
     this.sandbox = params.sandbox;
     this.targetDir = path.resolve(params.targetDir);
@@ -1350,6 +1353,10 @@ export class Config {
 
   getProxy(): string | undefined {
     return this.proxy;
+  }
+
+  getCustomHeaders(): Record<string, string> {
+    return this.customHeaders;
   }
 
   getWorkingDir(): string {
