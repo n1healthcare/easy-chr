@@ -41,4 +41,16 @@ describe('isDefaultPrompt', () => {
     expect(isDefaultPrompt('Analyze my health focusing on cardiac markers')).toBe(false);
     expect(isDefaultPrompt('Visualize this document with focus on vitamins')).toBe(false);
   });
+
+  it('strips conversational filler and still matches defaults', () => {
+    expect(isDefaultPrompt('Please analyze my health')).toBe(true);
+    expect(isDefaultPrompt('Can you generate a report?')).toBe(true);
+    expect(isDefaultPrompt('Could you visualize this document')).toBe(true);
+    expect(isDefaultPrompt('analyze this please')).toBe(true);
+  });
+
+  it('does not strip filler from specific questions', () => {
+    expect(isDefaultPrompt('Please explain my vitamin D levels')).toBe(false);
+    expect(isDefaultPrompt('Can you check my thyroid results?')).toBe(false);
+  });
 });

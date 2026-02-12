@@ -336,11 +336,17 @@ export class AgenticDoctorUseCase {
     // Detect whether the patient asked a specific question or wants a full report
     // ========================================================================
     const isFocused = !!prompt && !isDefaultPrompt(prompt);
-    const analysisMode: AnalysisMode = {
-      mode: isFocused ? 'focused' : 'comprehensive',
-      maxIterations: isFocused ? FOCUSED_ANALYSIS_MAX_ITERATIONS : COMPREHENSIVE_ANALYSIS_MAX_ITERATIONS,
-      validatorMaxIterations: isFocused ? FOCUSED_VALIDATOR_MAX_ITERATIONS : COMPREHENSIVE_VALIDATOR_MAX_ITERATIONS,
-    };
+    const analysisMode: AnalysisMode = isFocused
+      ? {
+          mode: 'focused',
+          maxIterations: FOCUSED_ANALYSIS_MAX_ITERATIONS,
+          validatorMaxIterations: FOCUSED_VALIDATOR_MAX_ITERATIONS,
+        }
+      : {
+          mode: 'comprehensive',
+          maxIterations: COMPREHENSIVE_ANALYSIS_MAX_ITERATIONS,
+          validatorMaxIterations: COMPREHENSIVE_VALIDATOR_MAX_ITERATIONS,
+        };
 
     console.log(`[AgenticDoctor] Analysis mode: ${analysisMode.mode} (maxIter=${analysisMode.maxIterations}, validatorIter=${analysisMode.validatorMaxIterations})`);
     yield { type: 'log', message: `Analysis mode: ${analysisMode.mode}` };

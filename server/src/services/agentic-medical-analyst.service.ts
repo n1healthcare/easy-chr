@@ -64,12 +64,51 @@ const DEFAULT_PROMPTS = [
 ];
 
 /**
+ * System prompt supplement injected when analysis runs in focused mode.
+ * Uses ${maxIter} placeholder replaced at runtime with the actual iteration limit.
+ */
+function buildFocusedModePrompt(maxIterations: number): string {
+  return `
+
+---
+
+## ACTIVE MODE: QUESTION-DRIVEN ANALYSIS
+
+The patient asked a specific question. Your analysis should be **focused on answering that question deeply**, not covering every body system equally.
+
+### What changes:
+1. **Depth over breadth** — Go DEEP on topics relevant to the patient's question. Skip unrelated body systems.
+2. **Fewer cycles** — Aim for ~${maxIterations} iterations. Spend them on the question topic.
+3. **Required sections**: Executive Summary, Focused Analysis (on the question topic), Recommendations, Other Notable Findings
+4. **Safety net REQUIRED** — Write an "Other Notable Findings" section listing any CRITICAL or URGENT values you encounter outside the question's scope (one-liners only).
+
+### What does NOT change:
+- Safety principles, data fidelity, evidence calibration
+- Must still call get_date_range()
+- Must still use exact values with units and reference ranges
+
+### Question-Driven Workflow:
+1. list_documents() + get_date_range() (1 cycle)
+2. Search for data related to the patient's question across all documents (2-3 cycles)
+3. Read relevant documents in detail (3-5 cycles)
+4. Cross-reference findings within the question's topic area (2-3 cycles)
+5. Quick scan for urgent findings outside the question scope (1-2 cycles) — SAFETY NET
+6. Write focused analysis + recommendations (2-3 cycles)
+7. complete_analysis()`;
+}
+
+/**
  * Returns true when the prompt is empty or matches a default/generic prompt.
  * Exported for testing.
  */
 export function isDefaultPrompt(prompt: string): boolean {
   if (!prompt || prompt.trim().length === 0) return true;
-  const normalized = prompt.trim().toLowerCase().replace(/[.!?]+$/, '');
+  const normalized = prompt
+    .trim()
+    .toLowerCase()
+    .replace(/^(please|can you|could you)\s*/, '')
+    .replace(/\s*(please)$/, '')
+    .replace(/[.!?]+$/, '');
   return DEFAULT_PROMPTS.some(d => normalized === d);
 }
 
@@ -1404,37 +1443,8 @@ export class AgenticMedicalAnalyst {
     const prompt = loadMedicalAnalysisSkill();
     let result = applyPatientContext(prompt, patientContext);
 
-    // When the orchestrator determined focused mode, inject stronger scoping
-    // instructions so the LLM focuses depth over breadth.
     if (analysisMode?.mode === 'focused') {
-      const maxIter = analysisMode.maxIterations;
-      result += `
-
----
-
-## ACTIVE MODE: QUESTION-DRIVEN ANALYSIS
-
-The patient asked a specific question. Your analysis should be **focused on answering that question deeply**, not covering every body system equally.
-
-### What changes:
-1. **Depth over breadth** — Go DEEP on topics relevant to the patient's question. Skip unrelated body systems.
-2. **Fewer cycles** — Aim for ~${maxIter} iterations. Spend them on the question topic.
-3. **Required sections**: Executive Summary, Focused Analysis (on the question topic), Recommendations, Other Notable Findings
-4. **Safety net REQUIRED** — Write an "Other Notable Findings" section listing any CRITICAL or URGENT values you encounter outside the question's scope (one-liners only).
-
-### What does NOT change:
-- Safety principles, data fidelity, evidence calibration
-- Must still call get_date_range()
-- Must still use exact values with units and reference ranges
-
-### Question-Driven Workflow:
-1. list_documents() + get_date_range() (1 cycle)
-2. Search for data related to the patient's question across all documents (2-3 cycles)
-3. Read relevant documents in detail (3-5 cycles)
-4. Cross-reference findings within the question's topic area (2-3 cycles)
-5. Quick scan for urgent findings outside the question scope (1-2 cycles) — SAFETY NET
-6. Write focused analysis + recommendations (2-3 cycles)
-7. complete_analysis()`;
+      result += buildFocusedModePrompt(analysisMode.maxIterations);
     }
 
     return result;
