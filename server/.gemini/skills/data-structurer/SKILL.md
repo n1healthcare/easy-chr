@@ -34,6 +34,22 @@ Output:
 
 ---
 
+## Question-Driven Analysis Mode
+
+When the analysis contains a "QUESTION-DRIVEN ANALYSIS" marker or an "Other Notable Findings" section, the analyst focused deeply on the patient's question instead of covering all systems.
+
+**Adapt your field population:**
+
+**Always populate:** `meta`, `executiveSummary`, `criticalFindings`, `allFindings` (focus area only), `actionPlan`, `dataGaps`, `references`, `safetyNet`
+
+**Only if relevant to the question:** `trends`, `connections`, `supplementSchedule`, `doctorQuestions`
+
+**Skip unless relevant:** `systemsHealth`, `lifestyleOptimizations`, full `diagnoses` list, `integrativeReasoning` (root cause, causal chain, competing hypotheses)
+
+The `safetyNet` field captures critical/urgent findings the analyst found outside the question scope. Always populate it when "Other Notable Findings" data exists in the analysis.
+
+---
+
 ## Output Schema
 
 You MUST output valid JSON matching this schema structure. Replace all placeholder values with actual data from the source documents:
@@ -390,7 +406,18 @@ You MUST output valid JSON matching this schema structure. Replace all placehold
       "confidence": "high | medium | low",
       "snippet": "[relevant excerpt]"
     }
-  ]
+  ],
+
+  "safetyNet": {
+    "urgentFindings": [
+      {
+        "finding": "[critical/urgent finding outside question scope]",
+        "severity": "critical | warning",
+        "recommendation": "[brief action recommendation]"
+      }
+    ],
+    "note": "These findings are outside your question's scope but may need attention."
+  }
 }
 ```
 
