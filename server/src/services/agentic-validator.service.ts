@@ -512,7 +512,7 @@ function parseExtractedData(extractedContent: string): ParsedExtractedData {
 // Tool Execution
 // ============================================================================
 
-class ValidatorToolExecutor {
+export class ValidatorToolExecutor {
   private parsedData: ParsedExtractedData;
   private structuredJson: Record<string, unknown>;
   private issues: ValidationIssue[] = [];

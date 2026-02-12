@@ -77,6 +77,7 @@ import { withRetry } from './common/retry.js';
 import { REALM_CONFIG } from './config.js';
 import { createStorageAdapterFromEnv } from './adapters/storage/storage.factory.js';
 import { PrefixedStorageAdapter } from './adapters/storage/prefixed-storage.adapter.js';
+import { RetryableStorageAdapter } from './adapters/storage/retryable-storage.adapter.js';
 import { LegacyPaths, ProductionPaths } from './common/storage-paths.js';
 import type { StoragePort } from './application/ports/storage.port.js';
 import { getLogger, createChildLogger, type AppLogger } from './logger.js';
@@ -102,9 +103,6 @@ const ENVIRONMENT = getEnvironment();
 const IS_DEVELOPMENT = ENVIRONMENT === 'development';
 const SKIP_UPLOADS = IS_DEVELOPMENT;
 const SKIP_PROGRESS_TRACKING = IS_DEVELOPMENT;
-const MIN_STORAGE_WRITE_RETRIES = 5;
-const MIN_SIGNED_URL_RETRIES = 3;
-const MIN_STORAGE_READ_RETRIES = 3;
 const MIN_STORAGE_EXISTS_RETRIES = 3;
 
 // ============================================================================
@@ -577,7 +575,11 @@ async function runJob() {
     // Create storage adapters:
     // - baseStorage: raw S3/local adapter for production paths (users/{userId}/chr/...)
     // - scopedStorage: prefixed adapter for pipeline files (users/{userId}/easychr_files/...)
-    const baseStorage = createStorageAdapterFromEnv();
+    const rawStorage = createStorageAdapterFromEnv();
+    const baseStorage = new RetryableStorageAdapter(rawStorage, {
+      ...REALM_CONFIG.retry.api,
+      maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, 5),
+    });
     const intermediatesPrefix = `users/${config.userId}/easychr_files`;
     const scopedStorage = new PrefixedStorageAdapter(baseStorage, intermediatesPrefix);
     const storageProvider = process.env.STORAGE_PROVIDER ?? 'local';
@@ -663,14 +665,7 @@ async function runJob() {
       logger.info('[5/5] Copying to production path and generating signed URL...');
 
       // Read HTML from scoped storage (where the pipeline wrote it)
-      let htmlContent = await withRetry(
-        () => scopedStorage.readFileAsString(storagePath),
-        {
-          ...REALM_CONFIG.retry.api,
-          maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_READ_RETRIES),
-          operationName: 'Storage.readFileAsString',
-        }
-      );
+      let htmlContent = await scopedStorage.readFileAsString(storagePath);
 
       // Inject Blindspot feedback widget (staging only)
       htmlContent = injectBlindspotWidget(htmlContent);
@@ -682,19 +677,12 @@ async function runJob() {
 
       // Write to production path using baseStorage (not scoped)
       logger.info({ prodPath }, 'Writing to production path');
-      await withRetry(
-        () => baseStorage.writeFile(prodPath, htmlContent, 'text/html'),
-        {
-          ...REALM_CONFIG.retry.api,
-          maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_WRITE_RETRIES),
-          operationName: 'Storage.writeFile',
-        }
-      );
+      await baseStorage.writeFile(prodPath, htmlContent, 'text/html');
 
       // Verify the file was written successfully
       await withRetry(
         async () => {
-          const exists = await baseStorage.exists(prodPath);
+          const exists = await rawStorage.exists(prodPath);
           if (!exists) {
             throw new RetryableError(`Storage.exists returned false for ${prodPath}`);
           }
@@ -709,14 +697,7 @@ async function runJob() {
       logger.info({ prodPath }, 'Write verified');
 
       // Get signed URL for access
-      publicUrl = await withRetry(
-        () => baseStorage.getSignedUrl(prodPath),
-        {
-          ...REALM_CONFIG.retry.api,
-          maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_SIGNED_URL_RETRIES),
-          operationName: 'Storage.getSignedUrl',
-        }
-      );
+      publicUrl = await baseStorage.getSignedUrl(prodPath);
 
       logger.info({ prodPath }, 'Uploaded to production');
     }
