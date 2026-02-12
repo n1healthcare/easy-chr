@@ -106,6 +106,7 @@ export const ProductionPaths = {
  */
 export const LegacyPaths = {
   extracted: 'extracted.md',
+  extractionErrors: 'extraction_errors.json',
   analysis: 'analysis.md',
   research: 'research.json',
   structuredData: 'structured_data.json',

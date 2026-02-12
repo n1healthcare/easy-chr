@@ -103,6 +103,7 @@ describe('ProductionPaths', () => {
 describe('LegacyPaths', () => {
   it('has correct static paths', () => {
     expect(LegacyPaths.extracted).toBe('extracted.md');
+    expect(LegacyPaths.extractionErrors).toBe('extraction_errors.json');
     expect(LegacyPaths.analysis).toBe('analysis.md');
     expect(LegacyPaths.research).toBe('research.json');
     expect(LegacyPaths.structuredData).toBe('structured_data.json');

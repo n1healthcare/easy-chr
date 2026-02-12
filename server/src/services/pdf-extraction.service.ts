@@ -62,6 +62,20 @@ export interface PDFExtractionEvent {
   };
 }
 
+export interface PDFExtractionError {
+  fileName: string;
+  pageNumber?: number;
+  message: string;
+}
+
+export interface PDFExtractionResult {
+  outputPath: string;
+  extractionErrors: PDFExtractionError[];
+  totalPagesExtracted: number;
+  successCount: number;
+  extractionErrorCount: number;
+}
+
 interface PageExtractionResult {
   fileName: string;
   pageNumber: number;
@@ -119,7 +133,7 @@ export class PDFExtractionService {
    */
   async *extractPDFs(
     pdfPaths: string[]
-  ): AsyncGenerator<PDFExtractionEvent, string, unknown> {
+  ): AsyncGenerator<PDFExtractionEvent, PDFExtractionResult, unknown> {
     const timestamp = new Date().toISOString();
     const fileNames = pdfPaths.map(p => path.basename(p));
 
@@ -140,6 +154,7 @@ export class PDFExtractionService {
     let totalPagesExtracted = 0;
     let successCount = 0;
     let extractionErrorCount = 0;
+    const extractionErrors: PDFExtractionError[] = [];
 
     // Process each PDF file
     for (const pdfPath of pdfPaths) {
@@ -164,13 +179,11 @@ export class PDFExtractionService {
 
           if (event.type === 'error') {
             extractionErrorCount++;
-            contentBuffer.push(
-              this.buildExtractionErrorComment(
-                event.data.fileName,
-                event.data.error || event.data.message,
-                event.data.pageNumber
-              )
-            );
+            extractionErrors.push({
+              fileName: event.data.fileName,
+              pageNumber: event.data.pageNumber,
+              message: event.data.error || event.data.message,
+            });
           }
 
           // Forward progress events
@@ -205,7 +218,10 @@ export class PDFExtractionService {
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         extractionErrorCount++;
-        contentBuffer.push(this.buildExtractionErrorComment(fileName, errorMessage));
+        extractionErrors.push({
+          fileName,
+          message: errorMessage,
+        });
 
         yield {
           type: 'error',
@@ -219,19 +235,32 @@ export class PDFExtractionService {
     }
 
     // Add footer with final stats
-    contentBuffer.push(this.buildFooter(totalPagesExtracted, successCount, extractionErrorCount));
+    contentBuffer.push(this.buildFooter(totalPagesExtracted, successCount));
 
     // Write all content at once to storage
     const fullContent = contentBuffer.join('');
     await this.storage.writeFile(LegacyPaths.extracted, fullContent, 'text/markdown');
     console.log(`[PDFExtraction] Wrote ${fullContent.length} chars to ${LegacyPaths.extracted}`);
 
+    // Persist extraction errors as a separate artifact for downstream detection.
+    await this.storage.writeFile(
+      LegacyPaths.extractionErrors,
+      JSON.stringify(extractionErrors, null, 2),
+      'application/json'
+    );
+
     yield {
       type: 'log',
       data: { message: `Extraction complete. Output: ${LegacyPaths.extracted}` }
     };
 
-    return LegacyPaths.extracted;
+    return {
+      outputPath: LegacyPaths.extracted,
+      extractionErrors,
+      totalPagesExtracted,
+      successCount,
+      extractionErrorCount,
+    };
   }
 
   /**
@@ -417,30 +446,11 @@ export class PDFExtractionService {
   /**
    * Build the footer content with final stats
    */
-  private buildFooter(totalPages: number, successCount: number, extractionErrorCount: number): string {
+  private buildFooter(totalPages: number, successCount: number): string {
     let footer = '';
     footer += `<!-- END EXTRACTION -->\n`;
     footer += `<!-- Total Pages: ${totalPages} | Successful: ${successCount} -->\n`;
-    footer += `<!-- Extraction Errors: ${extractionErrorCount} -->\n`;
     footer += `<!-- Extraction completed at: ${new Date().toISOString()} -->\n`;
     return footer;
-  }
-
-  /**
-   * Build a structured extraction failure HTML comment.
-   */
-  private buildExtractionErrorComment(fileName: string, errorMessage: string, pageNumber?: number): string {
-    const safeFileName = fileName
-      .replace(/\s+/g, ' ')
-      .replace(/--/g, '- -')
-      .replace(/"/g, '\'')
-      .trim();
-    const safeMessage = errorMessage
-      .replace(/\s+/g, ' ')
-      .replace(/--/g, '- -')
-      .replace(/"/g, '\'')
-      .trim();
-    const pageSegment = pageNumber !== undefined ? ` page="${pageNumber}"` : '';
-    return `<!-- EXTRACTION_ERROR file="${safeFileName}"${pageSegment} message="${safeMessage}" -->\n`;
   }
 }

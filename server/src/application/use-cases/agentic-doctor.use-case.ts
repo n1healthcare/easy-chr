@@ -20,7 +20,11 @@ import { LLMClientPort } from '../ports/llm-client.port.js';
 import type { StoragePort } from '../ports/storage.port.js';
 import { LegacyPaths } from '../../common/storage-paths.js';
 import { readFileWithEncoding } from '../../../vendor/gemini-cli/packages/core/src/utils/fileUtils.js';
-import { PDFExtractionService } from '../../services/pdf-extraction.service.js';
+import {
+  PDFExtractionService,
+  type PDFExtractionEvent,
+  type PDFExtractionResult,
+} from '../../services/pdf-extraction.service.js';
 import { AgenticMedicalAnalyst, type AnalystEvent } from '../../services/agentic-medical-analyst.service.js';
 import { AgenticValidator, type ValidatorEvent } from '../../services/agentic-validator.service.js';
 import { researchClaims, formatResearchAsMarkdown, type ResearchOutput, type ResearchEvent } from '../../services/research-agent.service.js';
@@ -243,7 +247,12 @@ export class AgenticDoctorUseCase {
       const pdfExtractor = new PDFExtractionService(this.storage, this.billingContext);
 
       try {
-        for await (const event of pdfExtractor.extractPDFs(pdfFiles)) {
+        const extractionGenerator = pdfExtractor.extractPDFs(pdfFiles);
+        let extractionSummary: PDFExtractionResult | undefined;
+        let extractionResult = await extractionGenerator.next();
+
+        while (!extractionResult.done) {
+          const event = extractionResult.value as PDFExtractionEvent;
           if (event.type === 'log' || event.type === 'progress') {
             yield { type: 'log', message: event.data.message || '' };
           } else if (event.type === 'page_complete') {
@@ -257,6 +266,17 @@ export class AgenticDoctorUseCase {
             const errorDetails = event.data.error ? ` (${event.data.error})` : '';
             yield { type: 'log', message: `Warning: ${event.data.message}${errorDetails}` };
           }
+
+          extractionResult = await extractionGenerator.next();
+        }
+
+        extractionSummary = extractionResult.value as PDFExtractionResult;
+
+        if (extractionSummary.extractionErrors.length > 0) {
+          yield {
+            type: 'log',
+            message: `Warning: ${extractionSummary.extractionErrors.length} PDF extraction issue(s) recorded in ${LegacyPaths.extractionErrors}`
+          };
         }
 
         if (await this.storage.exists(LegacyPaths.extracted)) {
