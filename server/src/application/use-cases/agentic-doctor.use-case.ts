@@ -977,7 +977,7 @@ ${structuredDataContent}
       htmlContent = htmlContent.trim();
 
       // Inject centralized CSS (replaces LLM-generated styles)
-      htmlContent = injectStyles(htmlContent);
+      htmlContent = await injectStyles(htmlContent);
 
       // Write HTML to file
       await this.storage.writeFile(realmPath, htmlContent, 'text/html');
@@ -1257,7 +1257,7 @@ ${structuredDataContent}
 
             // Validate it's valid HTML
             if (regenHtml.includes('<!DOCTYPE') && regenHtml.includes('</html>')) {
-              htmlContent = injectStyles(regenHtml);
+              htmlContent = await injectStyles(regenHtml);
               await this.storage.writeFile(realmPath, htmlContent, 'text/html');
               console.log(`[AgenticDoctor] Regenerated HTML: ${htmlContent.length} chars`);
               yield { type: 'log', message: 'HTML regenerated with fixes.' };

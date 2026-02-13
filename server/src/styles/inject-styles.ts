@@ -6,10 +6,10 @@
  *
  * Usage:
  *   import { injectStyles } from './styles/inject-styles.js';
- *   htmlContent = injectStyles(htmlContent);
+ *   htmlContent = await injectStyles(htmlContent);
  */
 
-import fs from 'node:fs';
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,12 +21,12 @@ let cachedCSS: string | null = null;
 /**
  * Load report.css from disk. Cached after first read.
  */
-export function loadReportCSS(): string {
+export async function loadReportCSS(): Promise<string> {
   if (cachedCSS !== null) return cachedCSS;
 
   const cssPath = path.join(__dirname, 'report.css');
   try {
-    cachedCSS = fs.readFileSync(cssPath, 'utf-8');
+    cachedCSS = await fs.readFile(cssPath, 'utf-8');
     console.log(`[styles] Loaded report.css (${cachedCSS.length} chars)`);
   } catch (error) {
     console.error(`[styles] Failed to load report.css from ${cssPath}:`, error);
@@ -51,8 +51,8 @@ function stripStyleTags(html: string): string {
  *
  * If no </head> tag is found, prepends the style block to the HTML.
  */
-export function injectStyles(html: string): string {
-  const css = loadReportCSS();
+export async function injectStyles(html: string): Promise<string> {
+  const css = await loadReportCSS();
   if (!css) return html;
 
   // Strip LLM-generated style tags
