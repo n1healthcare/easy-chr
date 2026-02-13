@@ -1,7 +1,6 @@
 import fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
-import fastifyStatic from '@fastify/static';
 import path from 'path';
 import fs from 'fs';
 import { pipeline } from 'stream/promises';
@@ -12,6 +11,8 @@ import { AgenticDoctorUseCase } from '../../application/use-cases/agentic-doctor
 import { ResearchSectionUseCase } from '../../application/use-cases/research-section.use-case.js';
 import type { StoragePort } from '../../application/ports/storage.port.js';
 import type { BillingContext } from '../../utils/billing.js';
+import { LegacyPaths } from '../../common/storage-paths.js';
+import { transformOrganInsightsToBodyTwin } from '../../services/body-twin-transformer.service.js';
 
 const MISSING_BILLING_CONTEXT_ERROR = 'Missing billing context header: x-subject-user-id';
 type BillingAwareRequest = FastifyRequest & { billingContext?: BillingContext };
@@ -83,10 +84,77 @@ export async function createServer(storage: StoragePort) {
     }
   });
 
-  // Serve generated realms statically
-  await server.register(fastifyStatic, {
-    root: path.join(process.cwd(), 'storage', 'realms'),
-    prefix: '/realms/',
+  // Serve generated realms via StoragePort (works with local filesystem and S3)
+  server.get('/realms/:realmId/*', async (request, reply) => {
+    const { realmId, '*': filePath } = request.params as { realmId: string; '*': string };
+    const storagePath = `realms/${realmId}/${filePath || 'index.html'}`;
+
+    try {
+      if (!(await storage.exists(storagePath))) {
+        return reply.status(404).send({ error: 'Not found' });
+      }
+
+      const content = await storage.readFile(storagePath);
+      const ext = (filePath || 'index.html').split('.').pop()?.toLowerCase();
+      const contentType = ext === 'html' ? 'text/html'
+        : ext === 'json' ? 'application/json'
+        : ext === 'css' ? 'text/css'
+        : ext === 'js' ? 'application/javascript'
+        : ext === 'glb' ? 'model/gltf-binary'
+        : ext === 'gltf' ? 'model/gltf+json'
+        : 'application/octet-stream';
+
+      const cacheHeader = (ext === 'glb' || ext === 'gltf') ? 'public, max-age=86400' : 'no-cache';
+      return reply.header('Content-Type', contentType).header('Cache-Control', cacheHeader).send(content);
+    } catch (error) {
+      request.log.error(error);
+      return reply.status(500).send({ error: 'Failed to serve realm file' });
+    }
+  });
+
+  // Serve 3D model files from client/public/models/
+  server.get('/models/:fileName', async (request, reply) => {
+    const { fileName } = request.params as { fileName: string };
+
+    // Directory traversal protection
+    if (fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
+      return reply.status(400).send({ error: 'Invalid file name' });
+    }
+
+    const modelsDir = path.join(process.cwd(), '..', 'client', 'public', 'models');
+    const filePath = path.join(modelsDir, fileName);
+
+    // Ensure resolved path is within modelsDir
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(path.resolve(modelsDir))) {
+      return reply.status(400).send({ error: 'Invalid file path' });
+    }
+
+    try {
+      if (!fs.existsSync(resolved)) {
+        return reply.status(404).send({ error: 'Model not found' });
+      }
+
+      const ext = path.extname(fileName).toLowerCase();
+      const contentType = ext === '.glb' ? 'model/gltf-binary'
+        : ext === '.gltf' ? 'model/gltf+json'
+        : 'application/octet-stream';
+
+      const fileBuffer = fs.readFileSync(resolved);
+      return reply
+        .header('Content-Type', contentType)
+        .header('Cache-Control', 'public, max-age=86400')
+        .send(fileBuffer);
+    } catch (error) {
+      request.log.error(error);
+      return reply.status(500).send({ error: 'Failed to serve model file' });
+    }
+  });
+
+  // Redirect /realms/:realmId to /realms/:realmId/index.html
+  server.get('/realms/:realmId', async (request, reply) => {
+    const { realmId } = request.params as { realmId: string };
+    return reply.redirect(`/realms/${realmId}/index.html`);
   });
 
   // Dependency Injection
@@ -191,6 +259,29 @@ export async function createServer(storage: StoragePort) {
       reply.raw.write(`event: error\n`);
       reply.raw.write(`data: ${JSON.stringify({ error: 'Internal Server Error' })}\n\n`);
       reply.raw.end();
+    }
+  });
+
+  // Body Twin API — serves pre-computed body-twin.json, falls back to on-the-fly transform
+  server.get('/api/realms/:realmId/body-twin', async (request, reply) => {
+    try {
+      // Try pre-computed body-twin.json
+      if (await storage.exists(LegacyPaths.bodyTwin)) {
+        const bodyTwinJson = await storage.readFileAsString(LegacyPaths.bodyTwin);
+        return reply.header('Content-Type', 'application/json').send(bodyTwinJson);
+      }
+
+      // Fallback: transform organ_insights.md on-the-fly
+      if (await storage.exists(LegacyPaths.organInsights)) {
+        const organInsightsMd = await storage.readFileAsString(LegacyPaths.organInsights);
+        const bodyTwinData = transformOrganInsightsToBodyTwin(organInsightsMd);
+        return reply.send(bodyTwinData);
+      }
+
+      return reply.status(404).send({ error: 'Body twin data not available' });
+    } catch (error) {
+      request.log.error(error);
+      return reply.status(500).send({ error: 'Failed to retrieve body twin data' });
     }
   });
 

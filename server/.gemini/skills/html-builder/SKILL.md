@@ -85,6 +85,12 @@ You receive `structured_data.json` with this structure:
 | `patterns[]` | Pattern/hypothesis cards |
 | `integrativeReasoning` | The Big Picture section (root cause, causal chain, keystones) |
 
+**Additional input (when provided):**
+
+| Input | Render As |
+|-------|-----------|
+| `organ_insights` (markdown) | "Organ Health Details" section — collapsible cards per organ with markers, findings, cross-organ connections |
+
 ---
 
 ## Rendering Rules
@@ -187,13 +193,14 @@ When fields exist, render in this order for optimal reading flow:
 2. Key Findings (`diagnoses[]`, `criticalFindings[]`)
 3. **The Big Picture** (`integrativeReasoning`) - root cause, causal chain, keystones
 4. Visualizations (`trends[]`, `systemsHealth`)
-5. Mechanisms (`connections[]`, `patterns[]`)
-6. Action Items (`actionPlan`, `supplementSchedule`, `lifestyleOptimizations`)
-7. Provider Communication (`doctorQuestions[]`)
-8. Outlook (`prognosis`, `monitoringProtocol[]`)
-9. Health Timeline (`timeline[]`) - visual CSS timeline, NOT a Plotly chart
-10. Additional Context (`positiveFindings[]`, `dataGaps[]`)
-11. References (`references[]`)
+5. **Organ Health Details** (`organ_insights` markdown) - collapsible per-organ cards
+6. Mechanisms (`connections[]`, `patterns[]`)
+7. Action Items (`actionPlan`, `supplementSchedule`, `lifestyleOptimizations`)
+8. Provider Communication (`doctorQuestions[]`)
+9. Outlook (`prognosis`, `monitoringProtocol[]`)
+10. Health Timeline (`timeline[]`) - visual CSS timeline, NOT a Plotly chart
+11. Additional Context (`positiveFindings[]`, `dataGaps[]`)
+12. References (`references[]`)
 
 **But only include sections that exist in the JSON!**
 
@@ -496,6 +503,124 @@ Plotly.newPlot('systems-radar', [{
 
 ```css
 .plotly-radar { width: 100%; height: 400px; }
+```
+
+### Organ Health Details (for `organ_insights` markdown)
+
+When organ insights markdown is provided, render each organ as a collapsible card. Parse the markdown `## [Organ Name]` sections and render:
+
+```html
+<!-- Render if organ_insights is provided -->
+<section class="organ-health-section">
+  <h2>Organ Health Details</h2>
+  <p class="section-intro">Detailed organ-by-organ analysis based on your lab findings.</p>
+
+  <!-- For each ## section in the organ_insights markdown -->
+  <details class="organ-card">
+    <summary class="organ-header">
+      <span class="organ-name">Organ Name</span>
+      <span class="organ-status-badge status-warning">Warning</span>
+    </summary>
+    <div class="organ-body">
+      <!-- Render the organ's markdown content as HTML -->
+      <!-- Tables become styled tables, lists become styled lists -->
+    </div>
+  </details>
+  <!-- Repeat for each organ -->
+</section>
+```
+
+```css
+.organ-health-section {
+  margin: 40px 0;
+}
+
+.organ-card {
+  background: white;
+  border-radius: 20px;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+  overflow: hidden;
+}
+
+.organ-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 25px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 1.1rem;
+  list-style: none;
+}
+
+.organ-header::-webkit-details-marker { display: none; }
+
+.organ-header::after {
+  content: '+';
+  font-size: 1.4rem;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+details[open] .organ-header::after {
+  content: '−';
+}
+
+.organ-body {
+  padding: 0 25px 25px;
+  border-top: 1px solid #E5E7EB;
+}
+
+.organ-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 15px 0;
+  font-size: 0.9rem;
+}
+
+.organ-body th {
+  background: var(--accent-bg);
+  padding: 10px 14px;
+  text-align: left;
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.organ-body td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #F1F5F9;
+}
+
+.organ-body h3 {
+  font-size: 1rem;
+  color: var(--accent-primary-dark);
+  margin: 20px 0 10px;
+}
+
+.organ-body ul {
+  padding-left: 20px;
+}
+
+.organ-body li {
+  margin-bottom: 8px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.organ-status-badge {
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.status-critical { background: var(--danger-bg); color: var(--danger-dark); }
+.status-warning { background: var(--warning-bg); color: var(--warning-dark); }
+.status-stable { background: var(--success-bg); color: var(--success-dark); }
+.status-optimal { background: #D1FAE5; color: #047857; }
 ```
 
 ### Visual Timeline (for `timeline[]`) - NOT a Plotly Chart

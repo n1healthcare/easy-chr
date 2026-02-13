@@ -696,6 +696,55 @@ async function runJob() {
       );
       logger.info({ prodPath }, 'Write verified');
 
+      // Copy 3D organ model to production path and inject signed URL into HTML
+      try {
+        const glbScopedPath = `realms/${realmId}/human_organ.glb`;
+        const glbExists = await scopedStorage.exists(glbScopedPath);
+        if (glbExists) {
+          const glbBuffer = await scopedStorage.readFile(glbScopedPath);
+          const glbProdPath = ProductionPaths.userChr(config.userId, config.chrId, 'human_organ.glb');
+          await withRetry(
+            () => baseStorage.writeFile(glbProdPath, glbBuffer, 'model/gltf-binary'),
+            {
+              ...REALM_CONFIG.retry.api,
+              maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_EXISTS_RETRIES),
+              operationName: 'Storage.writeFile(GLB)',
+            }
+          );
+          logger.info({ glbProdPath, sizeBytes: glbBuffer.length }, '3D organ model copied to production');
+
+          // Generate signed URL for the GLB and inject into HTML
+          // (S3 requires signed URLs — relative paths won't work)
+          const glbSignedUrl = await withRetry(
+            () => baseStorage.getSignedUrl(glbProdPath),
+            {
+              ...REALM_CONFIG.retry.api,
+              maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_EXISTS_RETRIES),
+              operationName: 'Storage.getSignedUrl(GLB)',
+            }
+          );
+          htmlContent = htmlContent.replace(
+            "loader.load('human_organ.glb'",
+            `loader.load('${glbSignedUrl}'`
+          );
+          // Re-write HTML with the signed GLB URL
+          await withRetry(
+            () => baseStorage.writeFile(prodPath, htmlContent, 'text/html'),
+            {
+              ...REALM_CONFIG.retry.api,
+              maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_EXISTS_RETRIES),
+              operationName: 'Storage.writeFile(HTML+GLB)',
+            }
+          );
+          logger.info('HTML updated with signed GLB URL');
+        } else {
+          logger.warn({ glbScopedPath }, '3D organ model not found in scoped storage, skipping');
+        }
+      } catch (glbErr) {
+        const glbMsg = glbErr instanceof Error ? glbErr.message : String(glbErr);
+        logger.warn({ error: glbMsg }, '3D organ model copy failed (non-critical)');
+      }
+
       // Get signed URL for access
       publicUrl = await baseStorage.getSignedUrl(prodPath);
 

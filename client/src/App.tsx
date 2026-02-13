@@ -15,15 +15,20 @@ function App() {
   const [files, setFiles] = useState<File[]>([])
   const [prompt, setPrompt] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
-  
+
   // Rotating Thought State
   const [currentStep, setCurrentStep] = useState<string>('Initializing...')
   const [currentLog, setCurrentLog] = useState<string>('')
   const [streamBuffer, setStreamBuffer] = useState<string>('')
-  
-  const [realmUrl, setRealmUrl] = useState<string | null>(null)
+
+  // Check for ?realm=<uuid> query param (used by regen-html script)
+  const [realmUrl, setRealmUrl] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search)
+    const realmParam = params.get('realm')
+    return realmParam ? `/realms/${realmParam}/index.html` : null
+  })
   const [error, setError] = useState<string | null>(null)
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

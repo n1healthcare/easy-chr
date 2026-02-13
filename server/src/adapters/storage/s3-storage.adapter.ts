@@ -267,6 +267,8 @@ export class S3StorageAdapter implements StoragePort {
       js: 'application/javascript',
       xml: 'application/xml',
       csv: 'text/csv',
+      glb: 'model/gltf-binary',
+      gltf: 'model/gltf+json',
     };
     return types[ext ?? ''] ?? 'application/octet-stream';
   }

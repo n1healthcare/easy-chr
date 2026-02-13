@@ -41,6 +41,22 @@ export const SessionPaths = {
   validation: (sessionId: string) => `sessions/${sessionId}/validation.md`,
 
   /**
+   * Organ-by-organ clinical insights (post-validation)
+   */
+  organInsights: (sessionId: string) =>
+    `sessions/${sessionId}/organ_insights.md`,
+
+  /**
+   * Pre-computed 3D body twin viewer data
+   */
+  bodyTwin: (sessionId: string) => `sessions/${sessionId}/body-twin.json`,
+
+  /**
+   * 3D organ model (GLB binary)
+   */
+  organModel: (sessionId: string) => `sessions/${sessionId}/human_organ.glb`,
+
+  /**
    * Content gap analysis results
    */
   contentReview: (sessionId: string) =>
@@ -110,6 +126,8 @@ export const LegacyPaths = {
   research: 'research.json',
   structuredData: 'structured_data.json',
   validation: 'validation.md',
+  organInsights: 'organ_insights.md',
+  bodyTwin: 'body-twin.json',
   contentReview: 'content_review.json',
   finalAnalysis: 'final_analysis.md',
 
