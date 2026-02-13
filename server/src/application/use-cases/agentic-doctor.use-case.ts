@@ -1063,15 +1063,17 @@ ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}`;
       await this.storage.writeFile(LegacyPaths.organInsights, organInsightsContent);
       console.log(`[AgenticDoctor] Organ insights complete: ${organInsightsContent.length} chars`);
 
-      // Persist pre-computed body-twin.json for the 3D body viewer
-      try {
-        const bodyTwinData = transformOrganInsightsToBodyTwin(organInsightsContent);
-        const bodyTwinJson = JSON.stringify(bodyTwinData, null, 2);
-        await this.storage.writeFile(LegacyPaths.bodyTwin, bodyTwinJson, 'application/json');
-        console.log(`[AgenticDoctor] Body twin data persisted: ${bodyTwinData.organs.length} organs, ${bodyTwinData.systems.length} systems`);
-      } catch (btError) {
-        const btMsg = btError instanceof Error ? btError.message : String(btError);
-        console.warn(`[AgenticDoctor] Body twin transform failed (non-critical): ${btMsg}`);
+      // Persist pre-computed body-twin.json for the 3D body viewer (only when enabled)
+      if (REALM_CONFIG.agenticLoop.enableBodyTwin) {
+        try {
+          const bodyTwinData = transformOrganInsightsToBodyTwin(organInsightsContent);
+          const bodyTwinJson = JSON.stringify(bodyTwinData, null, 2);
+          await this.storage.writeFile(LegacyPaths.bodyTwin, bodyTwinJson, 'application/json');
+          console.log(`[AgenticDoctor] Body twin data persisted: ${bodyTwinData.organs.length} organs, ${bodyTwinData.systems.length} systems`);
+        } catch (btError) {
+          const btMsg = btError instanceof Error ? btError.message : String(btError);
+          console.warn(`[AgenticDoctor] Body twin transform failed (non-critical): ${btMsg}`);
+        }
       }
 
       yield { type: 'log', message: `Organ insights complete (${organInsightsContent.length} chars).` };
