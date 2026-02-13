@@ -104,6 +104,8 @@ const SKIP_UPLOADS = IS_DEVELOPMENT;
 const SKIP_PROGRESS_TRACKING = IS_DEVELOPMENT;
 const MIN_STORAGE_WRITE_RETRIES = 5;
 const MIN_SIGNED_URL_RETRIES = 3;
+const MIN_STORAGE_READ_RETRIES = 3;
+const MIN_STORAGE_EXISTS_RETRIES = 3;
 
 // ============================================================================
 // Blindspot Feedback Widget (staging only)
@@ -661,7 +663,14 @@ async function runJob() {
       logger.info('[5/5] Copying to production path and generating signed URL...');
 
       // Read HTML from scoped storage (where the pipeline wrote it)
-      let htmlContent = await scopedStorage.readFileAsString(storagePath);
+      let htmlContent = await withRetry(
+        () => scopedStorage.readFileAsString(storagePath),
+        {
+          ...REALM_CONFIG.retry.api,
+          maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_READ_RETRIES),
+          operationName: 'Storage.readFileAsString',
+        }
+      );
 
       // Inject Blindspot feedback widget (staging only)
       htmlContent = injectBlindspotWidget(htmlContent);
@@ -683,10 +692,20 @@ async function runJob() {
       );
 
       // Verify the file was written successfully
-      const writeVerified = await baseStorage.exists(prodPath);
-      if (!writeVerified) {
-        throw new Error(`Failed to verify write to S3: ${prodPath}`);
-      }
+      await withRetry(
+        async () => {
+          const exists = await baseStorage.exists(prodPath);
+          if (!exists) {
+            throw new RetryableError(`Storage.exists returned false for ${prodPath}`);
+          }
+          return true;
+        },
+        {
+          ...REALM_CONFIG.retry.api,
+          maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_EXISTS_RETRIES),
+          operationName: 'Storage.exists',
+        }
+      );
       logger.info({ prodPath }, 'Write verified');
 
       // Get signed URL for access
