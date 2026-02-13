@@ -201,17 +201,36 @@ const OPERATION_BY_STEP: Record<keyof typeof PROGRESS_MAP, string> = {
 // Map AgenticDoctorUseCase phase names to progress updates
 // These phases are yielded as { type: 'step', name: '...', status: 'running'|'completed'|'failed' }
 // IMPORTANT: Values must be monotonically increasing and fit between
-// the outer notifyProgress calls: 'analyzing' (20%) ... 'uploading' (90%)
+// the outer notifyProgress calls: 'analyzing' (20%) ... 'uploading' (92%)
+//
+// Time-proportional distribution (Medical Analysis ~45% of runtime, Validation ~12%):
+//   Phase                    Start%   End%     Runtime
+//   Document Extraction       22       25       ~3 min
+//   Medical Analysis          25       55       ~15 min (35 cycles, interpolated)
+//   Research                  55       63       ~4 min
+//   Data Structuring          63       68       ~2 min
+//   Validation                68       78       ~4 min (15 cycles, interpolated)
+//   Organ Insights            78       81       ~1 min
+//   Report Generation         81       86       ~2 min
+//   Content Review            86       89       ~1 min
+//   HTML Regeneration         89       92       ~1 min (conditional)
 const PHASE_PROGRESS_MAP: Record<string, ProgressUpdate> = {
-  'Document Extraction':    { stage: 'Preparing',  progress: 25,  message: 'Extracting content from your documents...' },
-  'Medical Analysis':       { stage: 'Analyzing',  progress: 35,  message: 'Performing medical analysis...' },
-  'Research':               { stage: 'Analyzing',  progress: 45,  message: 'Researching and validating claims...' },
-  'Data Structuring':       { stage: 'Writing',    progress: 55,  message: 'Structuring data for visualization...' },
-  'Validation':             { stage: 'Checking',   progress: 60,  message: 'Validating analysis completeness...' },
-  'Organ Insights':         { stage: 'Analyzing',  progress: 65,  message: 'Generating organ-by-organ insights...' },
-  'Report Generation':      { stage: 'Finalizing', progress: 75,  message: 'Building your interactive health report...' },
-  'Content Review':         { stage: 'Checking',   progress: 82,  message: 'Reviewing content completeness...' },
-  'HTML Regeneration':      { stage: 'Finalizing', progress: 87,  message: 'Refining the health report...' },
+  'Document Extraction':    { stage: 'Preparing',  progress: 22,  message: 'Extracting content from your documents...' },
+  'Medical Analysis':       { stage: 'Analyzing',  progress: 25,  message: 'Performing medical analysis...' },
+  'Research':               { stage: 'Analyzing',  progress: 55,  message: 'Researching and validating claims...' },
+  'Data Structuring':       { stage: 'Writing',    progress: 63,  message: 'Structuring data for visualization...' },
+  'Validation':             { stage: 'Checking',   progress: 68,  message: 'Validating analysis completeness...' },
+  'Organ Insights':         { stage: 'Analyzing',  progress: 78,  message: 'Generating organ-by-organ insights...' },
+  'Report Generation':      { stage: 'Finalizing', progress: 81,  message: 'Building your interactive health report...' },
+  'Content Review':         { stage: 'Checking',   progress: 86,  message: 'Reviewing content completeness...' },
+  'HTML Regeneration':      { stage: 'Finalizing', progress: 89,  message: 'Refining the health report...' },
+};
+
+// Phases with iterative cycles get sub-phase progress interpolation.
+// Maps phase name → { endProgress, cyclePattern } for parsing log messages.
+const INTERPOLATED_PHASES: Record<string, { endProgress: number; cyclePattern: RegExp; userMessage: string }> = {
+  'Medical Analysis': { endProgress: 55, cyclePattern: /cycle (\d+)\/(\d+)/, userMessage: 'Analyzing your health data...' },
+  'Validation':       { endProgress: 78, cyclePattern: /cycle (\d+)\/(\d+)/, userMessage: 'Validating analysis completeness...' },
 };
 
 // ============================================================================
@@ -458,6 +477,48 @@ async function notifyPhaseProgress(
   }
 }
 
+/**
+ * Send sub-phase progress update for interpolated cycle-based progress.
+ * Used within long iterative phases (Medical Analysis, Validation) to
+ * report granular progress based on cycle X/Y log messages.
+ */
+async function notifySubPhaseProgress(
+  config: { n1ApiBaseUrl: string; n1ApiKey: string; userId: string; chrId: string },
+  progress: number,
+  stage: ProgressStage,
+  message: string
+): Promise<void> {
+  rootLogger.info({ stage, progress }, message);
+
+  if (SKIP_PROGRESS_TRACKING) return;
+
+  const payload: Record<string, unknown> = {
+    report_id: config.chrId,
+    user_id: config.userId,
+    progress,
+    status: 'in_progress',
+    message,
+    progress_stage: stage,
+  };
+
+  try {
+    const response = await fetch(`${config.n1ApiBaseUrl}/reports/status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'N1-Api-Key': config.n1ApiKey,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      rootLogger.warn({ statusCode: response.status }, `Sub-phase progress API call failed: ${await response.text()}`);
+    }
+  } catch (error) {
+    rootLogger.warn(error, 'Sub-phase progress API error');
+  }
+}
+
 dotenv.config();
 
 interface JobConfig {
@@ -611,16 +672,26 @@ async function runJob() {
     logger.info('[4/5] Processing PDFs through multi-agent pipeline...');
     const generator = fetchAndProcessUseCase.execute(config.userId, config.prompt);
 
+    // Track current phase for sub-phase progress interpolation
+    let currentPhaseName = '';
+    let lastReportedProgress = 20; // Start after 'analyzing' (20%)
+
     for await (const event of generator) {
       if (event.type === 'step') {
         // Handle phase progress updates from AgenticDoctorUseCase
         const phaseName = 'name' in event ? event.name : '';
         const phaseStatus = 'status' in event ? event.status : '';
 
-        if (phaseStatus === 'running' && phaseName && PHASE_PROGRESS_MAP[phaseName]) {
-          logger.info({ phase: phaseName, status: 'running' }, `Phase started: ${phaseName}`);
-          // Send granular progress update to N1 API
-          await notifyPhaseProgress(config, phaseName);
+        if (phaseStatus === 'running' && phaseName) {
+          currentPhaseName = phaseName;
+
+          if (PHASE_PROGRESS_MAP[phaseName]) {
+            logger.info({ phase: phaseName, status: 'running' }, `Phase started: ${phaseName}`);
+            await notifyPhaseProgress(config, phaseName);
+            lastReportedProgress = PHASE_PROGRESS_MAP[phaseName].progress;
+          } else {
+            logger.warn({ phase: phaseName }, 'Phase not in PHASE_PROGRESS_MAP');
+          }
         } else if (phaseStatus === 'completed') {
           logger.info({ phase: phaseName, status: 'completed' }, `Phase completed: ${phaseName}`);
         } else if (phaseStatus === 'failed') {
@@ -629,7 +700,30 @@ async function runJob() {
       } else if (event.type === 'thought') {
         logger.debug({ eventType: 'thought' }, `${'content' in event ? event.content : ''}`);
       } else if (event.type === 'log') {
-        logger.info({ eventType: 'log' }, `${'message' in event ? event.message : ''}`);
+        const logMessage = 'message' in event ? (event.message || '') : '';
+        logger.info({ eventType: 'log' }, logMessage);
+
+        // Sub-phase progress: interpolate within long iterative phases
+        const interpolation = INTERPOLATED_PHASES[currentPhaseName];
+        if (interpolation) {
+          const match = logMessage.match(interpolation.cyclePattern);
+          if (match) {
+            const cycle = parseInt(match[1], 10);
+            const totalCycles = parseInt(match[2], 10);
+            if (totalCycles > 0) {
+              const phaseStart = PHASE_PROGRESS_MAP[currentPhaseName]?.progress ?? lastReportedProgress;
+              const phaseEnd = interpolation.endProgress;
+              const interpolatedProgress = Math.round(phaseStart + (cycle / totalCycles) * (phaseEnd - phaseStart));
+
+              // Only send if progress actually advanced (avoid API spam)
+              if (interpolatedProgress > lastReportedProgress) {
+                lastReportedProgress = interpolatedProgress;
+                const phaseEntry = PHASE_PROGRESS_MAP[currentPhaseName];
+                await notifySubPhaseProgress(config, interpolatedProgress, phaseEntry?.stage ?? 'Analyzing', interpolation.userMessage);
+              }
+            }
+          }
+        }
       } else if (event.type === 'result') {
         realmPath = 'url' in event ? event.url : '';
         logger.info({ realmPath }, 'Realm generated');
