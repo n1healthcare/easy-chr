@@ -8,6 +8,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { OrganModel } from '../common/storage-paths.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,10 +31,9 @@ export function injectBodyTwinViewer(htmlContent: string, bodyTwinData: object):
     return htmlContent;
   }
 
-  const viewer = template.replace(
-    '"__BODY_TWIN_DATA__"',
-    JSON.stringify(bodyTwinData)
-  );
+  const viewer = template
+    .replace('"__BODY_TWIN_DATA__"', JSON.stringify(bodyTwinData))
+    .replace(OrganModel.URL_PLACEHOLDER, OrganModel.FILENAME);
 
   // Hide report content until the landing page is dismissed.
   // Injected into <head> so it applies before any body content paints.

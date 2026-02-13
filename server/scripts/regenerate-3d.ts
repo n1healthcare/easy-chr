@@ -13,6 +13,7 @@ import fs from 'fs';
 import path from 'path';
 import { transformOrganInsightsToBodyTwin } from '../src/services/body-twin-transformer.service.js';
 import { injectBodyTwinViewer } from '../src/utils/inject-body-twin.js';
+import { OrganModel } from '../src/common/storage-paths.js';
 
 function regenerate3d(realmId?: string) {
   const storageDir = path.join(process.cwd(), 'storage');
@@ -83,8 +84,8 @@ function regenerate3d(realmId?: string) {
   fs.writeFileSync(htmlPath, htmlContent, 'utf-8');
 
   // Copy 3D organ model to realm directory (viewer loads it via relative path)
-  const glbSource = path.join(process.cwd(), '..', 'client', 'public', 'models', 'human_organ.glb');
-  const glbDest = path.join(realmsDir, realmId, 'human_organ.glb');
+  const glbSource = OrganModel.localSourcePath();
+  const glbDest = path.join(realmsDir, realmId, OrganModel.FILENAME);
   if (fs.existsSync(glbSource)) {
     fs.copyFileSync(glbSource, glbDest);
     console.log(`Copied GLB model to realm directory (${(fs.statSync(glbDest).size / 1024 / 1024).toFixed(1)}MB)`);

@@ -19,7 +19,7 @@ import fs from 'fs';
 
 import { LLMClientPort } from '../ports/llm-client.port.js';
 import type { StoragePort } from '../ports/storage.port.js';
-import { LegacyPaths } from '../../common/storage-paths.js';
+import { LegacyPaths, OrganModel } from '../../common/storage-paths.js';
 import { readFileWithEncoding } from '../../../vendor/gemini-cli/packages/core/src/utils/fileUtils.js';
 import { PDFExtractionService } from '../../services/pdf-extraction.service.js';
 import { AgenticMedicalAnalyst, type AnalystEvent } from '../../services/agentic-medical-analyst.service.js';
@@ -1024,7 +1024,9 @@ ${organInsightsContent}
       htmlContent = htmlContent.trim();
 
       // Strip any thinking text before <!DOCTYPE
-      const doctypeIndex = htmlContent.indexOf('<!DOCTYPE');
+      // Use lastIndexOf: the LLM sometimes mentions <!DOCTYPE in its thinking,
+      // so the real one is the last occurrence.
+      const doctypeIndex = htmlContent.lastIndexOf('<!DOCTYPE');
       if (doctypeIndex > 0) {
         console.log(`[AgenticDoctor] Stripping ${doctypeIndex} chars of thinking text from HTML`);
         htmlContent = htmlContent.slice(doctypeIndex);
@@ -1314,7 +1316,7 @@ ${organInsightsContent}
           if (regenHtml.trim().length > 0) {
             // Clean up regenerated HTML
             regenHtml = regenHtml.trim();
-            const regenDoctypeIndex = regenHtml.indexOf('<!DOCTYPE');
+            const regenDoctypeIndex = regenHtml.lastIndexOf('<!DOCTYPE');
             if (regenDoctypeIndex > 0) {
               regenHtml = regenHtml.slice(regenDoctypeIndex);
             }
@@ -1362,10 +1364,10 @@ ${organInsightsContent}
 
           // Copy 3D organ model to realm directory so it's served alongside the HTML
           try {
-            const glbSource = path.join(process.cwd(), '..', 'client', 'public', 'models', 'human_organ.glb');
+            const glbSource = OrganModel.localSourcePath();
             const glbBuffer = fs.readFileSync(glbSource);
-            const glbDestPath = `realms/${realmId}/human_organ.glb`;
-            await this.storage.writeFile(glbDestPath, glbBuffer, 'model/gltf-binary');
+            const glbDestPath = `realms/${realmId}/${OrganModel.FILENAME}`;
+            await this.storage.writeFile(glbDestPath, glbBuffer, OrganModel.CONTENT_TYPE);
             console.log(`[AgenticDoctor] Copied 3D organ model to ${glbDestPath} (${(glbBuffer.length / 1024 / 1024).toFixed(1)}MB)`);
           } catch (glbErr) {
             const glbMsg = glbErr instanceof Error ? glbErr.message : String(glbErr);

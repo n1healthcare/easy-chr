@@ -6,6 +6,21 @@
  */
 
 /**
+ * 3D organ model constants
+ */
+export const OrganModel = {
+  /** Filename used across pipeline, templates, and storage */
+  FILENAME: 'human_organ.glb',
+  /** Content type for GLB files */
+  CONTENT_TYPE: 'model/gltf-binary',
+  /** Placeholder in the HTML template, replaced at injection or deploy time */
+  URL_PLACEHOLDER: '__ORGAN_MODEL_URL__',
+  /** Resolve the local source path (relative to server cwd) */
+  localSourcePath: () =>
+    `${process.cwd()}/../client/public/models/human_organ.glb`,
+};
+
+/**
  * Session-scoped storage paths for intermediate artifacts
  */
 export const SessionPaths = {
@@ -54,7 +69,7 @@ export const SessionPaths = {
   /**
    * 3D organ model (GLB binary)
    */
-  organModel: (sessionId: string) => `sessions/${sessionId}/human_organ.glb`,
+  organModel: (sessionId: string) => `sessions/${sessionId}/${OrganModel.FILENAME}`,
 
   /**
    * Content gap analysis results
