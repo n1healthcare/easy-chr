@@ -10,8 +10,11 @@ import fs from 'fs';
 import { retryLLM } from '../../common/index.js';
 import type { BillingContext } from '../../utils/billing.js';
 import { createBillingHeaders } from '../../utils/billing.js';
+import { getLogger } from '../../logger.js';
+import { REALM_CONFIG, getModelInventory } from '../../config.js';
 
 const DEFAULT_GEMINI_STREAM_TIMEOUT_MS = 120000;
+const logger = getLogger().child({ component: 'GeminiAdapter' });
 
 export class GeminiAdapter implements LLMClientPort {
   private configByBillingKey: Map<string, Config> = new Map();
@@ -35,10 +38,8 @@ export class GeminiAdapter implements LLMClientPort {
   }
 
   private async createConfig(billingContext?: BillingContext): Promise<Config> {
-    const model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
-
-    // Get the web search model from env, defaulting to MARKDOWN_MODEL or gemini-3-flash-preview
-    const webSearchModel = process.env.WEB_SEARCH_MODEL || process.env.MARKDOWN_MODEL || 'gemini-3-flash-preview';
+    const model = REALM_CONFIG.models.intermediate || DEFAULT_GEMINI_MODEL;
+    const webSearchModel = REALM_CONFIG.models.markdown || 'gemini-3-flash-preview';
 
     // Create custom model config that overrides web-search to use an available model
     // The default uses gemini-2.5-flash which may not be available on all LiteLLM proxies
@@ -113,11 +114,27 @@ export class GeminiAdapter implements LLMClientPort {
     // Warm default (no billing context) config.
     await this.getOrCreateConfig();
 
-    const model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
-    const webSearchModel = process.env.WEB_SEARCH_MODEL || process.env.MARKDOWN_MODEL || 'gemini-3-flash-preview';
-    console.log(`Using Gemini Model: ${model}`);
-    console.log(`Using Web Search Model: ${webSearchModel}`);
-    console.log('Gemini Adapter initialized successfully.');
+    const model = REALM_CONFIG.models.intermediate || DEFAULT_GEMINI_MODEL;
+    const webSearchModel = REALM_CONFIG.models.markdown || 'gemini-3-flash-preview';
+    const modelInventory = getModelInventory();
+    if (Object.keys(modelInventory.ignoredEnvOverrides).length > 0) {
+      logger.warn(
+        { ignoredModelEnvOverrides: modelInventory.ignoredEnvOverrides },
+        'Ignoring deprecated model env overrides due to defaults-only model policy',
+      );
+    }
+    if (process.env.GEMINI_MODEL || process.env.WEB_SEARCH_MODEL) {
+      logger.warn(
+        {
+          ignoredGeminiModelOverrides: {
+            GEMINI_MODEL: process.env.GEMINI_MODEL ?? '',
+            WEB_SEARCH_MODEL: process.env.WEB_SEARCH_MODEL ?? '',
+          },
+        },
+        'Ignoring GEMINI_MODEL and WEB_SEARCH_MODEL env overrides due to defaults-only model policy',
+      );
+    }
+    logger.info({ model, webSearchModel }, 'Gemini Adapter initialized successfully');
   }
 
   async sendMessageStream(message: string, sessionId: string, filePaths?: string[], options?: LLMStreamOptions): Promise<AsyncGenerator<string, void, unknown>> {
@@ -198,14 +215,20 @@ export class GeminiAdapter implements LLMClientPort {
     // Per-chunk inactivity timeout: resets every time a chunk arrives.
     // Detects stalled streams without killing long-running active generations.
     let timeoutHandle = setTimeout(() => {
-      console.warn(`[GeminiAdapter] Stream stalled — no chunks received for ${streamTimeoutMs}ms; aborting.`);
+      logger.warn(
+        { streamTimeoutMs },
+        'Stream stalled — no chunks received; aborting Gemini stream',
+      );
       controller.abort();
     }, streamTimeoutMs);
 
     function resetTimeout() {
       clearTimeout(timeoutHandle);
       timeoutHandle = setTimeout(() => {
-        console.warn(`[GeminiAdapter] Stream stalled — no chunks received for ${streamTimeoutMs}ms; aborting.`);
+        logger.warn(
+          { streamTimeoutMs },
+          'Stream stalled — no chunks received; aborting Gemini stream',
+        );
         controller.abort();
       }, streamTimeoutMs);
     }

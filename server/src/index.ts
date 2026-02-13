@@ -6,11 +6,13 @@ import dotenv from 'dotenv';
 import { createServer } from './adapters/http/server.js';
 import { createStorageAdapterFromEnv } from './adapters/storage/storage.factory.js';
 import { createObservabilityAdapter } from './adapters/langfuse/observability.factory.js';
-import { getLogger } from './logger.js';
+import { getLogger, installConsoleBridge } from './logger.js';
+import { getModelInventory } from './config.js';
 
 dotenv.config();
 
 const logger = getLogger();
+installConsoleBridge(logger);
 
 // Convert standard OPENAI env vars to Gemini-specific ones
 // This allows forge-sentinel to be agnostic about Gemini
@@ -40,6 +42,32 @@ if (!process.env.GEMINI_CLI_CUSTOM_HEADERS) {
 
 const start = async () => {
   try {
+    const modelInventory = getModelInventory();
+    if (Object.keys(modelInventory.ignoredEnvOverrides).length > 0) {
+      logger.warn(
+        { ignoredModelEnvOverrides: modelInventory.ignoredEnvOverrides },
+        'Ignoring deprecated model env overrides due to defaults-only model policy',
+      );
+    }
+    logger.info(
+      {
+        configuration: {
+          runtime: {
+            modelPolicy: modelInventory.policy,
+            resolvedModels: modelInventory.resolvedModels,
+            ignoredModelEnvOverrides: modelInventory.ignoredEnvOverrides,
+            observability: {
+              otelEnabled: process.env.OTEL_ENABLED ?? 'false',
+              otelExporterOtlpEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? '',
+              otelServiceName: process.env.OTEL_SERVICE_NAME ?? 'easy-chr',
+              observabilityEnabled: process.env.OBSERVABILITY_ENABLED ?? 'false',
+            },
+          },
+        },
+      },
+      'Effective runtime configuration resolved',
+    );
+
     // Initialize storage adapter based on environment
     const storage = createStorageAdapterFromEnv();
     const provider = process.env.STORAGE_PROVIDER ?? 'local';

@@ -20,16 +20,27 @@ function parseRetryMaxWait(value: string | undefined, fallbackSeconds: number): 
   return Math.min(effectiveValue, RETRY_WAIT_UPPER_LIMIT_SECONDS);
 }
 
+const DEFAULT_REALM_MODELS = {
+  markdown: 'gemini-2.5-flash',
+  intermediate: 'gemini-3-pro-preview',
+  html: 'gemini-3-flash-preview',
+  doctor: 'gemini-3-pro-preview',
+} as const;
+
+const MODEL_ENV_OVERRIDES = {
+  MARKDOWN_MODEL: process.env.MARKDOWN_MODEL,
+  INTERMEDIATE_MODEL: process.env.INTERMEDIATE_MODEL,
+  HTML_MODEL: process.env.HTML_MODEL,
+  DOCTOR_MODEL: process.env.DOCTOR_MODEL,
+};
+
 export const REALM_CONFIG = {
   models: {
-    // Default to LiteLLM-compatible models
-    // In production, these are injected by forge-sentinel via env vars
-    markdown: process.env.MARKDOWN_MODEL || 'gemini-2.5-flash',
-    intermediate: process.env.INTERMEDIATE_MODEL || 'gemini-3-pro-preview',
-    html: process.env.HTML_MODEL || 'gemini-3-flash-preview',
-    // Agentic Doctor model - uses the most capable model for complex medical analysis
-    // Falls back to INTERMEDIATE_MODEL which is typically a capable model
-    doctor: process.env.DOCTOR_MODEL || process.env.INTERMEDIATE_MODEL || 'gemini-3-pro-preview',
+    // Defaults-only model routing: env model overrides are ignored.
+    markdown: DEFAULT_REALM_MODELS.markdown,
+    intermediate: DEFAULT_REALM_MODELS.intermediate,
+    html: DEFAULT_REALM_MODELS.html,
+    doctor: DEFAULT_REALM_MODELS.doctor,
   },
   agenticLoop: {
     // Maximum iterations for the agentic loop (tool calls + refinements)
@@ -96,3 +107,21 @@ export const REALM_CONFIG = {
     host: process.env.LANGFUSE_HOST || 'https://langfuse.n1-research.com',
   },
 };
+
+export function getModelInventory(): {
+  policy: 'defaults_only';
+  resolvedModels: typeof DEFAULT_REALM_MODELS;
+  ignoredEnvOverrides: Record<string, string>;
+} {
+  const ignoredEnvOverrides = Object.fromEntries(
+    Object.entries(MODEL_ENV_OVERRIDES).filter(
+      ([, value]) => typeof value === 'string' && value.trim().length > 0,
+    ),
+  ) as Record<string, string>;
+
+  return {
+    policy: 'defaults_only',
+    resolvedModels: { ...DEFAULT_REALM_MODELS },
+    ignoredEnvOverrides,
+  };
+}

@@ -32,9 +32,13 @@ import { setupOtel } from './otel.js';
 try { setupOtel(); } catch { /* OTEL is optional — never crash */ }
 
 import dotenv from 'dotenv';
+import { getLogger, createChildLogger, installConsoleBridge, type AppLogger } from './logger.js';
 
 // Load environment variables from .env file (if present)
 dotenv.config();
+
+const rootLogger = getLogger();
+installConsoleBridge(rootLogger);
 
 // Convert standard OPENAI env vars to Gemini-specific ones
 // This allows forge-sentinel to be agnostic about Gemini
@@ -43,7 +47,7 @@ if (process.env.OPENAI_API_KEY) {
   process.env.GEMINI_API_KEY = process.env.OPENAI_API_KEY;
 } else if (!process.env.GEMINI_API_KEY) {
   // Neither is set - let the service throw the error
-  console.warn('Warning: Neither OPENAI_API_KEY nor GEMINI_API_KEY is set');
+  rootLogger.warn('Neither OPENAI_API_KEY nor GEMINI_API_KEY is set');
 }
 
 // OPENAI_BASE_URL takes priority - if present, it overwrites GOOGLE_GEMINI_BASE_URL
@@ -53,7 +57,7 @@ if (process.env.OPENAI_BASE_URL) {
   process.env.GOOGLE_GEMINI_BASE_URL = baseUrl;
 } else if (!process.env.GOOGLE_GEMINI_BASE_URL) {
   // Neither is set - let the service throw the error
-  console.warn('Warning: Neither OPENAI_BASE_URL nor GOOGLE_GEMINI_BASE_URL is set');
+  rootLogger.warn('Neither OPENAI_BASE_URL nor GOOGLE_GEMINI_BASE_URL is set');
 }
 
 // Set billing headers for LiteLLM cost tracking via vendored gemini-cli
@@ -74,17 +78,14 @@ import { AgenticDoctorUseCase } from './application/use-cases/agentic-doctor.use
 import { FetchAndProcessPDFsUseCase } from './application/use-cases/fetch-and-process-pdfs.use-case.js';
 import { RetryableError, ValidationError } from './common/exceptions.js';
 import { withRetry } from './common/retry.js';
-import { REALM_CONFIG } from './config.js';
+import { REALM_CONFIG, getModelInventory } from './config.js';
 import { createStorageAdapterFromEnv } from './adapters/storage/storage.factory.js';
 import { PrefixedStorageAdapter } from './adapters/storage/prefixed-storage.adapter.js';
 import { RetryableStorageAdapter } from './adapters/storage/retryable-storage.adapter.js';
 import { LegacyPaths, OrganModel, ProductionPaths } from './common/storage-paths.js';
 import type { StoragePort } from './application/ports/storage.port.js';
-import { getLogger, createChildLogger, type AppLogger } from './logger.js';
 import path from 'path';
 import fs from 'fs';
-
-const rootLogger = getLogger();
 
 // ============================================================================
 // Environment Configuration
@@ -150,8 +151,12 @@ function injectBlindspotWidget(html: string): string {
     const idx = html.lastIndexOf('</body>');
     if (idx === -1) return html + widget;
     return html.slice(0, idx) + widget + '\n' + html.slice(idx);
-  } catch {
-    console.warn('[Blindspot] Failed to inject widget, returning original HTML');
+  } catch (error) {
+    if (error instanceof Error) {
+      rootLogger.warn(error, '[Blindspot] Failed to inject widget, returning original HTML');
+    } else {
+      rootLogger.warn({ error: String(error) }, '[Blindspot] Failed to inject widget, returning original HTML');
+    }
     return html;
   }
 }
@@ -522,7 +527,46 @@ function validateEnvironment(): JobConfig {
 }
 
 async function runJob() {
-  rootLogger.info({ startedAt: new Date().toISOString(), environment: ENVIRONMENT, skipUploads: SKIP_UPLOADS, skipProgressTracking: SKIP_PROGRESS_TRACKING }, 'N1 Interface - Job Runner starting');
+  const modelInventory = getModelInventory();
+  if (Object.keys(modelInventory.ignoredEnvOverrides).length > 0) {
+    rootLogger.warn(
+      { ignoredModelEnvOverrides: modelInventory.ignoredEnvOverrides },
+      'Ignoring deprecated model env overrides due to defaults-only model policy',
+    );
+  }
+
+  rootLogger.info(
+    {
+      configuration: {
+        runtime: {
+          startedAt: new Date().toISOString(),
+          environment: ENVIRONMENT,
+          skipUploads: SKIP_UPLOADS,
+          skipProgressTracking: SKIP_PROGRESS_TRACKING,
+          modelPolicy: modelInventory.policy,
+          resolvedModels: modelInventory.resolvedModels,
+          ignoredModelEnvOverrides: modelInventory.ignoredEnvOverrides,
+          observability: {
+            otelEnabled: process.env.OTEL_ENABLED ?? 'false',
+            otelExporterOtlpEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? '',
+            otelServiceName: process.env.OTEL_SERVICE_NAME ?? 'easy-chr',
+            observabilityEnabled: process.env.OBSERVABILITY_ENABLED ?? 'false',
+          },
+        },
+      },
+    },
+    'Effective runtime configuration resolved',
+  );
+
+  rootLogger.info(
+    {
+      startedAt: new Date().toISOString(),
+      environment: ENVIRONMENT,
+      skipUploads: SKIP_UPLOADS,
+      skipProgressTracking: SKIP_PROGRESS_TRACKING,
+    },
+    'N1 Interface - Job Runner starting',
+  );
 
   let config: JobConfig;
   try {
@@ -738,8 +782,11 @@ async function runJob() {
           logger.warn({ glbScopedPath }, '3D organ model not found in scoped storage, skipping');
         }
       } catch (glbErr) {
-        const glbMsg = glbErr instanceof Error ? glbErr.message : String(glbErr);
-        logger.warn({ error: glbMsg }, '3D organ model copy failed (non-critical)');
+        if (glbErr instanceof Error) {
+          logger.warn(glbErr, '3D organ model copy failed (non-critical)');
+        } else {
+          logger.warn({ error: String(glbErr) }, '3D organ model copy failed (non-critical)');
+        }
       }
 
       // Get signed URL for access
@@ -767,13 +814,25 @@ async function runJob() {
       errorInfo.errorCode
     );
 
-    logger.error({
-      failedAt: new Date().toISOString(),
-      errorCode: errorInfo.errorCode,
-      retryable: errorInfo.retryable,
-      exitCode: errorInfo.exitCode,
-      err: error,
-    }, 'Job failed');
+    logger.error(
+      {
+        failedAt: new Date().toISOString(),
+        errorCode: errorInfo.errorCode,
+        retryable: errorInfo.retryable,
+        exitCode: errorInfo.exitCode,
+        error:
+          error instanceof Error
+            ? {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+              }
+            : {
+                message: String(error),
+              },
+      },
+      'Job failed',
+    );
 
     process.exit(errorInfo.exitCode);
   }

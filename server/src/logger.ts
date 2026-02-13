@@ -13,6 +13,7 @@ import { sanitizeLogMessage, sanitizeObjectValues } from './utils/pii-sanitizer.
 
 let _rootLogger: PinoLogger | null = null;
 let _pinoAvailable = false;
+let _consoleBridgeInstalled = false;
 
 /**
  * Initialize the root logger. Call once at startup.
@@ -43,7 +44,19 @@ function initLogger(): PinoLogger | null {
           method: (...args: unknown[]) => void,
         ) {
           // pino calling convention: (msg), (obj, msg), (obj, msg, ...interpolation)
-          if (inputArgs.length > 0 && typeof inputArgs[0] === 'string') {
+          if (inputArgs.length > 0 && inputArgs[0] instanceof Error) {
+            const error = inputArgs[0];
+            inputArgs[0] = {
+              error: {
+                name: error.name,
+                message: sanitizeLogMessage(error.message),
+                stack: error.stack,
+              },
+            };
+            if (inputArgs.length > 1 && typeof inputArgs[1] === 'string') {
+              inputArgs[1] = sanitizeLogMessage(inputArgs[1] as string);
+            }
+          } else if (inputArgs.length > 0 && typeof inputArgs[0] === 'string') {
             inputArgs[0] = sanitizeLogMessage(inputArgs[0]);
           } else if (inputArgs.length > 0 && typeof inputArgs[0] === 'object' && inputArgs[0] !== null) {
             inputArgs[0] = sanitizeObjectValues(inputArgs[0] as Record<string, unknown>);
@@ -163,4 +176,65 @@ export function createChildLogger(context: {
   } catch {
     return consoleFallback;
   }
+}
+
+function normalizeConsoleArgs(args: unknown[]): [Record<string, unknown> | undefined, string] {
+  if (args.length === 0) return [undefined, ''];
+  const first = args[0];
+  if (first instanceof Error) {
+    return [
+      {
+        error: {
+          name: first.name,
+          message: sanitizeLogMessage(first.message),
+          stack: first.stack,
+        },
+      },
+      args.slice(1).map((arg) => (typeof arg === 'string' ? sanitizeLogMessage(arg) : String(arg))).join(' '),
+    ];
+  }
+  if (typeof first === 'object' && first !== null && !Array.isArray(first)) {
+    const obj = sanitizeObjectValues(first as Record<string, unknown>);
+    const msg = args.slice(1).map((arg) => (typeof arg === 'string' ? sanitizeLogMessage(arg) : String(arg))).join(' ');
+    return [obj, msg];
+  }
+  return [
+    undefined,
+    args.map((arg) => (typeof arg === 'string' ? sanitizeLogMessage(arg) : String(arg))).join(' '),
+  ];
+}
+
+/**
+ * Redirect console.* calls to the structured logger when pino is available.
+ * This improves production traceability for legacy console logging paths.
+ */
+export function installConsoleBridge(logger: AppLogger = getLogger()): void {
+  if (_consoleBridgeInstalled || !_pinoAvailable) return;
+  _consoleBridgeInstalled = true;
+
+  console.log = (...args: unknown[]) => {
+    const [obj, msg] = normalizeConsoleArgs(args);
+    if (obj) logger.info(obj, msg || 'console.log');
+    else logger.info(msg || 'console.log');
+  };
+  console.info = (...args: unknown[]) => {
+    const [obj, msg] = normalizeConsoleArgs(args);
+    if (obj) logger.info(obj, msg || 'console.info');
+    else logger.info(msg || 'console.info');
+  };
+  console.warn = (...args: unknown[]) => {
+    const [obj, msg] = normalizeConsoleArgs(args);
+    if (obj) logger.warn(obj, msg || 'console.warn');
+    else logger.warn(msg || 'console.warn');
+  };
+  console.error = (...args: unknown[]) => {
+    const [obj, msg] = normalizeConsoleArgs(args);
+    if (obj) logger.error(obj, msg || 'console.error');
+    else logger.error(msg || 'console.error');
+  };
+  console.debug = (...args: unknown[]) => {
+    const [obj, msg] = normalizeConsoleArgs(args);
+    if (obj) logger.debug(obj, msg || 'console.debug');
+    else logger.debug(msg || 'console.debug');
+  };
 }
