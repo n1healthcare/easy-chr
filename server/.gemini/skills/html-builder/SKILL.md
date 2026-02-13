@@ -134,7 +134,7 @@ Plotly.newPlot('trend-MARKER_ID', [{
       type: 'rect',
       xref: 'paper', x0: 0, x1: 1,
       yref: 'y', y0: LOW, y1: HIGH,
-      fillcolor: 'rgba(16, 185, 129, 0.15)',
+      fillcolor: 'rgba(22, 163, 74, 0.15)',
       line: { width: 0 }
     },
     // Optimal line (dashed)
@@ -142,7 +142,7 @@ Plotly.newPlot('trend-MARKER_ID', [{
       type: 'line',
       xref: 'paper', x0: 0, x1: 1,
       yref: 'y', y0: OPTIMAL, y1: OPTIMAL,
-      line: { color: '#10B981', width: 2, dash: 'dash' }
+      line: { color: '#16A34A', width: 2, dash: 'dash' }
     }
   ],
   annotations: [{
@@ -150,7 +150,7 @@ Plotly.newPlot('trend-MARKER_ID', [{
     y: OPTIMAL, yref: 'y',
     text: 'Optimal: VALUE',
     showarrow: false,
-    font: { size: 11, color: '#10B981' },
+    font: { size: 11, color: '#16A34A' },
     bgcolor: 'rgba(255,255,255,0.8)'
   }],
   margin: { t: 20, r: 40, b: 40, l: 60 },
@@ -187,11 +187,11 @@ Plotly.newPlot('gauge-MARKER_ID', [{
     borderwidth: 0,
     steps: [
       { range: [MIN, LOW], color: 'rgba(220, 38, 38, 0.3)' },
-      { range: [LOW, HIGH], color: 'rgba(16, 185, 129, 0.3)' },
+      { range: [LOW, HIGH], color: 'rgba(22, 163, 74, 0.3)' },
       { range: [HIGH, MAX], color: 'rgba(220, 38, 38, 0.3)' }
     ],
     threshold: {
-      line: { color: '#10B981', width: 3 },
+      line: { color: '#16A34A', width: 3 },
       thickness: 0.8,
       value: OPTIMAL
     }

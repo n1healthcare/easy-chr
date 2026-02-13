@@ -91,7 +91,7 @@ const loadOrganInsightsSkill = () => loadSkill(
  * The template is the single source of truth for visual design — the LLM
  * fills in {{SECTION:*}} placeholders instead of generating CSS.
  */
-function loadReportTemplate(): string {
+async function loadReportTemplate(): Promise<string> {
   const templatePath = path.join(
     process.cwd(),
     'src',
@@ -100,11 +100,38 @@ function loadReportTemplate(): string {
   );
 
   try {
-    return fs.readFileSync(templatePath, 'utf-8');
+    return await fs.promises.readFile(templatePath, 'utf-8');
   } catch (error) {
     console.warn('[AgenticDoctor] Could not load report_template.html — LLM will generate CSS');
     return '';
   }
+}
+
+/**
+ * Build template instructions for LLM prompts.
+ * Shared between Phase 7 (initial generation) and Phase 9 (regeneration)
+ * to ensure consistent behavior.
+ */
+function createTemplateInstructions(reportTemplate: string): string {
+  if (!reportTemplate) {
+    return '';
+  }
+  return `
+
+---
+
+### Report Template (START FROM THIS — DO NOT GENERATE CSS)
+Work directly in this template. Replace each {{SECTION:*}} placeholder with generated HTML.
+Use the snippet library at the bottom of the template for correct HTML structures.
+- For JSON fields with data: replace the matching placeholder with rendered HTML
+- For JSON fields without data: replace the placeholder with empty string
+- Generate Plotly JavaScript for charts and place in {{CHARTS_INIT}}
+- Replace {{REPORT_DATE}} with today's date
+- Replace {{ADDITIONAL_CSS}} with empty string (or minimal overrides if needed)
+<report_template>
+${reportTemplate}
+</report_template>
+`;
 }
 
 // ============================================================================
@@ -997,26 +1024,8 @@ ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}`;
 
     try {
       const htmlSkill = loadHTMLBuilderSkill();
-      const reportTemplate = loadReportTemplate();
-
-      // Template-driven: if template is available, the LLM fills placeholders
-      // instead of generating CSS from scratch. Falls back to skill-only if missing.
-      const templateInstructions = reportTemplate ? `
-
----
-
-### Report Template (START FROM THIS — DO NOT GENERATE CSS)
-Work directly in this template. Replace each {{SECTION:*}} placeholder with generated HTML.
-Use the snippet library at the bottom of the template for correct HTML structures.
-- For JSON fields with data: replace the matching placeholder with rendered HTML
-- For JSON fields without data: replace the placeholder with empty string
-- Generate Plotly JavaScript for charts and place in {{CHARTS_INIT}}
-- Replace {{REPORT_DATE}} with today's date
-- Replace {{ADDITIONAL_CSS}} with empty string (or minimal overrides if needed)
-<report_template>
-${reportTemplate}
-</report_template>
-` : '';
+      const reportTemplate = await loadReportTemplate();
+      const templateInstructions = createTemplateInstructions(reportTemplate);
 
       const htmlPrompt = `${htmlSkill}
 ${templateInstructions}
@@ -1270,23 +1279,12 @@ ${htmlContent}
 
         try {
           const htmlSkill = loadHTMLBuilderSkill();
-          const reportTemplate = loadReportTemplate();
-
-          const regenTemplateInstructions = reportTemplate ? `
-
----
-
-### Report Template (START FROM THIS — DO NOT GENERATE CSS)
-Work directly in this template. Replace each {{SECTION:*}} placeholder with generated HTML.
-Use the snippet library at the bottom of the template for correct HTML structures.
-<report_template>
-${reportTemplate}
-</report_template>
-` : '';
+          const reportTemplate = await loadReportTemplate();
+          const templateInstructions = createTemplateInstructions(reportTemplate);
 
           // Build regeneration prompt with feedback
           const regenPrompt = `${htmlSkill}
-${regenTemplateInstructions}
+${templateInstructions}
 ---
 
 ## REGENERATION TASK
