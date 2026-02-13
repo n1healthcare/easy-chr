@@ -35,6 +35,9 @@ COPY --from=builder /app/vendor ./vendor
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/.gemini ./.gemini
 
+# Copy 3D organ model at the path the code expects (cwd=/app, code reads ../client/public/models/)
+COPY client/public/models/human_organ.glb /client/public/models/human_organ.glb
+
 # Create storage directories for temporary file processing
 RUN mkdir -p storage/input storage/realms
 
