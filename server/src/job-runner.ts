@@ -78,7 +78,7 @@ import { REALM_CONFIG } from './config.js';
 import { createStorageAdapterFromEnv } from './adapters/storage/storage.factory.js';
 import { PrefixedStorageAdapter } from './adapters/storage/prefixed-storage.adapter.js';
 import { RetryableStorageAdapter } from './adapters/storage/retryable-storage.adapter.js';
-import { LegacyPaths, ProductionPaths } from './common/storage-paths.js';
+import { LegacyPaths, OrganModel, ProductionPaths } from './common/storage-paths.js';
 import type { StoragePort } from './application/ports/storage.port.js';
 import { getLogger, createChildLogger, type AppLogger } from './logger.js';
 import path from 'path';
@@ -695,6 +695,52 @@ async function runJob() {
         }
       );
       logger.info({ prodPath }, 'Write verified');
+
+      // Copy 3D organ model to production path and inject signed URL into HTML
+      try {
+        const glbScopedPath = `realms/${realmId}/${OrganModel.FILENAME}`;
+        const glbExists = await scopedStorage.exists(glbScopedPath);
+        if (glbExists) {
+          const glbBuffer = await scopedStorage.readFile(glbScopedPath);
+          const glbProdPath = ProductionPaths.userChr(config.userId, config.chrId, OrganModel.FILENAME);
+          await withRetry(
+            () => baseStorage.writeFile(glbProdPath, glbBuffer, OrganModel.CONTENT_TYPE),
+            {
+              ...REALM_CONFIG.retry.api,
+              maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_EXISTS_RETRIES),
+              operationName: 'Storage.writeFile(GLB)',
+            }
+          );
+          logger.info({ glbProdPath, sizeBytes: glbBuffer.length }, '3D organ model copied to production');
+
+          // Generate signed URL for the GLB and inject into HTML
+          // (S3 requires signed URLs — relative paths won't work)
+          const glbSignedUrl = await withRetry(
+            () => baseStorage.getSignedUrl(glbProdPath),
+            {
+              ...REALM_CONFIG.retry.api,
+              maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_EXISTS_RETRIES),
+              operationName: 'Storage.getSignedUrl(GLB)',
+            }
+          );
+          htmlContent = htmlContent.replace(OrganModel.FILENAME, glbSignedUrl);
+          // Re-write HTML with the signed GLB URL
+          await withRetry(
+            () => baseStorage.writeFile(prodPath, htmlContent, 'text/html'),
+            {
+              ...REALM_CONFIG.retry.api,
+              maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_EXISTS_RETRIES),
+              operationName: 'Storage.writeFile(HTML+GLB)',
+            }
+          );
+          logger.info('HTML updated with signed GLB URL');
+        } else {
+          logger.warn({ glbScopedPath }, '3D organ model not found in scoped storage, skipping');
+        }
+      } catch (glbErr) {
+        const glbMsg = glbErr instanceof Error ? glbErr.message : String(glbErr);
+        logger.warn({ error: glbMsg }, '3D organ model copy failed (non-critical)');
+      }
 
       // Get signed URL for access
       publicUrl = await baseStorage.getSignedUrl(prodPath);

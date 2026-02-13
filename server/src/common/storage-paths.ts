@@ -6,6 +6,21 @@
  */
 
 /**
+ * 3D organ model constants
+ */
+export const OrganModel = {
+  /** Filename used across pipeline, templates, and storage */
+  FILENAME: 'human_organ.glb',
+  /** Content type for GLB files */
+  CONTENT_TYPE: 'model/gltf-binary',
+  /** Placeholder in the HTML template, replaced at injection or deploy time */
+  URL_PLACEHOLDER: '__ORGAN_MODEL_URL__',
+  /** Resolve the local source path (relative to server cwd) */
+  localSourcePath: () =>
+    `${process.cwd()}/../client/public/models/human_organ.glb`,
+};
+
+/**
  * Session-scoped storage paths for intermediate artifacts
  */
 export const SessionPaths = {
@@ -39,6 +54,22 @@ export const SessionPaths = {
    * Validation report with corrections
    */
   validation: (sessionId: string) => `sessions/${sessionId}/validation.md`,
+
+  /**
+   * Organ-by-organ clinical insights (post-validation)
+   */
+  organInsights: (sessionId: string) =>
+    `sessions/${sessionId}/organ_insights.md`,
+
+  /**
+   * Pre-computed 3D body twin viewer data
+   */
+  bodyTwin: (sessionId: string) => `sessions/${sessionId}/body-twin.json`,
+
+  /**
+   * 3D organ model (GLB binary)
+   */
+  organModel: (sessionId: string) => `sessions/${sessionId}/${OrganModel.FILENAME}`,
 
   /**
    * Content gap analysis results
@@ -110,6 +141,8 @@ export const LegacyPaths = {
   research: 'research.json',
   structuredData: 'structured_data.json',
   validation: 'validation.md',
+  organInsights: 'organ_insights.md',
+  bodyTwin: 'body-twin.json',
   contentReview: 'content_review.json',
   finalAnalysis: 'final_analysis.md',
 

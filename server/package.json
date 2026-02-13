@@ -12,7 +12,8 @@
     "regen-html": "tsx scripts/regenerate-html.ts",
     "regen-analysis": "tsx scripts/regenerate-analysis.ts",
     "regen-structurer": "tsx scripts/regenerate-structurer.ts",
-    "regen-validation": "tsx scripts/regenerate-validation.ts"
+    "regen-validation": "tsx scripts/regenerate-validation.ts",
+    "regen-3d": "tsx scripts/regenerate-3d.ts"
   },
   "keywords": [],
   "author": "",

@@ -1,15 +1,16 @@
 /**
  * AgenticDoctorUseCase - Medical Document Analysis Pipeline
  *
- * 8-Phase Pipeline:
+ * 9-Phase Pipeline:
  * Phase 1: Document Extraction - PDFs via Vision OCR, text files directly → extracted.md
  * Phase 2: Medical Analysis - LLM with medical-analysis skill → analysis.md (includes cross-system analysis)
  * Phase 3: Research - Web search to validate claims with external sources → research.json
  * Phase 4: Data Structuring - LLM extracts chart-ready JSON (SOURCE OF TRUTH) → structured_data.json
  * Phase 5: Validation - LLM validates structured_data.json completeness → validation.md (with correction loop)
- * Phase 6: Report Generation - LLM with html-builder skill → interactive N1 Care Report (index.html)
- * Phase 7: Content Review - LLM compares structured_data.json vs index.html for gaps → content_review.json
- * Phase 8: HTML Regeneration - If gaps found, LLM regenerates HTML with feedback
+ * Phase 6: Organ Insights - LLM generates organ-by-organ findings from validated data → organ_insights.md
+ * Phase 7: Report Generation - LLM with html-builder skill → interactive N1 Care Report (index.html)
+ * Phase 8: Content Review - LLM compares structured_data.json vs index.html for gaps → content_review.json
+ * Phase 9: HTML Regeneration - If gaps found, LLM regenerates HTML with feedback
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -18,7 +19,7 @@ import fs from 'fs';
 
 import { LLMClientPort } from '../ports/llm-client.port.js';
 import type { StoragePort } from '../ports/storage.port.js';
-import { LegacyPaths } from '../../common/storage-paths.js';
+import { LegacyPaths, OrganModel } from '../../common/storage-paths.js';
 import { readFileWithEncoding } from '../../../vendor/gemini-cli/packages/core/src/utils/fileUtils.js';
 import { PDFExtractionService } from '../../services/pdf-extraction.service.js';
 import { AgenticMedicalAnalyst, type AnalystEvent } from '../../services/agentic-medical-analyst.service.js';
@@ -27,6 +28,8 @@ import { researchClaims, formatResearchAsMarkdown, type ResearchOutput, type Res
 import { REALM_CONFIG } from '../../config.js';
 import { extractSourceExcerpts, extractLabSections } from '../../utils/source-excerpts.js';
 import { deepMergeJsonPatch } from '../../utils/json-patch-merge.js';
+import { transformOrganInsightsToBodyTwin } from '../../services/body-twin-transformer.service.js';
+import { injectBodyTwinViewer } from '../../utils/inject-body-twin.js';
 import type { RealmGenerationEvent } from '../../domain/types.js';
 // Note: Retry logic is handled at the adapter level (GeminiAdapter.sendMessageStream)
 // No need to wrap LLM calls here - they are already protected by retryLLM in the adapter
@@ -76,6 +79,11 @@ const loadDataStructurerSkill = () => loadSkill(
 const loadContentReviewerSkill = () => loadSkill(
   'content-reviewer',
   'You are a QA agent. Compare structured_data.json against index.html to identify information loss.'
+);
+
+const loadOrganInsightsSkill = () => loadSkill(
+  'organ-insights',
+  'You are an organ-level clinical insight specialist. Analyze validated structured data and produce organ-by-organ findings in markdown.'
 );
 
 // ============================================================================
@@ -884,7 +892,76 @@ This validation was performed using the AgenticValidator with tool-based explora
     yield { type: 'step', name: 'Validation', status: 'completed' };
 
     // ========================================================================
-    // Phase 6: HTML Generation
+    // Phase 6: Organ Insights
+    // Generates organ-by-organ clinical findings from validated structured data
+    // Non-critical enrichment - pipeline continues if this fails
+    // ========================================================================
+    yield { type: 'step', name: 'Organ Insights', status: 'running' };
+    yield { type: 'log', message: 'Generating organ-by-organ insights...' };
+
+    let organInsightsContent = '';
+
+    try {
+      const organInsightsSkill = loadOrganInsightsSkill();
+
+      const organInsightsPrompt = `${organInsightsSkill}
+
+---
+
+### Structured Data (Validated Source of Truth)
+<structured_data>
+${structuredDataContent}
+</structured_data>
+
+${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}`;
+
+      console.log(`[AgenticDoctor] Organ insights prompt payload: ${Math.round(organInsightsPrompt.length / 1024)}KB`);
+
+      organInsightsContent = await streamWithRetry(
+        this.llmClient,
+        organInsightsPrompt,
+        `${sessionId}-organ-insights`,
+        REALM_CONFIG.models.doctor,
+        {
+          operationName: 'OrganInsights',
+          maxRetries: 3,
+        }
+      );
+
+      if (organInsightsContent.trim().length === 0) {
+        throw new Error('LLM returned empty organ insights');
+      }
+
+      // Strip any thinking text before the markdown header
+      organInsightsContent = stripThinkingText(organInsightsContent, '# Organ');
+
+      await this.storage.writeFile(LegacyPaths.organInsights, organInsightsContent);
+      console.log(`[AgenticDoctor] Organ insights complete: ${organInsightsContent.length} chars`);
+
+      // Persist pre-computed body-twin.json for the 3D body viewer
+      try {
+        const bodyTwinData = transformOrganInsightsToBodyTwin(organInsightsContent);
+        const bodyTwinJson = JSON.stringify(bodyTwinData, null, 2);
+        await this.storage.writeFile(LegacyPaths.bodyTwin, bodyTwinJson, 'application/json');
+        console.log(`[AgenticDoctor] Body twin data persisted: ${bodyTwinData.organs.length} organs, ${bodyTwinData.systems.length} systems`);
+      } catch (btError) {
+        const btMsg = btError instanceof Error ? btError.message : String(btError);
+        console.warn(`[AgenticDoctor] Body twin transform failed (non-critical): ${btMsg}`);
+      }
+
+      yield { type: 'log', message: `Organ insights complete (${organInsightsContent.length} chars).` };
+      yield { type: 'step', name: 'Organ Insights', status: 'completed' };
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[AgenticDoctor] Organ insights failed:', errorMessage);
+      yield { type: 'log', message: `Organ insights failed: ${errorMessage}. Continuing without organ insights.` };
+      yield { type: 'step', name: 'Organ Insights', status: 'failed' };
+      // Non-critical — continue pipeline without organ insights
+    }
+
+    // ========================================================================
+    // Phase 7: HTML Generation
     // Uses sendMessageStream with html-builder skill
     // DATA-DRIVEN: structured_data.json is the ONLY source - JSON drives structure
     // ========================================================================
@@ -902,6 +979,7 @@ This validation was performed using the AgenticValidator with tool-based explora
 
       // DATA-DRIVEN: structured_data.json is the ONLY source of structure
       // The JSON fields determine what sections to render
+      // organ_insights.md provides enriched organ-by-organ context for rendering
       const htmlPrompt = `${htmlSkill}
 
 ---
@@ -911,7 +989,15 @@ This JSON contains ALL data for rendering. Iterate through each field and render
 Only render sections for fields that have data. Do not invent sections not in this JSON.
 <structured_data>
 ${structuredDataContent}
-</structured_data>`;
+</structured_data>
+${organInsightsContent ? `
+### Organ-by-Organ Insights (ENRICHMENT — use to enhance organ/system sections)
+Use these insights to add clinical depth to relevant sections (systemsHealth, diagnoses, connections).
+Render an "Organ Health Details" section with collapsible cards for each organ listed below.
+Do NOT create sections for organs not listed here.
+<organ_insights>
+${organInsightsContent}
+</organ_insights>` : ''}`;
 
       // Log payload size for debugging network issues
       const payloadSizeKB = Math.round(htmlPrompt.length / 1024);
@@ -938,7 +1024,9 @@ ${structuredDataContent}
       htmlContent = htmlContent.trim();
 
       // Strip any thinking text before <!DOCTYPE
-      const doctypeIndex = htmlContent.indexOf('<!DOCTYPE');
+      // Use lastIndexOf: the LLM sometimes mentions <!DOCTYPE in its thinking,
+      // so the real one is the last occurrence.
+      const doctypeIndex = htmlContent.lastIndexOf('<!DOCTYPE');
       if (doctypeIndex > 0) {
         console.log(`[AgenticDoctor] Stripping ${doctypeIndex} chars of thinking text from HTML`);
         htmlContent = htmlContent.slice(doctypeIndex);
@@ -1191,6 +1279,11 @@ ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Structured D
 <structured_data>
 ${structuredDataContent}
 </structured_data>
+${organInsightsContent ? `
+### Organ-by-Organ Insights (ENRICHMENT)
+<organ_insights>
+${organInsightsContent}
+</organ_insights>` : ''}
 
 ## CRITICAL INSTRUCTIONS
 
@@ -1223,7 +1316,7 @@ ${structuredDataContent}
           if (regenHtml.trim().length > 0) {
             // Clean up regenerated HTML
             regenHtml = regenHtml.trim();
-            const regenDoctypeIndex = regenHtml.indexOf('<!DOCTYPE');
+            const regenDoctypeIndex = regenHtml.lastIndexOf('<!DOCTYPE');
             if (regenDoctypeIndex > 0) {
               regenHtml = regenHtml.slice(regenDoctypeIndex);
             }
@@ -1260,9 +1353,36 @@ ${structuredDataContent}
         }
       }
 
+      // Inject 3D body twin viewer if organ insights are available
+      if (organInsightsContent) {
+        try {
+          const bodyTwinData = transformOrganInsightsToBodyTwin(organInsightsContent);
+          htmlContent = injectBodyTwinViewer(htmlContent, bodyTwinData);
+          await this.storage.writeFile(realmPath, htmlContent, 'text/html');
+          console.log(`[AgenticDoctor] Injected 3D body twin viewer`);
+          yield { type: 'log', message: 'Injected 3D body twin viewer into HTML.' };
+
+          // Copy 3D organ model to realm directory so it's served alongside the HTML
+          try {
+            const glbSource = OrganModel.localSourcePath();
+            const glbBuffer = fs.readFileSync(glbSource);
+            const glbDestPath = `realms/${realmId}/${OrganModel.FILENAME}`;
+            await this.storage.writeFile(glbDestPath, glbBuffer, OrganModel.CONTENT_TYPE);
+            console.log(`[AgenticDoctor] Copied 3D organ model to ${glbDestPath} (${(glbBuffer.length / 1024 / 1024).toFixed(1)}MB)`);
+          } catch (glbErr) {
+            const glbMsg = glbErr instanceof Error ? glbErr.message : String(glbErr);
+            console.warn(`[AgenticDoctor] GLB copy failed (non-critical): ${glbMsg}`);
+          }
+        } catch (btErr) {
+          const msg = btErr instanceof Error ? btErr.message : String(btErr);
+          console.warn(`[AgenticDoctor] Body twin injection failed (non-critical): ${msg}`);
+        }
+      }
+
       // Return the realm URL
       const realmUrl = `/realms/${realmId}/index.html`;
 
+      console.log(`[AgenticDoctor] Pipeline complete. Realm: ${realmUrl}`);
       yield { type: 'log', message: `N1 Care Report ready: ${realmUrl}` };
       yield { type: 'result', url: realmUrl };
 
