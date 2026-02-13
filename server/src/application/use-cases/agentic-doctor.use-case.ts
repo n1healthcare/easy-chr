@@ -38,7 +38,7 @@ import type { BillingContext } from '../../utils/billing.js';
 export type { RealmGenerationEvent };
 
 // ============================================================================
-// Skill Loaders
+// Skill & Template Loaders
 // ============================================================================
 
 function loadSkill(skillName: string, fallback: string): string {
@@ -85,6 +85,54 @@ const loadOrganInsightsSkill = () => loadSkill(
   'organ-insights',
   'You are an organ-level clinical insight specialist. Analyze validated structured data and produce organ-by-organ findings in markdown.'
 );
+
+/**
+ * Load the report HTML template (CSS + placeholders + snippet library).
+ * The template is the single source of truth for visual design — the LLM
+ * fills in {{SECTION:*}} placeholders instead of generating CSS.
+ */
+async function loadReportTemplate(): Promise<string> {
+  const templatePath = path.join(
+    process.cwd(),
+    'src',
+    'templates',
+    'report_template.html'
+  );
+
+  try {
+    return await fs.promises.readFile(templatePath, 'utf-8');
+  } catch (error) {
+    console.warn('[AgenticDoctor] Could not load report_template.html — LLM will generate CSS');
+    return '';
+  }
+}
+
+/**
+ * Build template instructions for LLM prompts.
+ * Shared between Phase 7 (initial generation) and Phase 9 (regeneration)
+ * to ensure consistent behavior.
+ */
+function createTemplateInstructions(reportTemplate: string): string {
+  if (!reportTemplate) {
+    return '';
+  }
+  return `
+
+---
+
+### Report Template (START FROM THIS — DO NOT GENERATE CSS)
+Work directly in this template. Replace each {{SECTION:*}} placeholder with generated HTML.
+Use the snippet library at the bottom of the template for correct HTML structures.
+- For JSON fields with data: replace the matching placeholder with rendered HTML
+- For JSON fields without data: replace the placeholder with empty string
+- Generate Plotly JavaScript for charts and place in {{CHARTS_INIT}}
+- Replace {{REPORT_DATE}} with today's date
+- Replace {{ADDITIONAL_CSS}} with empty string (or minimal overrides if needed)
+<report_template>
+${reportTemplate}
+</report_template>
+`;
+}
 
 // ============================================================================
 // Helper: Strip LLM thinking text
@@ -976,12 +1024,11 @@ ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}`;
 
     try {
       const htmlSkill = loadHTMLBuilderSkill();
+      const reportTemplate = await loadReportTemplate();
+      const templateInstructions = createTemplateInstructions(reportTemplate);
 
-      // DATA-DRIVEN: structured_data.json is the ONLY source of structure
-      // The JSON fields determine what sections to render
-      // organ_insights.md provides enriched organ-by-organ context for rendering
       const htmlPrompt = `${htmlSkill}
-
+${templateInstructions}
 ---
 
 ### Structured Data (SOURCE OF TRUTH)
@@ -1232,10 +1279,12 @@ ${htmlContent}
 
         try {
           const htmlSkill = loadHTMLBuilderSkill();
+          const reportTemplate = await loadReportTemplate();
+          const templateInstructions = createTemplateInstructions(reportTemplate);
 
           // Build regeneration prompt with feedback
           const regenPrompt = `${htmlSkill}
-
+${templateInstructions}
 ---
 
 ## REGENERATION TASK

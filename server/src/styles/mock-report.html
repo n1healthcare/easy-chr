@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>N1 Care Report — Mock UI Runner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <link rel="stylesheet" href="report-styles.css">
+</head>
+<body>
+
+<div class="report">
+
+  <!-- HEADER -->
+  <header class="report-header">
+    <div class="header-brand">
+      <svg class="n1-logo" width="44" height="48" viewBox="0 0 88 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M6.08994 95.9974C6.08994 64.6049 6.08994 33.2124 6.10519 1.81992C6.10519 1.25514 5.75442 0.355668 6.33395 0.170022C7.12444 -0.0809925 8.0827 -0.109755 8.86811 0.470716C9.03586 0.596223 9.16804 0.774025 9.32054 0.923065C12.8841 4.40589 16.407 7.93316 20.024 11.3585C22.7411 13.9287 25.4253 16.533 28.117 19.1295C30.8418 21.7546 33.5717 24.372 36.2965 26.9972C38.8967 29.5021 41.5097 31.9966 44.115 34.5015C46.8423 37.124 49.6052 39.7048 52.2843 42.3797C54.5388 44.6283 56.8747 46.7933 59.2005 48.9636C59.7393 49.4656 59.963 49.9807 59.9605 50.7468C59.9325 59.3885 59.9452 68.0276 59.93 76.6693C59.93 77.017 60.1841 77.5295 59.7241 77.6995C59.3784 77.825 59.1878 77.3543 58.9565 77.1295C55.6547 73.929 52.4037 70.6763 49.0588 67.5256C46.4941 65.1069 43.9523 62.6621 41.4105 60.2174C38.9018 57.8014 36.3524 55.4298 33.8665 52.985C31.3908 50.5481 28.8262 48.2079 26.1548 45.6873V96H6.08994V95.9974Z" fill="white"/>
+        <path d="M63.9843 96C63.9843 70.2426 63.9767 44.4852 64.0122 18.7252C64.0122 17.5329 63.7182 17.2453 62.5779 17.2609C57.771 17.3289 52.959 17.2897 48 17.2897C48.8692 14.2828 49.7231 11.3726 50.5466 8.45464C51.2435 5.99421 51.9327 3.53378 52.5662 1.05504C52.7588 0.299393 53.0806 7.00232e-05 53.8433 7.00232e-05C63.551 0.0288317 73.2586 0.0575934 82.9663 7.00232e-05C84.1319 -0.00777407 83.9951 0.644533 83.9951 1.39234C83.99 32.9282 83.99 64.4615 83.99 95.9974H63.9843V96Z" fill="white"/>
+      </svg>
+      <h1>N1 Care Report</h1>
+    </div>
+    <div class="meta">Generated: February 13, 2026</div>
+  </header>
+
+  <div class="content">
+
+    <!-- EXECUTIVE SUMMARY -->
+    <section class="executive-summary">
+      <h2>Executive Summary</h2>
+      <div>
+        <h3>Your Question</h3>
+        <div class="question-text">What is causing my fatigue, weight gain, and brain fog over the past year?</div>
+      </div>
+      <div class="short-answer">
+        <h3>Short Answer</h3>
+        <p>Your symptoms are driven by <strong>insulin resistance</strong> and <strong>chronic low-grade inflammation</strong>. Elevated HbA1c (6.8%), severely deficient Vitamin D (12 ng/mL), and high hs-CRP (4.2 mg/L) create a reinforcing cycle that is highly reversible with targeted intervention.</p>
+      </div>
+      <div class="key-findings-preview">
+        <h3>Key Findings</h3>
+        <ul>
+          <li><span class="dot dot-red"></span><strong>Pre-diabetes</strong> — HbA1c 6.8% with fasting glucose 118 mg/dL</li>
+          <li><span class="dot dot-red"></span><strong>Severe Vitamin D deficiency</strong> — 12 ng/mL (target: 40-60)</li>
+          <li><span class="dot dot-red"></span><strong>Systemic inflammation</strong> — hs-CRP 4.2 mg/L (4x above optimal)</li>
+          <li><span class="dot dot-amber"></span><strong>Atherogenic dyslipidemia</strong> — TG/HDL ratio 5.9</li>
+          <li><span class="dot dot-green"></span><strong>Thyroid normal</strong> — TSH 2.1 mIU/L</li>
+        </ul>
+      </div>
+      <div class="top-priority">
+        <h3>Top Priority</h3>
+        <p>Address insulin resistance through Mediterranean diet and Vitamin D repletion (5000 IU/day) to break the metabolic-inflammatory cycle.</p>
+      </div>
+    </section>
+
+    <!-- DIAGNOSES -->
+    <div class="section">
+      <div class="section-title">Diagnoses</div>
+      <div class="diagnoses-grid">
+        <div class="diagnosis-card critical">
+          <div class="diagnosis-header"><span class="diagnosis-status-badge" style="background:var(--red-bg);color:var(--red)">Critical</span></div>
+          <div class="diagnosis-category">Endocrine / Metabolic</div>
+          <div class="diagnosis-name">Pre-Diabetes (Impaired Fasting Glucose)</div>
+          <div class="diagnosis-evidence"><span class="evidence-item">HbA1c 6.8%</span><span class="evidence-item">Glucose 118 mg/dL</span><span class="evidence-item">TG/HDL 5.9</span></div>
+          <div class="diagnosis-implications">Early insulin resistance with progression toward type 2 diabetes. Reversible with dietary intervention within 6-12 months.</div>
+        </div>
+        <div class="diagnosis-card critical">
+          <div class="diagnosis-header"><span class="diagnosis-status-badge" style="background:var(--red-bg);color:var(--red)">Critical</span></div>
+          <div class="diagnosis-category">Nutritional</div>
+          <div class="diagnosis-name">Severe Vitamin D Deficiency</div>
+          <div class="diagnosis-evidence"><span class="evidence-item">Vitamin D 12 ng/mL</span><span class="evidence-item">hs-CRP 4.2</span></div>
+          <div class="diagnosis-implications">Amplifying inflammatory cascade and impairing insulin sensitivity. Requires aggressive repletion.</div>
+        </div>
+        <div class="diagnosis-card moderate">
+          <div class="diagnosis-header"><span class="diagnosis-status-badge" style="background:var(--amber-bg);color:var(--amber)">Moderate</span></div>
+          <div class="diagnosis-category">Cardiovascular</div>
+          <div class="diagnosis-name">Atherogenic Dyslipidemia</div>
+          <div class="diagnosis-evidence"><span class="evidence-item">LDL 162</span><span class="evidence-item">HDL 42</span><span class="evidence-item">TG 248</span></div>
+          <div class="diagnosis-implications">Pattern consistent with metabolic syndrome. Statin consideration if no improvement in 90 days.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CRITICAL FINDINGS (Gauges) -->
+    <div class="section">
+      <div class="section-title">Critical Findings</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+        <div class="gauge-card">
+          <div class="gauge-title">HbA1c</div>
+          <div class="plotly-gauge" id="gauge-hba1c"></div>
+          <div class="gauge-description">Pre-diabetic range. Target: below 5.7%</div>
+        </div>
+        <div class="gauge-card">
+          <div class="gauge-title">Vitamin D</div>
+          <div class="plotly-gauge" id="gauge-vitd"></div>
+          <div class="gauge-description">Severely deficient. Target: 40-60 ng/mL</div>
+        </div>
+        <div class="gauge-card">
+          <div class="gauge-title">hs-CRP</div>
+          <div class="plotly-gauge" id="gauge-crp"></div>
+          <div class="gauge-description">Elevated inflammation. Target: below 1.0 mg/L</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- INTEGRATIVE REASONING -->
+    <section class="integrative-reasoning-section">
+      <div class="section-title">The Big Picture</div>
+      <div class="root-cause-card">
+        <div class="root-cause-header"><span class="root-cause-icon">🔬</span><h3>Root Cause Hypothesis</h3></div>
+        <div class="root-cause-hypothesis">Visceral adiposity is driving a self-reinforcing cycle of insulin resistance, hyperglycemia, and systemic inflammation. Severe Vitamin D deficiency is amplifying this cascade by impairing immune regulation and beta-cell function.</div>
+        <div class="root-cause-evidence">
+          <h4>Supporting Evidence</h4>
+          <ul><li>HbA1c progression from 5.4% to 6.8% over 3 years</li><li>hs-CRP 4.2 mg/L correlates with TG/HDL ratio 5.9</li><li>Vitamin D decline mirrors metabolic deterioration</li></ul>
+        </div>
+      </div>
+      <div class="causal-chain">
+        <h3>Causal Chain</h3>
+        <div class="chain-flow">
+          <div class="chain-step"><span class="chain-number">1</span><div><div class="chain-event">Visceral Adiposity</div><div class="chain-leads-to">Pro-inflammatory cytokines</div></div></div>
+          <span class="chain-arrow">→</span>
+          <div class="chain-step"><span class="chain-number">2</span><div><div class="chain-event">Insulin Resistance</div><div class="chain-leads-to">Impaired glucose uptake</div></div></div>
+          <span class="chain-arrow">→</span>
+          <div class="chain-step"><span class="chain-number">3</span><div><div class="chain-event">Hyperglycemia</div><div class="chain-leads-to">Advanced glycation end-products</div></div></div>
+          <span class="chain-arrow">→</span>
+          <div class="chain-step"><span class="chain-number">4</span><div><div class="chain-event">Systemic Inflammation</div><div class="chain-leads-to">Feeds back to step 1</div></div></div>
+        </div>
+      </div>
+      <div class="keystone-findings">
+        <h3>Keystone Findings</h3>
+        <p class="keystone-intro">These findings have the highest leverage — addressing them will cascade improvements across multiple systems.</p>
+        <div class="keystone-grid">
+          <div class="keystone-card"><span class="keystone-priority">Priority 1</span><h4>HbA1c 6.8%</h4><p class="keystone-why">Central driver of metabolic dysfunction. Reducing this reverses downstream inflammation and lipid abnormalities.</p><div class="keystone-effects"><span>Glucose</span><span>Triglycerides</span><span>Inflammation</span><span>Energy</span></div></div>
+          <div class="keystone-card"><span class="keystone-priority">Priority 2</span><h4>Vitamin D 12 ng/mL</h4><p class="keystone-why">Amplifier of inflammation and insulin resistance. Repletion alone may improve insulin sensitivity by 15-20%.</p><div class="keystone-effects"><span>Immune Function</span><span>Insulin Sensitivity</span><span>Mood</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TRENDS -->
+    <div class="section">
+      <div class="section-title">Trends</div>
+      <div class="chart-section"><h3>HbA1c Trend (3-Year)</h3><div class="plotly-chart" id="trend-hba1c"></div><p class="trend-interpretation">Steady upward trajectory from normal (5.4%) to pre-diabetic (6.8%) over 3 years. Without intervention, projected to reach diabetic threshold within 18 months.</p></div>
+      <div class="chart-section"><h3>Vitamin D Trend (3-Year)</h3><div class="plotly-chart" id="trend-vitd"></div><p class="trend-interpretation">Continuous decline from sufficient (32 ng/mL) to severely deficient (12 ng/mL). Inverse correlation with inflammatory markers suggests causal relationship.</p></div>
+    </div>
+
+    <!-- SYSTEMS HEALTH -->
+    <section class="systems-health">
+      <div class="section-title">Systems Health</div>
+      <h2>Body Systems Overview</h2>
+      <div class="plotly-radar" id="systems-radar"></div>
+    </section>
+
+    <!-- ORGAN HEALTH -->
+    <section class="organ-health-section">
+      <div class="section-title">Organ Health</div>
+      <p class="section-intro">Organ-by-organ analysis based on your lab findings.</p>
+      <details class="organ-card" open>
+        <summary class="organ-header"><span class="organ-name">Pancreas</span><span class="organ-status-badge status-critical">Critical</span></summary>
+        <div class="organ-body">
+          <h3>Key Markers</h3>
+          <table><thead><tr><th>Marker</th><th>Value</th><th>Reference</th><th>Status</th></tr></thead><tbody>
+            <tr><td>HbA1c</td><td><strong>6.8%</strong></td><td>4.0 - 5.6%</td><td><span class="dot dot-red"></span>High</td></tr>
+            <tr><td>Fasting Glucose</td><td><strong>118 mg/dL</strong></td><td>70 - 100</td><td><span class="dot dot-red"></span>High</td></tr>
+          </tbody></table>
+          <h3>Clinical Interpretation</h3>
+          <ul><li>Beta-cell function declining — glucose disposal impaired</li><li>Early insulin resistance pattern, not yet requiring medication</li></ul>
+        </div>
+      </details>
+      <details class="organ-card">
+        <summary class="organ-header"><span class="organ-name">Liver</span><span class="organ-status-badge status-warning">Warning</span></summary>
+        <div class="organ-body"><ul><li>Elevated triglycerides suggest hepatic lipogenesis driven by insulin resistance</li><li>Consider hepatic steatosis screening (ultrasound) if lipids don't improve</li></ul></div>
+      </details>
+      <details class="organ-card">
+        <summary class="organ-header"><span class="organ-name">Thyroid</span><span class="organ-status-badge status-optimal">Optimal</span></summary>
+        <div class="organ-body"><ul><li>TSH 2.1 mIU/L — well within normal range</li><li>No thyroid contribution to symptoms</li></ul></div>
+      </details>
+    </section>
+
+    <!-- CONNECTIONS -->
+    <div class="section">
+      <div class="section-title">Connections</div>
+      <div class="flowchart-section">
+        <h3>Insulin Resistance → Dyslipidemia Pathway</h3>
+        <div class="flowchart">
+          <div class="flow-node root-cause"><div class="flow-node-label">Root Cause</div><div class="flow-node-value">Insulin Resistance</div><div class="flow-node-data">HOMA-IR elevated</div></div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-node mechanism"><div class="flow-node-label">Mechanism</div><div class="flow-node-value">Hepatic Lipogenesis</div><div class="flow-node-data">Excess VLDL production</div></div>
+          <span class="flow-arrow">→</span>
+          <div class="flow-node effect"><div class="flow-node-label">Effect</div><div class="flow-node-value">Atherogenic Lipids</div><div class="flow-node-data">TG 248, HDL 42</div></div>
+        </div>
+        <div><span class="confidence-badge high">High Confidence</span></div>
+      </div>
+    </div>
+
+    <!-- PATTERNS -->
+    <section class="patterns-section">
+      <div class="section-title">Patterns</div>
+      <div class="patterns-grid">
+        <div class="pattern-card"><h4>Metabolic Syndrome Cluster</h4><p>Co-occurrence of elevated glucose, triglycerides, low HDL, and systemic inflammation strongly suggests metabolic syndrome — a unified condition rather than isolated findings.</p></div>
+        <div class="pattern-card"><h4>Vitamin D–Inflammation Axis</h4><p>Temporal correlation between Vitamin D decline and hs-CRP elevation over 3 years suggests Vitamin D deficiency is actively driving the inflammatory component.</p></div>
+      </div>
+    </section>
+
+    <!-- ACTION PLAN -->
+    <section class="action-plan">
+      <div class="section-title">Action Plan</div>
+      <div class="action-phase">
+        <div class="phase-header immediate"><span class="phase-title">Immediate (This Week)</span></div>
+        <div class="phase-actions">
+          <div class="action-item"><div class="action-checkbox"></div><div><div class="action-title">Start Vitamin D3 5000 IU daily</div><div class="action-description">Take with largest meal for absorption. Recheck levels at 90 days.</div></div></div>
+          <div class="action-item"><div class="action-checkbox"></div><div><div class="action-title">Begin Mediterranean diet pattern</div><div class="action-description">Eliminate refined carbohydrates and added sugars. Focus on vegetables, olive oil, nuts, fish.</div></div></div>
+        </div>
+      </div>
+      <div class="action-phase">
+        <div class="phase-header short-term"><span class="phase-title">Short-Term (1-3 Months)</span></div>
+        <div class="phase-actions">
+          <div class="action-item"><div class="action-checkbox"></div><div><div class="action-title">Add 150 min/week moderate exercise</div><div class="action-description">Walking, cycling, or swimming. Resistance training 2x/week improves insulin sensitivity.</div></div></div>
+          <div class="action-item"><div class="action-checkbox"></div><div><div class="action-title">Recheck HbA1c + lipid panel at 90 days</div><div class="action-description">Expect 0.3-0.5% HbA1c reduction with dietary changes alone.</div></div></div>
+        </div>
+      </div>
+      <div class="action-phase">
+        <div class="phase-header follow-up"><span class="phase-title">Follow-Up (3-6 Months)</span></div>
+        <div class="phase-actions">
+          <div class="action-item"><div class="action-checkbox"></div><div><div class="action-title">Reassess statin need based on lipid response</div><div class="action-description">If LDL remains above 160 mg/dL despite lifestyle changes, discuss pharmacotherapy.</div></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SUPPLEMENT SCHEDULE -->
+    <section class="supplement-schedule">
+      <div class="section-title">Supplement Protocol</div>
+      <div class="schedule-grid">
+        <div class="schedule-time-block">
+          <div class="time-label">Morning</div>
+          <div class="supplement-card"><div class="supplement-name">Vitamin D3</div><div class="supplement-dose">5000 IU</div><div class="supplement-purpose">Repletion of severe deficiency</div></div>
+          <div class="supplement-card"><div class="supplement-name">Omega-3 (EPA/DHA)</div><div class="supplement-dose">2000 mg</div><div class="supplement-purpose">Anti-inflammatory, triglyceride reduction</div></div>
+        </div>
+        <div class="schedule-time-block">
+          <div class="time-label">Midday</div>
+          <div class="supplement-card"><div class="supplement-name">Berberine</div><div class="supplement-dose">500 mg</div><div class="supplement-purpose">Insulin sensitizer, glucose metabolism</div><div class="supplement-notes">Take 30 min before meal</div></div>
+        </div>
+        <div class="schedule-time-block">
+          <div class="time-label">Evening</div>
+          <div class="supplement-card"><div class="supplement-name">Magnesium Glycinate</div><div class="supplement-dose">400 mg</div><div class="supplement-purpose">Insulin sensitivity, sleep quality</div></div>
+        </div>
+      </div>
+      <div class="interactions-warning"><h4>Interactions &amp; Cautions</h4><ul><li>Berberine may interact with metformin — do not combine without physician guidance</li><li>Vitamin D requires adequate magnesium for activation</li></ul></div>
+    </section>
+
+    <!-- LIFESTYLE -->
+    <section class="lifestyle-section">
+      <div class="section-title">Lifestyle Optimizations</div>
+      <div class="lifestyle-grid">
+        <div class="lifestyle-card"><h4>Nutrition</h4><p>Mediterranean diet pattern: 50% vegetables, 25% lean protein, 25% healthy fats. Eliminate refined carbs and added sugar. Time-restricted eating window (10 hours) may improve insulin sensitivity.</p></div>
+        <div class="lifestyle-card"><h4>Exercise</h4><p>150 min/week moderate cardio + 2x resistance training. Post-meal walking (15 min) reduces glucose spikes by 30%. Start gradually if currently sedentary.</p></div>
+        <div class="lifestyle-card"><h4>Sleep</h4><p>Target 7-8 hours. Poor sleep increases insulin resistance by up to 25%. Consistent sleep/wake times. Limit screens 1 hour before bed.</p></div>
+      </div>
+    </section>
+
+    <!-- DOCTOR QUESTIONS -->
+    <section class="doctor-questions">
+      <div class="section-title">Questions for Your Doctor</div>
+      <div class="questions-list">
+        <div class="question-card"><div class="question-number">1</div><div><div class="question-category">Diagnosis</div><div class="question-text">Should I get a fasting insulin and HOMA-IR to quantify my insulin resistance?</div><div class="question-context">HbA1c and fasting glucose suggest pre-diabetes, but HOMA-IR would confirm the degree of insulin resistance and guide treatment intensity.</div></div></div>
+        <div class="question-card"><div class="question-number">2</div><div><div class="question-category">Treatment</div><div class="question-text">Is metformin appropriate at this stage, or should we try lifestyle changes first?</div><div class="question-context">With HbA1c at 6.8%, you're close to the threshold where some guidelines recommend pharmacotherapy alongside lifestyle changes.</div></div></div>
+        <div class="question-card"><div class="question-number">3</div><div><div class="question-category">Monitoring</div><div class="question-text">Should we screen for fatty liver given my lipid pattern?</div><div class="question-context">Elevated triglycerides (248) with insulin resistance significantly increases risk of non-alcoholic fatty liver disease.</div></div></div>
+      </div>
+    </section>
+
+    <!-- PROGNOSIS -->
+    <section class="prognosis-section">
+      <div class="section-title">Prognosis</div>
+      <div class="prognosis-grid">
+        <div class="prognosis-card without-intervention"><h4>Without Intervention</h4><p>Continued progression toward type 2 diabetes within 2-3 years. Cardiovascular risk increases 2-3x. Inflammation may accelerate cognitive decline contributing to persistent brain fog.</p><ul><li>HbA1c likely to exceed 7.0% within 18 months</li><li>Statin therapy likely required within 12 months</li><li>Fatigue and brain fog will worsen</li></ul></div>
+        <div class="prognosis-card with-intervention"><h4>With Intervention</h4><p>High probability of reversing pre-diabetes within 6-12 months. Energy and cognitive function typically improve within 4-8 weeks of Vitamin D repletion and dietary changes.</p><ul><li>HbA1c reduction of 0.5-1.0% expected in 6 months</li><li>Vitamin D sufficiency achievable in 3 months</li><li>Symptom relief (fatigue, brain fog) within 4-8 weeks</li></ul></div>
+      </div>
+      <div class="milestones"><h3>Expected Milestones</h3><div class="milestones-timeline">
+        <div class="milestone"><div class="milestone-time">4 Weeks</div><div class="milestone-expectation">Improved energy, reduced brain fog</div></div>
+        <div class="milestone"><div class="milestone-time">3 Months</div><div class="milestone-expectation">Vitamin D &gt;30, triglycerides improving</div></div>
+        <div class="milestone"><div class="milestone-time">6 Months</div><div class="milestone-expectation">HbA1c below 6.0%, metabolic markers normalized</div></div>
+      </div></div>
+    </section>
+
+    <!-- MONITORING -->
+    <section class="monitoring-section">
+      <div class="section-title">Monitoring Protocol</div>
+      <div class="monitoring-grid">
+        <div class="monitoring-item"><h4>Fasting Insulin + HOMA-IR</h4><div class="monitoring-when">Within 30 days</div><p>Quantify insulin resistance severity.</p></div>
+        <div class="monitoring-item"><h4>HbA1c + Lipid Panel</h4><div class="monitoring-when">90 days</div><p>Assess response to dietary intervention.</p></div>
+        <div class="monitoring-item"><h4>Vitamin D Recheck</h4><div class="monitoring-when">90 days</div><p>Verify repletion with current dose.</p></div>
+        <div class="monitoring-item"><h4>hs-CRP Recheck</h4><div class="monitoring-when">6 months</div><p>Confirm inflammation resolving.</p></div>
+      </div>
+    </section>
+
+    <!-- TIMELINE -->
+    <section class="timeline-section">
+      <div class="section-title">Health Timeline</div>
+      <div class="visual-timeline">
+        <div class="timeline-item significance-high">
+          <div class="timeline-date"><span class="month">Jan</span><span class="year">2026</span></div>
+          <div class="timeline-marker"></div>
+          <div class="timeline-content"><div class="timeline-card"><div class="timeline-title">Pre-Diabetes Diagnosed</div><div class="timeline-description">HbA1c crossed pre-diabetic threshold</div><div class="timeline-values"><span class="timeline-value critical">HbA1c 6.8%</span><span class="timeline-value critical">Glucose 118</span></div></div></div>
+        </div>
+        <div class="timeline-item significance-medium">
+          <div class="timeline-date"><span class="month">Jul</span><span class="year">2024</span></div>
+          <div class="timeline-marker"></div>
+          <div class="timeline-content"><div class="timeline-card"><div class="timeline-title">Borderline Glucose Detected</div><div class="timeline-description">First sign of impaired fasting glucose</div><div class="timeline-values"><span class="timeline-value warning">HbA1c 6.0%</span></div></div></div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-date"><span class="month">Jan</span><span class="year">2023</span></div>
+          <div class="timeline-marker"></div>
+          <div class="timeline-content"><div class="timeline-card"><div class="timeline-title">Baseline Labs (Normal)</div><div class="timeline-description">All metabolic markers within normal limits</div><div class="timeline-values"><span class="timeline-value normal">HbA1c 5.4%</span><span class="timeline-value normal">Vitamin D 32</span></div></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- POSITIVE FINDINGS -->
+    <section class="positive-findings">
+      <div class="section-title">What's Working Well</div>
+      <div class="positive-grid">
+        <div class="positive-card"><div class="positive-icon">✓</div><div><div class="positive-title">Thyroid Function</div><div class="positive-description">TSH 2.1 mIU/L — excellent thyroid health, no contribution to symptoms.</div></div></div>
+        <div class="positive-card"><div class="positive-icon">✓</div><div><div class="positive-title">Kidney Function</div><div class="positive-description">Creatinine and GFR within optimal range despite metabolic stress.</div></div></div>
+        <div class="positive-card"><div class="positive-icon">✓</div><div><div class="positive-title">Iron Status</div><div class="positive-description">Ferritin 285 ng/mL — adequate iron stores, not contributing to fatigue.</div></div></div>
+      </div>
+    </section>
+
+    <!-- DATA GAPS -->
+    <div class="data-gaps-section">
+      <h2>Data Gaps &amp; Limitations</h2>
+      <div class="gaps-grid">
+        <div class="gap-card"><div class="gap-title">Fasting Insulin</div><div class="gap-reason">Cannot calculate HOMA-IR to quantify insulin resistance degree.</div><span class="gap-priority high">High Priority</span></div>
+        <div class="gap-card"><div class="gap-title">Liver Ultrasound</div><div class="gap-reason">Cannot assess hepatic steatosis despite high-risk lipid pattern.</div><span class="gap-priority medium">Medium Priority</span></div>
+        <div class="gap-card"><div class="gap-title">Oral Glucose Tolerance</div><div class="gap-reason">Would reveal postprandial glucose handling, often abnormal before fasting glucose rises.</div><span class="gap-priority low">Low Priority</span></div>
+      </div>
+    </div>
+
+    <!-- REFERENCES -->
+    <section class="references-section">
+      <div class="section-title">References</div>
+      <p class="references-intro">Sources supporting the analysis and recommendations in this report.</p>
+      <div class="reference-list">
+        <div class="reference-item"><div class="reference-number">1</div><div><div class="reference-title"><a href="#">Mediterranean Diet and Type 2 Diabetes Prevention</a></div><div class="reference-claim">PREDIMED trial: 52% reduction in T2DM incidence</div><div class="reference-meta"><span class="source-type-badge journal">Journal</span><span class="confidence-indicator">Salas-Salvado et al., Annals of Internal Medicine, 2014</span></div></div></div>
+        <div class="reference-item"><div class="reference-number">2</div><div><div class="reference-title"><a href="#">Vitamin D and Insulin Resistance</a></div><div class="reference-claim">Meta-analysis: Vitamin D repletion improves HOMA-IR by 12-20%</div><div class="reference-meta"><span class="source-type-badge journal">Journal</span><span class="confidence-indicator">Mirhosseini et al., PLOS ONE, 2018</span></div></div></div>
+        <div class="reference-item"><div class="reference-number">3</div><div><div class="reference-title"><a href="#">ADA Standards of Medical Care in Diabetes</a></div><div class="reference-claim">HbA1c 5.7-6.4% diagnostic criteria for pre-diabetes</div><div class="reference-meta"><span class="source-type-badge guideline">Guideline</span><span class="confidence-indicator">American Diabetes Association, 2025</span></div></div></div>
+      </div>
+    </section>
+
+  </div><!-- .content -->
+
+  <footer class="report-footer">
+    <span>This report is for informational purposes only and does not constitute medical advice.</span>
+    <span>n1.care</span>
+  </footer>
+
+  <div class="report-disclaimer">
+    <p>This N1 Care Report is generated by AI analysis of uploaded health documents. It is not a substitute for professional medical advice, diagnosis, or treatment. Always consult with qualified healthcare providers before making health decisions.</p>
+  </div>
+
+</div><!-- .report -->
+
+<script>
+// Gauge config helper
+function gauge(id, value, unit, min, max, steps, threshold) {
+  Plotly.newPlot(id, [{
+    type: 'indicator', mode: 'gauge+number',
+    value: value,
+    number: { suffix: ' ' + unit, font: { size: 24, color: '#0f172a' } },
+    gauge: {
+      axis: { range: [min, max], tickwidth: 1, tickcolor: '#475569' },
+      bar: { color: '#0d7377', thickness: 0.3 },
+      bgcolor: 'white', borderwidth: 0,
+      steps: steps,
+      threshold: { line: { color: '#10B981', width: 3 }, thickness: 0.8, value: threshold }
+    }
+  }], { margin: { t: 0, r: 25, b: 0, l: 25 }, paper_bgcolor: 'rgba(0,0,0,0)', height: 180 },
+  { responsive: true, displayModeBar: false });
+}
+
+gauge('gauge-hba1c', 6.8, '%', 4, 10,
+  [{ range: [4, 5.6], color: 'rgba(16,185,129,0.3)' }, { range: [5.6, 6.5], color: 'rgba(217,119,6,0.3)' }, { range: [6.5, 10], color: 'rgba(220,38,38,0.3)' }], 5.6);
+
+gauge('gauge-vitd', 12, 'ng/mL', 0, 100,
+  [{ range: [0, 20], color: 'rgba(220,38,38,0.3)' }, { range: [20, 30], color: 'rgba(217,119,6,0.3)' }, { range: [30, 100], color: 'rgba(16,185,129,0.3)' }], 50);
+
+gauge('gauge-crp', 4.2, 'mg/L', 0, 10,
+  [{ range: [0, 1], color: 'rgba(16,185,129,0.3)' }, { range: [1, 3], color: 'rgba(217,119,6,0.3)' }, { range: [3, 10], color: 'rgba(220,38,38,0.3)' }], 1.0);
+
+// Trend chart helper
+function trend(id, dates, values, unit, refLow, refHigh, optimal) {
+  Plotly.newPlot(id, [{
+    x: dates, y: values, type: 'scatter', mode: 'lines+markers',
+    line: { color: '#0d7377', width: 3, shape: 'spline' },
+    marker: { size: 10, color: '#0d7377' },
+    hovertemplate: '<b>%{x}</b><br>%{y} ' + unit + '<extra></extra>'
+  }], {
+    shapes: [
+      { type: 'rect', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: refLow, y1: refHigh, fillcolor: 'rgba(16,185,129,0.15)', line: { width: 0 } },
+      { type: 'line', xref: 'paper', x0: 0, x1: 1, yref: 'y', y0: optimal, y1: optimal, line: { color: '#10B981', width: 2, dash: 'dash' } }
+    ],
+    annotations: [{ x: 1, xref: 'paper', xanchor: 'right', y: optimal, yref: 'y', text: 'Optimal: ' + optimal, showarrow: false, font: { size: 11, color: '#10B981' }, bgcolor: 'rgba(255,255,255,0.8)' }],
+    margin: { t: 20, r: 40, b: 40, l: 60 }, xaxis: { tickangle: -45 }, yaxis: { title: unit },
+    hovermode: 'x unified', plot_bgcolor: 'rgba(0,0,0,0)', paper_bgcolor: 'rgba(0,0,0,0)'
+  }, { responsive: true, displayModeBar: false });
+}
+
+trend('trend-hba1c', ['Jan 2023','Jul 2023','Jan 2024','Jul 2024','Jan 2025','Jan 2026'], [5.4,5.6,5.8,6.0,6.2,6.8], '%', 4.0, 5.6, 5.0);
+trend('trend-vitd', ['Jan 2023','Jul 2023','Jan 2024','Jul 2024','Jan 2025','Jan 2026'], [32,28,24,20,18,12], 'ng/mL', 30, 100, 50);
+
+// Radar
+Plotly.newPlot('systems-radar', [{
+  type: 'scatterpolar', r: [35,45,40,72,80,90,55,35], theta: ['Metabolic','Cardiovascular','Immune','Endocrine','Hepatic','Renal','Neurological','Metabolic'],
+  fill: 'toself', fillcolor: 'rgba(13,115,119,0.2)', line: { color: '#0d7377', width: 2 }, marker: { size: 8, color: '#0d7377' },
+  hovertemplate: '<b>%{theta}</b><br>Score: %{r}/100<extra></extra>'
+}], {
+  polar: { radialaxis: { visible: true, range: [0, 100], tickvals: [25,50,75,100], gridcolor: '#E2E8F0' }, angularaxis: { gridcolor: '#E2E8F0' }, bgcolor: 'rgba(0,0,0,0)' },
+  margin: { t: 40, r: 60, b: 40, l: 60 }, paper_bgcolor: 'rgba(0,0,0,0)', showlegend: false
+}, { responsive: true, displayModeBar: false });
+</script>
+
+</body>
+</html>
