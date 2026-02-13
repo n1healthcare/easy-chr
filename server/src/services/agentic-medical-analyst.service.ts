@@ -481,7 +481,7 @@ const MIN_EXPECTED_SECTIONS = 3;
 // Tool Execution
 // ============================================================================
 
-class AnalystToolExecutor {
+export class AnalystToolExecutor {
   private parsedData: ParsedExtractedData;
   private currentAnalysis: Map<string, string> = new Map();
 
