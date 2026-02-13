@@ -27,6 +27,7 @@ import type {
   FileExistsResult,
   SignedUrlOptions,
 } from '../../application/ports/storage.port.js';
+import { getLogger } from '../../logger.js';
 
 export interface S3StorageConfig {
   bucketName: string;
@@ -40,6 +41,7 @@ export class S3StorageAdapter implements StoragePort {
   private readonly client: S3Client;
   private readonly bucketName: string;
   private readonly defaultExpirationHours: number;
+  private readonly logger = getLogger().child({ component: 'S3StorageAdapter' });
 
   constructor(config: S3StorageConfig) {
     if (!config.bucketName) {
@@ -178,7 +180,7 @@ export class S3StorageAdapter implements StoragePort {
 
     // Handle completion/errors in background
     upload.done().catch((error) => {
-      console.error(`S3 upload error for ${path}:`, error);
+      this.logger.error({ err: error, path }, 'S3 upload error');
       passThrough.destroy(error as Error);
     });
 
