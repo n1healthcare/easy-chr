@@ -13,8 +13,6 @@ import { createBillingHeaders } from '../../utils/billing.js';
 
 const DEFAULT_GEMINI_STREAM_TIMEOUT_MS = 120000;
 
-const DEFAULT_GEMINI_STREAM_TIMEOUT_MS = 120000;
-
 export class GeminiAdapter implements LLMClientPort {
   private configByBillingKey: Map<string, Config> = new Map();
   private configInitPromises: Map<string, Promise<Config>> = new Map();
