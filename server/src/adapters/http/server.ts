@@ -10,6 +10,7 @@ import { SendChatUseCase } from '../../application/use-cases/send-chat.use-case.
 import { AgenticDoctorUseCase } from '../../application/use-cases/agentic-doctor.use-case.js';
 import { ResearchSectionUseCase } from '../../application/use-cases/research-section.use-case.js';
 import type { StoragePort } from '../../application/ports/storage.port.js';
+import type { ObservabilityPort } from '../../application/ports/observability.port.js';
 import type { BillingContext } from '../../utils/billing.js';
 import { LegacyPaths } from '../../common/storage-paths.js';
 import { transformOrganInsightsToBodyTwin } from '../../services/body-twin-transformer.service.js';
@@ -68,7 +69,7 @@ function getBillingContextFromRequest(
   return (request as BillingAwareRequest).billingContext;
 }
 
-export async function createServer(storage: StoragePort) {
+export async function createServer(storage: StoragePort, observability?: ObservabilityPort) {
   const server = fastify({
     logger: true,
   });
@@ -231,7 +232,7 @@ export async function createServer(storage: StoragePort) {
     }
 
     try {
-      const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter, storage);
+      const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter, storage, observability);
       if (billingContext) {
         agenticDoctorUseCase.setBillingContext(billingContext);
       }

@@ -31,6 +31,8 @@ import { deepMergeJsonPatch } from '../../utils/json-patch-merge.js';
 import { transformOrganInsightsToBodyTwin } from '../../services/body-twin-transformer.service.js';
 import { injectBodyTwinViewer } from '../../utils/inject-body-twin.js';
 import type { RealmGenerationEvent } from '../../domain/types.js';
+import type { ObservabilityPort } from '../ports/observability.port.js';
+import { NoopObservabilityAdapter } from '../../adapters/langfuse/noop-observability.adapter.js';
 // Note: Retry logic is handled at the adapter level (GeminiAdapter.sendMessageStream)
 // No need to wrap LLM calls here - they are already protected by retryLLM in the adapter
 import type { BillingContext } from '../../utils/billing.js';
@@ -243,11 +245,15 @@ function cleanupJson(content: string): string {
 
 export class AgenticDoctorUseCase {
   private billingContext?: BillingContext;
+  private readonly obs: ObservabilityPort;
 
   constructor(
     private readonly llmClient: LLMClientPort,
-    private readonly storage: StoragePort
-  ) {}
+    private readonly storage: StoragePort,
+    observability?: ObservabilityPort,
+  ) {
+    this.obs = observability ?? new NoopObservabilityAdapter();
+  }
 
   /**
    * Set billing context for LiteLLM cost tracking.
@@ -273,11 +279,38 @@ export class AgenticDoctorUseCase {
     console.log(`[AgenticDoctor] Session ${sessionId}: Processing ${uploadedFilePaths.length} files...`);
     console.log(`[AgenticDoctor] User prompt: ${prompt ? `(${prompt.length} chars)` : '(empty)'}`);
 
+    // --- Observability: create trace for entire pipeline run ---
+    const chrIdShort = this.billingContext?.chrId?.substring(0, 8) ?? sessionId.substring(0, 8);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    let traceId = '';
+    try {
+      traceId = this.obs.createTrace({
+        name: `chr-${this.billingContext?.userId ?? 'anon'}-easy-chr-${dateStr}-${chrIdShort}`,
+        userId: this.billingContext?.userId,
+        sessionId,
+        metadata: {
+          chrId: this.billingContext?.chrId,
+          fileCount: uploadedFilePaths.length,
+          promptLength: prompt?.length ?? 0,
+        },
+        tags: ['easy-chr'],
+      });
+    } catch { /* observability never blocks pipeline */ }
+
+    // Helper: safely start/end spans
+    const startSpan = (phase: string) => {
+      try { this.obs.startSpan(phase, { name: phase, traceId }); } catch { /* non-fatal */ }
+    };
+    const endSpan = (phase: string, meta?: Record<string, unknown>) => {
+      try { this.obs.endSpan(phase, meta); } catch { /* non-fatal */ }
+    };
+
     // ========================================================================
     // Phase 1: Document Extraction
     // PDFs: Vision OCR → Markdown
     // Other files: Direct text extraction
     // ========================================================================
+    startSpan('Phase 1 - Document Extraction');
     yield { type: 'step', name: 'Document Extraction', status: 'running' };
     yield { type: 'log', message: `Processing ${uploadedFilePaths.length} document(s)...` };
 
@@ -371,6 +404,7 @@ export class AgenticDoctorUseCase {
     // Save final extracted.md
     await this.storage.writeFile(LegacyPaths.extracted, allExtractedContent);
 
+    endSpan('Phase 1 - Document Extraction', { chars: allExtractedContent.length });
     yield { type: 'step', name: 'Document Extraction', status: 'completed' };
 
     if (!allExtractedContent || allExtractedContent.trim().length === 0) {
@@ -388,13 +422,14 @@ export class AgenticDoctorUseCase {
     // The agent explores the data, forms hypotheses, seeks evidence, and builds
     // comprehensive analysis through multiple exploration cycles
     // ========================================================================
+    startSpan('Phase 2 - Medical Analysis');
     yield { type: 'step', name: 'Medical Analysis', status: 'running' };
     yield { type: 'log', message: 'Starting agentic medical analysis...' };
 
     let analysisContent = '';
 
     try {
-      const agenticAnalyst = new AgenticMedicalAnalyst(this.billingContext);
+      const agenticAnalyst = new AgenticMedicalAnalyst(this.billingContext, this.obs, traceId, 'Phase 2 - Medical Analysis');
 
       yield { type: 'log', message: 'Agent is exploring the medical data...' };
 
@@ -463,11 +498,13 @@ export class AgenticDoctorUseCase {
       console.log(`[AgenticDoctor] Agentic analysis complete: ${analysisContent.length} chars`);
 
       yield { type: 'log', message: `Medical analysis complete (${analysisContent.length} chars)` };
+      endSpan('Phase 2 - Medical Analysis', { chars: analysisContent.length });
       yield { type: 'step', name: 'Medical Analysis', status: 'completed' };
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[AgenticDoctor] Agentic analysis failed:', errorMessage);
+      endSpan('Phase 2 - Medical Analysis', { error: errorMessage });
       yield { type: 'log', message: `Medical analysis failed: ${errorMessage}` };
       yield { type: 'step', name: 'Medical Analysis', status: 'failed' };
       yield { type: 'result', url: LegacyPaths.extracted };
@@ -478,6 +515,7 @@ export class AgenticDoctorUseCase {
     // Phase 3: Research
     // Validates medical claims with external sources using web search
     // ========================================================================
+    startSpan('Phase 3 - Research');
     yield { type: 'step', name: 'Research', status: 'running' };
     yield { type: 'log', message: 'Validating claims with external sources...' };
 
@@ -532,9 +570,11 @@ export class AgenticDoctorUseCase {
         console.log(`[AgenticDoctor] Research complete: ${researchOutput.researchedClaims.length} claims verified`);
 
         yield { type: 'log', message: `Research complete: ${researchOutput.researchedClaims.length} claims verified, ${researchOutput.unsupportedClaims.length} unsupported` };
+        endSpan('Phase 3 - Research', { claimsVerified: researchOutput.researchedClaims.length });
         yield { type: 'step', name: 'Research', status: 'completed' };
       } else {
         console.warn('[AgenticDoctor] Gemini config not available, skipping research phase');
+        endSpan('Phase 3 - Research', { skipped: true });
         yield { type: 'log', message: 'Research skipped (Gemini config not available)' };
         yield { type: 'step', name: 'Research', status: 'completed' };
       }
@@ -542,6 +582,7 @@ export class AgenticDoctorUseCase {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[AgenticDoctor] Research failed:', errorMessage);
+      endSpan('Phase 3 - Research', { error: errorMessage });
       yield { type: 'log', message: `Research failed: ${errorMessage}. Continuing without external validation.` };
       yield { type: 'step', name: 'Research', status: 'failed' };
       // Continue anyway - research is enhancement, not critical
@@ -552,6 +593,7 @@ export class AgenticDoctorUseCase {
     // Extracts chart-ready JSON from analysis data
     // This becomes the source of truth for both Validation and HTML Builder
     // ========================================================================
+    startSpan('Phase 4 - Data Structuring');
     yield { type: 'step', name: 'Data Structuring', status: 'running' };
     yield { type: 'log', message: 'Extracting structured data for visualizations...' };
 
@@ -587,6 +629,10 @@ ${labSections}
       // Log payload size for debugging network issues
       console.log(`[AgenticDoctor] Data structuring prompt payload: ${Math.round(structurePrompt.length / 1024)}KB`);
 
+      const dsGenId = `gen-data-structuring-${sessionId}`;
+      const dsStartTime = Date.now();
+      try { this.obs.startGeneration(dsGenId, { name: 'data-structuring', traceId, parentSpanId: 'Phase 4 - Data Structuring', model: REALM_CONFIG.models.doctor }); } catch { /* non-fatal */ }
+
       structuredDataContent = await streamWithRetry(
         this.llmClient,
         structurePrompt,
@@ -598,6 +644,8 @@ ${labSections}
           billingContext: this.billingContext,
         }
       );
+
+      try { this.obs.endGeneration(dsGenId, { outputCharCount: structuredDataContent.length, latencyMs: Date.now() - dsStartTime }); } catch { /* non-fatal */ }
 
       if (structuredDataContent.trim().length === 0) {
         throw new Error('LLM returned empty structured data');
@@ -647,11 +695,13 @@ ${labSections}
       await this.storage.writeFile(LegacyPaths.structuredData, structuredDataContent);
 
       yield { type: 'log', message: 'Data structuring complete.' };
+      endSpan('Phase 4 - Data Structuring', { chars: structuredDataContent.length });
       yield { type: 'step', name: 'Data Structuring', status: 'completed' };
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[AgenticDoctor] Data structuring failed:', errorMessage);
+      endSpan('Phase 4 - Data Structuring', { error: errorMessage });
       yield { type: 'log', message: `Data structuring failed: ${errorMessage}. Cannot proceed without structured data.` };
       yield { type: 'step', name: 'Data Structuring', status: 'failed' };
       yield { type: 'error', content: `Data structuring failed: ${errorMessage}. The analysis cannot be visualized without structured data.` };
@@ -680,6 +730,7 @@ ${labSections}
     // Can compare source date ranges vs JSON timeline to catch missing data
     // Maximum 1 correction cycle to avoid infinite loops
     // ========================================================================
+    startSpan('Phase 5 - Validation');
     yield { type: 'step', name: 'Validation', status: 'running' };
     yield { type: 'log', message: 'Starting agentic validation (tool-based)...' };
 
@@ -694,7 +745,7 @@ ${labSections}
     while (correctionCycle <= MAX_CORRECTION_CYCLES && !validationPassed) {
       try {
         // Use AgenticValidator for tool-based validation
-        const validator = new AgenticValidator(this.billingContext);
+        const validator = new AgenticValidator(this.billingContext, this.obs, traceId, 'Phase 5 - Validation');
         const validationGenerator = validator.validate(
           allExtractedContent,
           structuredDataContent,
@@ -937,6 +988,7 @@ This validation was performed using the AgenticValidator with tool-based explora
       await this.storage.writeFile(LegacyPaths.validation, validationContent);
     }
 
+    endSpan('Phase 5 - Validation', { correctionCycles: correctionCycle });
     yield { type: 'step', name: 'Validation', status: 'completed' };
 
     // ========================================================================
@@ -944,6 +996,7 @@ This validation was performed using the AgenticValidator with tool-based explora
     // Generates organ-by-organ clinical findings from validated structured data
     // Non-critical enrichment - pipeline continues if this fails
     // ========================================================================
+    startSpan('Phase 6 - Organ Insights');
     yield { type: 'step', name: 'Organ Insights', status: 'running' };
     yield { type: 'log', message: 'Generating organ-by-organ insights...' };
 
@@ -965,6 +1018,10 @@ ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}`;
 
       console.log(`[AgenticDoctor] Organ insights prompt payload: ${Math.round(organInsightsPrompt.length / 1024)}KB`);
 
+      const oiGenId = `gen-organ-insights-${sessionId}`;
+      const oiStartTime = Date.now();
+      try { this.obs.startGeneration(oiGenId, { name: 'organ-insights', traceId, parentSpanId: 'Phase 6 - Organ Insights', model: REALM_CONFIG.models.doctor }); } catch { /* non-fatal */ }
+
       organInsightsContent = await streamWithRetry(
         this.llmClient,
         organInsightsPrompt,
@@ -975,6 +1032,8 @@ ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}`;
           maxRetries: 3,
         }
       );
+
+      try { this.obs.endGeneration(oiGenId, { outputCharCount: organInsightsContent.length, latencyMs: Date.now() - oiStartTime }); } catch { /* non-fatal */ }
 
       if (organInsightsContent.trim().length === 0) {
         throw new Error('LLM returned empty organ insights');
@@ -998,11 +1057,13 @@ ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}`;
       }
 
       yield { type: 'log', message: `Organ insights complete (${organInsightsContent.length} chars).` };
+      endSpan('Phase 6 - Organ Insights', { chars: organInsightsContent.length });
       yield { type: 'step', name: 'Organ Insights', status: 'completed' };
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[AgenticDoctor] Organ insights failed:', errorMessage);
+      endSpan('Phase 6 - Organ Insights', { error: errorMessage });
       yield { type: 'log', message: `Organ insights failed: ${errorMessage}. Continuing without organ insights.` };
       yield { type: 'step', name: 'Organ Insights', status: 'failed' };
       // Non-critical — continue pipeline without organ insights
@@ -1013,6 +1074,7 @@ ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}`;
     // Uses sendMessageStream with html-builder skill
     // DATA-DRIVEN: structured_data.json is the ONLY source - JSON drives structure
     // ========================================================================
+    startSpan('Phase 7 - HTML Generation');
     yield { type: 'step', name: 'Report Generation', status: 'running' };
     yield { type: 'log', message: 'Building your N1 Care Report...' };
 
@@ -1051,6 +1113,10 @@ ${organInsightsContent}
       console.log(`[AgenticDoctor] HTML prompt payload: ${payloadSizeKB}KB (${htmlPrompt.length} chars)`);
       yield { type: 'log', message: `Generating interactive HTML experience (${payloadSizeKB}KB payload)...` };
 
+      const htmlGenId = `gen-html-generation-${sessionId}`;
+      const htmlStartTime = Date.now();
+      try { this.obs.startGeneration(htmlGenId, { name: 'html-generation', traceId, parentSpanId: 'Phase 7 - HTML Generation', model: REALM_CONFIG.models.html }); } catch { /* non-fatal */ }
+
       let htmlContent = await streamWithRetry(
         this.llmClient,
         htmlPrompt,
@@ -1062,6 +1128,8 @@ ${organInsightsContent}
           billingContext: this.billingContext,
         }
       );
+
+      try { this.obs.endGeneration(htmlGenId, { outputCharCount: htmlContent.length, latencyMs: Date.now() - htmlStartTime }); } catch { /* non-fatal */ }
 
       if (htmlContent.trim().length === 0) {
         throw new Error('LLM returned empty HTML');
@@ -1095,12 +1163,14 @@ ${organInsightsContent}
       console.log(`[AgenticDoctor] HTML report: ${htmlContent.length} chars`);
 
       yield { type: 'log', message: 'Initial HTML generation complete.' };
+      endSpan('Phase 7 - HTML Generation', { chars: htmlContent.length });
       yield { type: 'step', name: 'Report Generation', status: 'completed' };
 
       // ========================================================================
       // Phase 7: Content Review
       // Compares structured_data.json against index.html to identify information loss
       // ========================================================================
+      startSpan('Phase 8 - Content Review');
       yield { type: 'step', name: 'Content Review', status: 'running' };
       yield { type: 'log', message: 'Reviewing HTML for completeness...' };
 
@@ -1176,6 +1246,10 @@ ${htmlContent}
 
         console.log(`[AgenticDoctor] Content review prompt payload: ${Math.round(reviewPrompt.length / 1024)}KB`);
 
+        const crGenId = `gen-content-review-${sessionId}`;
+        const crStartTime = Date.now();
+        try { this.obs.startGeneration(crGenId, { name: 'content-review', traceId, parentSpanId: 'Phase 8 - Content Review', model: REALM_CONFIG.models.doctor }); } catch { /* non-fatal */ }
+
         let reviewContent = '';
         const reviewStream = await this.llmClient.sendMessageStream(
           reviewPrompt,
@@ -1190,6 +1264,8 @@ ${htmlContent}
         for await (const chunk of reviewStream) {
           reviewContent += chunk;
         }
+
+        try { this.obs.endGeneration(crGenId, { outputCharCount: reviewContent.length, latencyMs: Date.now() - crStartTime }); } catch { /* non-fatal */ }
 
         if (reviewContent.trim().length === 0) {
           throw new Error('Content review returned empty');
@@ -1259,11 +1335,13 @@ ${htmlContent}
           }
         }
 
+        endSpan('Phase 8 - Content Review', { passed: contentReviewResult.overall.passed });
         yield { type: 'step', name: 'Content Review', status: 'completed' };
 
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error('[AgenticDoctor] Content review failed:', errorMessage);
+        endSpan('Phase 8 - Content Review', { error: errorMessage });
         yield { type: 'log', message: `Content review failed: ${errorMessage}. Proceeding with current HTML.` };
         yield { type: 'step', name: 'Content Review', status: 'failed' };
         contentReviewResult = { overall: { passed: true, summary: '', action: 'pass' } }; // Skip patching on error
@@ -1274,6 +1352,7 @@ ${htmlContent}
       // If content review found issues, regenerate HTML with feedback
       // ========================================================================
       if (contentReviewResult.overall.action === 'regenerate_with_feedback' && contentReviewResult.overall.feedback_for_regeneration) {
+        startSpan('Phase 9 - HTML Regeneration');
         yield { type: 'step', name: 'HTML Regeneration', status: 'running' };
         yield { type: 'log', message: 'Regenerating HTML with reviewer feedback...' };
 
@@ -1347,6 +1426,10 @@ ${organInsightsContent}
 
           console.log(`[AgenticDoctor] Regeneration prompt payload: ${Math.round(regenPrompt.length / 1024)}KB`);
 
+          const regenGenId = `gen-html-regeneration-${sessionId}`;
+          const regenStartTime = Date.now();
+          try { this.obs.startGeneration(regenGenId, { name: 'html-regeneration', traceId, parentSpanId: 'Phase 9 - HTML Regeneration', model: REALM_CONFIG.models.html }); } catch { /* non-fatal */ }
+
           let regenHtml = '';
           const regenStream = await this.llmClient.sendMessageStream(
             regenPrompt,
@@ -1361,6 +1444,8 @@ ${organInsightsContent}
           for await (const chunk of regenStream) {
             regenHtml += chunk;
           }
+
+          try { this.obs.endGeneration(regenGenId, { outputCharCount: regenHtml.length, latencyMs: Date.now() - regenStartTime }); } catch { /* non-fatal */ }
 
           if (regenHtml.trim().length > 0) {
             // Clean up regenerated HTML
@@ -1392,11 +1477,13 @@ ${organInsightsContent}
             yield { type: 'log', message: 'Regeneration returned empty, keeping original HTML.' };
           }
 
+          endSpan('Phase 9 - HTML Regeneration');
           yield { type: 'step', name: 'HTML Regeneration', status: 'completed' };
 
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error('[AgenticDoctor] HTML regeneration failed:', errorMessage);
+          endSpan('Phase 9 - HTML Regeneration', { error: errorMessage });
           yield { type: 'log', message: `HTML regeneration failed: ${errorMessage}. Using original HTML.` };
           yield { type: 'step', name: 'HTML Regeneration', status: 'failed' };
         }
@@ -1435,12 +1522,22 @@ ${organInsightsContent}
       yield { type: 'log', message: `N1 Care Report ready: ${realmUrl}` };
       yield { type: 'result', url: realmUrl };
 
+      // Score trace as success
+      try { this.obs.scoreTrace(traceId, 'pipeline_success', 1, 'Pipeline completed successfully'); } catch { /* non-fatal */ }
+
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[AgenticDoctor] HTML generation failed:', errorMessage);
+      endSpan('Phase 7 - HTML Generation', { error: errorMessage });
       yield { type: 'log', message: `Report generation failed: ${errorMessage}` };
       yield { type: 'step', name: 'Report Generation', status: 'failed' };
       yield { type: 'error', content: `Report generation failed: ${errorMessage}` };
+
+      // Score trace as failure
+      try { this.obs.scoreTrace(traceId, 'pipeline_success', 0, errorMessage); } catch { /* non-fatal */ }
     }
+
+    // Flush observability data — best-effort, never blocks
+    try { this.obs.flush().catch(() => {}); } catch { /* non-fatal */ }
   }
 }

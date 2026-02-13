@@ -89,4 +89,10 @@ export const REALM_CONFIG = {
     // Token limit for the doctor model (gemini-3-pro-preview = 1M tokens)
     tokenLimit: parseInt(process.env.COMPRESSION_TOKEN_LIMIT || '1048576'),
   },
+  langfuse: {
+    enabled: ['true', '1', 'yes'].includes((process.env.OBSERVABILITY_ENABLED ?? 'false').toLowerCase()),
+    publicKey: process.env.LANGFUSE_PUBLIC_KEY ?? '',
+    secretKey: process.env.LANGFUSE_SECRET_KEY ?? '',
+    host: process.env.LANGFUSE_HOST || 'https://langfuse.n1-research.com',
+  },
 };
