@@ -1,0 +1,1020 @@
+/*
+ * N1 Care Report — Centralized Design System
+ *
+ * SINGLE SOURCE OF TRUTH for all generated HTML report styling.
+ * This CSS is injected programmatically into LLM-generated HTML.
+ *
+ * To change report styling, edit THIS file.
+ * See STYLEGUIDE.md for design token reference.
+ */
+
+/* ============================================================================
+   Google Fonts
+   ============================================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;800&family=DM+Sans:wght@400;500;700&display=swap');
+
+/* ============================================================================
+   Design Tokens (CSS Variables)
+   ============================================================================ */
+:root {
+  /* Primary accent */
+  --accent-primary: #8B5CF6;
+  --accent-primary-dark: #6D28D9;
+  --accent-light: #C4B5FD;
+  --accent-bg: #F5F3FF;
+
+  /* Semantic: success */
+  --success: #10B981;
+  --success-dark: #059669;
+  --success-bg: #D1FAE5;
+
+  /* Semantic: warning */
+  --warning: #F59E0B;
+  --warning-dark: #D97706;
+  --warning-bg: #FEF3C7;
+
+  /* Semantic: danger */
+  --danger: #EF4444;
+  --danger-dark: #DC2626;
+  --danger-bg: #FEE2E2;
+
+  /* Semantic: info */
+  --info: #3B82F6;
+  --info-dark: #2563EB;
+  --info-bg: #DBEAFE;
+
+  /* Neutrals */
+  --text-main: #1E293B;
+  --text-muted: #64748B;
+  --bg-card: #FFFFFF;
+  --bg-section: #F8FAFC;
+
+  /* Aliases used by some components */
+  --primary-color: var(--accent-primary);
+  --primary-dark: var(--accent-primary-dark);
+  --primary-light: var(--accent-light);
+  --text-primary: var(--text-main);
+  --text-secondary: var(--text-muted);
+  --critical-color: var(--danger);
+  --warning-color: var(--warning);
+}
+
+/* ============================================================================
+   Base Typography
+   ============================================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text-main);
+  line-height: 1.6;
+  margin: 0;
+  padding: 0;
+  background: #F8FAFC;
+}
+
+h1, h2, h3, h4 {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  margin-top: 0;
+}
+
+a { color: var(--accent-primary-dark); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ============================================================================
+   Report Header
+   ============================================================================ */
+.report-header {
+  padding: 1.5rem 2rem;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid #196067;
+}
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.header-brand h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #196067;
+  margin: 0;
+}
+.n1-logo { flex-shrink: 0; }
+
+/* ============================================================================
+   Executive Summary
+   ============================================================================ */
+.executive-summary {
+  background: linear-gradient(135deg, var(--accent-bg) 0%, white 100%);
+  border-radius: 32px;
+  padding: 40px;
+  margin-bottom: 40px;
+  border-left: 6px solid var(--accent-primary);
+}
+.executive-summary h2 {
+  font-size: 1.8rem;
+  margin-bottom: 30px;
+  color: var(--accent-primary-dark);
+}
+.executive-summary > div { margin-bottom: 25px; }
+.executive-summary h3 {
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+.question-text {
+  font-size: 1.2rem;
+  font-style: italic;
+  color: var(--accent-primary-dark);
+  padding: 15px 20px;
+  background: white;
+  border-radius: 16px;
+  border-left: 4px solid var(--accent-primary);
+}
+.short-answer p { font-size: 1.1rem; line-height: 1.7; }
+.key-findings-preview ul { list-style: none; padding: 0; }
+.key-findings-preview li {
+  padding: 12px 16px;
+  background: white;
+  border-radius: 12px;
+  margin-bottom: 10px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+}
+.top-priority {
+  background: linear-gradient(135deg, var(--warning-bg) 0%, #FEF3C7 100%);
+  padding: 20px 25px;
+  border-radius: 20px;
+  border: 2px solid var(--warning);
+}
+.top-priority h3 { color: var(--warning-dark); }
+.top-priority p { font-weight: 700; color: var(--warning-dark); font-size: 1.05rem; }
+
+/* ============================================================================
+   Diagnosis Cards
+   ============================================================================ */
+.diagnoses-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+}
+.diagnosis-card {
+  background: white;
+  border-radius: 24px;
+  padding: 25px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.08), inset 0 2px 4px rgba(255,255,255,0.8);
+}
+.diagnosis-card.critical { border-left: 5px solid var(--danger); }
+.diagnosis-card.moderate { border-left: 5px solid var(--warning); }
+.diagnosis-card.mild { border-left: 5px solid var(--info); }
+.diagnosis-status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.diagnosis-name { font-size: 1.2rem; font-weight: 800; margin: 12px 0; }
+.diagnosis-evidence { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.evidence-item {
+  background: var(--accent-bg);
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.diagnosis-implications { color: var(--text-muted); line-height: 1.6; }
+
+/* ============================================================================
+   Plotly Charts (Gauges, Line Charts, Radar)
+   ============================================================================ */
+.plotly-chart { width: 100%; height: 350px; }
+.plotly-gauge { width: 100%; height: 180px; }
+.plotly-radar { width: 100%; height: 400px; }
+.trend-interpretation { color: var(--text-muted); margin-top: 15px; line-height: 1.6; }
+
+.gauges-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+.gauge-card {
+  background: white;
+  border-radius: 24px;
+  padding: 25px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.04);
+}
+.gauge-title { font-weight: 800; text-align: center; margin-bottom: 10px; }
+.gauge-description { color: var(--text-muted); font-size: 0.9rem; text-align: center; margin-top: 10px; }
+
+.chart-section {
+  background: white;
+  border-radius: 24px;
+  padding: 30px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.04);
+}
+
+/* ============================================================================
+   Visual Timeline (CSS-based, NOT Plotly)
+   ============================================================================ */
+.timeline-section { margin: 40px 0; }
+.visual-timeline { position: relative; padding-left: 120px; }
+.visual-timeline::before {
+  content: '';
+  position: absolute;
+  left: 100px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--accent-primary), var(--accent-light));
+}
+.timeline-item {
+  position: relative;
+  padding-bottom: 30px;
+  display: flex;
+  align-items: flex-start;
+}
+.timeline-date {
+  position: absolute;
+  left: -120px;
+  width: 80px;
+  text-align: right;
+  padding-right: 20px;
+}
+.timeline-date .month { display: block; font-weight: 600; color: var(--text-main); }
+.timeline-date .year { display: block; font-size: 0.85em; color: var(--text-muted); }
+.timeline-marker {
+  position: absolute;
+  left: -12px;
+  width: 24px;
+  height: 24px;
+  background: white;
+  border: 3px solid var(--accent-primary);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+.timeline-item.significance-high .timeline-marker { border-color: var(--danger); background: var(--danger-bg); }
+.timeline-item.significance-medium .timeline-marker { border-color: var(--warning); background: var(--warning-bg); }
+.timeline-content { padding-left: 30px; flex: 1; }
+.timeline-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  border-left: 4px solid var(--accent-primary);
+}
+.timeline-item.significance-high .timeline-card { border-left-color: var(--danger); }
+.timeline-item.significance-medium .timeline-card { border-left-color: var(--warning); }
+.timeline-title { margin: 0 0 8px 0; color: var(--text-main); font-size: 1.1em; }
+.timeline-description { margin: 0 0 12px 0; color: var(--text-muted); line-height: 1.5; }
+.timeline-values { display: flex; flex-wrap: wrap; gap: 8px; }
+.timeline-value {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.85em;
+  font-weight: 500;
+}
+.timeline-value.critical { background: var(--danger-bg); color: #B91C1C; }
+.timeline-value.warning { background: var(--warning-bg); color: #B45309; }
+.timeline-value.normal { background: var(--success-bg); color: #047857; }
+
+/* ============================================================================
+   Flowchart / Connections
+   ============================================================================ */
+.flowchart-section {
+  background: linear-gradient(135deg, var(--accent-bg) 0%, var(--info-bg) 100%);
+  border-radius: 32px;
+  padding: 40px;
+  margin-bottom: 20px;
+}
+.flowchart {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 25px;
+}
+.flow-node {
+  padding: 14px 22px;
+  border-radius: 24px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-align: center;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.06);
+  min-width: 150px;
+}
+.flow-node-label { font-size: 0.7rem; text-transform: uppercase; opacity: 0.7; }
+.flow-node-value { font-weight: 800; margin: 5px 0; }
+.flow-node-data { font-size: 0.8rem; opacity: 0.8; }
+.flow-node.root-cause { background: linear-gradient(135deg, var(--danger-bg) 0%, #FEE2E2 100%); border: 2px solid var(--danger); color: var(--danger-dark); }
+.flow-node.mechanism { background: linear-gradient(135deg, var(--warning-bg) 0%, #FEF3C7 100%); border: 2px solid var(--warning); color: var(--warning-dark); }
+.flow-node.effect { background: linear-gradient(135deg, var(--info-bg) 0%, #DBEAFE 100%); border: 2px solid var(--info); color: var(--info-dark); }
+.flow-arrow { font-size: 1.5rem; color: var(--accent-primary); }
+.confidence-badge {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.85em;
+  font-weight: 600;
+  margin-top: 15px;
+}
+.confidence-badge.high, .confidence-high { background: #D1FAE5; color: #047857; }
+.confidence-badge.medium, .confidence-medium { background: #FEF3C7; color: #B45309; }
+.confidence-badge.low, .confidence-low { background: #FEE2E2; color: #B91C1C; }
+
+/* ============================================================================
+   Action Plan
+   ============================================================================ */
+.action-plan {
+  background: linear-gradient(135deg, var(--accent-bg) 0%, var(--success-bg) 100%);
+  border-radius: 32px;
+  padding: 40px;
+}
+.action-phase {
+  background: white;
+  border-radius: 24px;
+  overflow: hidden;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.04);
+}
+.phase-header {
+  padding: 18px 25px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+.phase-header.immediate { background: linear-gradient(135deg, var(--danger-bg) 0%, #FEE2E2 100%); }
+.phase-header.short-term { background: linear-gradient(135deg, var(--warning-bg) 0%, #FEF3C7 100%); }
+.phase-header.follow-up { background: linear-gradient(135deg, var(--info-bg) 0%, #DBEAFE 100%); }
+.phase-title { font-weight: 800; font-size: 1.1rem; }
+.phase-actions { padding: 25px; }
+.action-item {
+  display: flex;
+  gap: 15px;
+  padding: 15px 0;
+  border-bottom: 1px solid #E5E7EB;
+}
+.action-item:last-child { border-bottom: none; }
+.action-title { font-weight: 700; margin-bottom: 6px; }
+.action-description { color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; }
+.action-related { margin-top: 8px; font-size: 0.85rem; color: var(--accent-primary-dark); }
+.action-notes { margin-top: 8px; padding: 8px 12px; background: var(--accent-bg); border-radius: 8px; font-size: 0.85rem; }
+.action-timing { font-size: 0.85rem; color: var(--info-dark); margin-bottom: 4px; }
+
+/* ============================================================================
+   Supplement Schedule
+   ============================================================================ */
+.supplement-schedule {
+  background: linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%);
+  border-radius: 32px;
+  padding: 40px;
+}
+.schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+.schedule-time-block {
+  background: white;
+  border-radius: 24px;
+  padding: 25px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.04);
+}
+.time-label {
+  font-weight: 800;
+  text-transform: capitalize;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--accent-light);
+}
+.supplement-card {
+  padding: 15px 0;
+  border-bottom: 1px solid #E5E7EB;
+}
+.supplement-card:last-child { border-bottom: none; }
+.supplement-name { font-weight: 700; color: var(--accent-primary-dark); }
+.supplement-dose { font-size: 1.1rem; font-weight: 800; margin: 5px 0; }
+.supplement-purpose { color: var(--text-muted); font-size: 0.9rem; }
+.supplement-related { font-size: 0.85rem; color: var(--info-dark); margin-top: 5px; }
+.supplement-notes { font-size: 0.85rem; background: var(--warning-bg); padding: 6px 10px; border-radius: 8px; margin-top: 8px; }
+.interactions-warning {
+  background: var(--warning-bg);
+  border: 2px solid var(--warning);
+  border-radius: 20px;
+  padding: 20px;
+  margin-top: 25px;
+}
+.interactions-warning h4 { color: var(--warning-dark); margin-bottom: 10px; }
+.interactions-warning li { color: var(--warning-dark); padding: 5px 0; }
+
+/* ============================================================================
+   Lifestyle Optimizations
+   ============================================================================ */
+.lifestyle-section {
+  background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%);
+  border-radius: 32px;
+  padding: 40px;
+}
+.lifestyle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+.lifestyle-card {
+  background: white;
+  border-radius: 24px;
+  padding: 25px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.04);
+}
+.lifestyle-card h4 { margin: 0 0 10px 0; }
+
+/* ============================================================================
+   Doctor Questions
+   ============================================================================ */
+.doctor-questions {
+  background: linear-gradient(135deg, var(--accent-bg) 0%, #EDE9FE 100%);
+  border-radius: 32px;
+  padding: 40px;
+}
+.question-card {
+  background: white;
+  border-radius: 24px;
+  padding: 25px;
+  display: flex;
+  gap: 20px;
+  margin-bottom: 15px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.04);
+}
+.question-number {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.question-category {
+  display: inline-block;
+  background: var(--accent-bg);
+  color: var(--accent-primary-dark);
+  padding: 4px 12px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.question-text {
+  font-weight: 700;
+  font-size: 1.05rem;
+  margin-bottom: 10px;
+  font-style: italic;
+}
+.question-context {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  background: #F9FAFB;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border-left: 3px solid var(--accent-light);
+}
+.question-related {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: var(--info-dark);
+}
+
+/* ============================================================================
+   Prognosis
+   ============================================================================ */
+.prognosis-section {
+  background: linear-gradient(135deg, #F8F7FF 0%, var(--accent-bg) 100%);
+  border-radius: 32px;
+  padding: 40px;
+}
+.prognosis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 25px;
+}
+.prognosis-card {
+  background: white;
+  border-radius: 24px;
+  padding: 28px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.04);
+}
+.prognosis-card.without-intervention {
+  border-top: 5px solid var(--danger);
+  background: linear-gradient(135deg, white 0%, var(--danger-bg) 100%);
+}
+.prognosis-card.with-intervention {
+  border-top: 5px solid var(--success);
+  background: linear-gradient(135deg, white 0%, var(--success-bg) 100%);
+}
+.prognosis-card h4 { font-weight: 800; margin-bottom: 15px; }
+.without-intervention h4 { color: var(--danger-dark); }
+.with-intervention h4 { color: var(--success-dark); }
+.milestones { margin-top: 30px; }
+.milestones-timeline { display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px; }
+.milestone {
+  background: white;
+  border-radius: 16px;
+  padding: 15px 20px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+.milestone-time { font-weight: 800; color: var(--accent-primary); margin-bottom: 5px; }
+.milestone-expectation { color: var(--text-muted); font-size: 0.9rem; }
+
+/* ============================================================================
+   Monitoring Protocol
+   ============================================================================ */
+.monitoring-section {
+  background: linear-gradient(135deg, var(--info-bg) 0%, #DBEAFE 100%);
+  border-radius: 32px;
+  padding: 40px;
+}
+.monitoring-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+.monitoring-card {
+  background: white;
+  border-radius: 24px;
+  padding: 25px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.04);
+}
+
+/* ============================================================================
+   Integrative Reasoning (The Big Picture)
+   ============================================================================ */
+.integrative-reasoning-section {
+  background: linear-gradient(135deg, #EEF2FF 0%, #F8FAFC 100%);
+  border-radius: 32px;
+  padding: 40px;
+  margin: 40px 0;
+}
+.root-cause-card {
+  background: white;
+  border-radius: 24px;
+  padding: 30px;
+  margin-bottom: 30px;
+  border-left: 5px solid var(--accent-primary);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+}
+.root-cause-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+.root-cause-icon { font-size: 1.8em; }
+.root-cause-header h3 { margin: 0; color: var(--accent-primary-dark); }
+.root-cause-hypothesis {
+  font-size: 1.2em;
+  line-height: 1.6;
+  color: var(--text-main);
+  margin-bottom: 20px;
+}
+.root-cause-evidence h4 { margin: 0 0 10px 0; font-size: 0.95em; color: var(--text-muted); }
+.root-cause-evidence ul { margin: 0; padding-left: 20px; }
+.root-cause-evidence li { color: var(--text-muted); margin-bottom: 5px; }
+
+/* Causal Chain */
+.causal-chain {
+  background: white;
+  border-radius: 24px;
+  padding: 30px;
+  margin-bottom: 30px;
+}
+.causal-chain h3 { margin: 0 0 25px 0; }
+.chain-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 15px;
+}
+.chain-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--accent-bg);
+  padding: 15px 20px;
+  border-radius: 16px;
+  flex: 1;
+  min-width: 200px;
+}
+.chain-number {
+  width: 32px;
+  height: 32px;
+  background: var(--accent-primary);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.chain-event { font-weight: 600; color: var(--text-main); }
+.chain-leads-to { font-size: 0.85em; color: var(--text-muted); margin-top: 5px; }
+.chain-arrow {
+  font-size: 1.5em;
+  color: var(--accent-primary);
+  font-weight: bold;
+}
+
+/* Keystone Findings */
+.keystone-findings {
+  background: white;
+  border-radius: 24px;
+  padding: 30px;
+  margin-bottom: 30px;
+}
+.keystone-findings h3 { margin: 0 0 10px 0; }
+.keystone-intro { color: var(--text-muted); margin-bottom: 20px; }
+.keystone-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+.keystone-card {
+  background: linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 100%);
+  border-radius: 16px;
+  padding: 20px;
+  border-left: 4px solid #F59E0B;
+}
+.keystone-priority {
+  display: inline-block;
+  background: #F59E0B;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.8em;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.keystone-card h4 { margin: 0 0 10px 0; color: var(--text-main); }
+.keystone-why { color: var(--text-muted); font-size: 0.95em; margin-bottom: 15px; }
+.keystone-effects { display: flex; flex-wrap: wrap; gap: 6px; }
+.keystone-effects span {
+  background: white;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+/* Temporal Narrative */
+.temporal-narrative {
+  background: white;
+  border-radius: 24px;
+  padding: 30px;
+  margin-bottom: 30px;
+}
+.temporal-narrative h3 { margin: 0 0 15px 0; }
+.narrative-text {
+  font-size: 1.1em;
+  line-height: 1.8;
+  color: var(--text-main);
+  font-style: italic;
+  border-left: 3px solid var(--accent-light);
+  padding-left: 20px;
+}
+
+/* Priority Stack */
+.priority-stack {
+  background: white;
+  border-radius: 24px;
+  padding: 30px;
+}
+.priority-stack h3 { margin: 0 0 10px 0; }
+.priority-intro { color: var(--text-muted); margin-bottom: 20px; }
+.priority-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: priority;
+}
+.priority-list li {
+  counter-increment: priority;
+  display: flex;
+  flex-direction: column;
+  padding: 15px 20px 15px 60px;
+  position: relative;
+  margin-bottom: 10px;
+  background: var(--accent-bg);
+  border-radius: 12px;
+}
+.priority-list li::before {
+  content: counter(priority);
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  background: var(--accent-primary);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+.priority-list li strong { color: var(--text-main); }
+.priority-rationale { color: var(--text-muted); font-size: 0.9em; margin-top: 4px; }
+
+/* ============================================================================
+   Positive Findings
+   ============================================================================ */
+.positive-findings {
+  background: linear-gradient(135deg, var(--success-bg) 0%, #D1FAE5 100%);
+  border-radius: 32px;
+  padding: 40px;
+}
+.positive-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+.positive-card {
+  background: white;
+  border-radius: 24px;
+  padding: 25px;
+  display: flex;
+  gap: 18px;
+  border-left: 4px solid var(--success);
+}
+.positive-icon {
+  font-size: 2rem;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--success-bg);
+  border-radius: 16px;
+  flex-shrink: 0;
+}
+.positive-title { font-weight: 800; color: #065F46; margin-bottom: 8px; }
+.positive-description { color: #047857; font-size: 0.95rem; line-height: 1.6; }
+
+/* ============================================================================
+   Data Gaps
+   ============================================================================ */
+.data-gaps-section {
+  background: linear-gradient(135deg, #FFFBEB 0%, var(--warning-bg) 100%);
+  border-radius: 28px;
+  padding: 35px;
+  border-left: 5px solid var(--warning);
+}
+.gaps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+.gap-card {
+  background: white;
+  border-radius: 20px;
+  padding: 22px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.04);
+}
+.gap-title { font-weight: 700; color: #92400E; margin-bottom: 10px; }
+.gap-reason { color: #78350F; font-size: 0.9rem; line-height: 1.5; }
+.gap-priority {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-top: 10px;
+}
+.gap-priority.high { background: var(--danger-bg); color: var(--danger-dark); }
+.gap-priority.medium { background: var(--warning-bg); color: var(--warning-dark); }
+.gap-priority.low { background: var(--info-bg); color: var(--info-dark); }
+
+/* ============================================================================
+   Safety Net
+   ============================================================================ */
+.safety-net-section {
+  background: linear-gradient(135deg, var(--warning-bg) 0%, #FEF3C7 100%);
+  border-radius: 28px;
+  padding: 35px;
+  border: 2px solid var(--warning);
+  margin: 40px 0;
+}
+.safety-net-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+.safety-net-icon { font-size: 1.8rem; color: var(--warning-dark); }
+.safety-net-header h2 { color: #92400E; margin: 0; }
+.safety-net-note {
+  color: #78350F;
+  font-size: 0.95rem;
+  margin-bottom: 20px;
+  font-style: italic;
+}
+.safety-net-findings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.safety-net-item {
+  background: white;
+  border-radius: 16px;
+  padding: 18px 22px;
+  border-left: 4px solid var(--warning);
+}
+.safety-net-item.critical {
+  border-left-color: var(--danger);
+  background: linear-gradient(135deg, white 0%, var(--danger-bg) 100%);
+}
+.safety-net-finding { font-weight: 700; color: var(--text-main); margin-bottom: 6px; }
+.safety-net-recommendation { color: var(--text-muted); font-size: 0.9rem; }
+
+/* ============================================================================
+   References
+   ============================================================================ */
+.references-section {
+  background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%);
+  border-radius: 28px;
+  padding: 35px;
+}
+.references-intro { color: var(--text-muted); margin-bottom: 20px; }
+.reference-list { display: flex; flex-direction: column; gap: 15px; }
+.reference-item {
+  background: white;
+  border-radius: 18px;
+  padding: 20px;
+  display: flex;
+  gap: 18px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+}
+.reference-number {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #E2E8F0 0%, #CBD5E1 100%);
+  color: #475569;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.reference-title a {
+  color: #2563EB;
+  text-decoration: none;
+  font-weight: 700;
+}
+.reference-title a:hover { text-decoration: underline; }
+.reference-claim {
+  font-style: italic;
+  color: var(--text-muted);
+  margin: 8px 0;
+  font-size: 0.9rem;
+}
+.source-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.source-type-badge.journal { background: var(--info-bg); color: #1E40AF; }
+.source-type-badge.institution { background: var(--success-bg); color: #065F46; }
+.source-type-badge.guideline { background: var(--danger-bg); color: #B91C1C; }
+.source-type-badge.health-site { background: #E0E7FF; color: #3730A3; }
+.confidence-indicator {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.reference-snippet {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  background: #F8FAFC;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border-left: 3px solid #E2E8F0;
+  margin-top: 10px;
+}
+
+/* ============================================================================
+   Animated Background Blobs
+   ============================================================================ */
+.blob {
+  position: fixed;
+  border-radius: 50%;
+  filter: blur(80px);
+  z-index: -1;
+  opacity: 0.6;
+  animation: float 20s infinite alternate;
+}
+.blob-1 { top: -10%; left: -10%; width: 500px; height: 500px; background: var(--accent-light); }
+.blob-2 { bottom: -10%; right: -10%; width: 600px; height: 600px; background: var(--success-bg); animation-delay: -5s; }
+.blob-3 { top: 40%; left: 40%; width: 400px; height: 400px; background: var(--info-bg); animation-delay: -10s; }
+
+@keyframes float {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(20px, 30px) scale(1.05); }
+  100% { transform: translate(40px, 60px) scale(1); }
+}
+
+/* ============================================================================
+   Section utility classes
+   ============================================================================ */
+.section-wrapper {
+  margin-bottom: 40px;
+}
+.section-wrapper h2 {
+  font-size: 1.6rem;
+  margin-bottom: 25px;
+  color: var(--accent-primary-dark);
+}
+
+/* Generic card (claymorphism) */
+.clay-card {
+  background: linear-gradient(135deg, #FFFFFF 0%, #FAFAFA 100%);
+  border-radius: 28px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.08),
+    0 4px 12px rgba(0, 0, 0, 0.04),
+    inset 0 2px 4px rgba(255, 255, 255, 0.8),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.02);
+}
+
+/* ============================================================================
+   Responsive Design
+   ============================================================================ */
+@media (max-width: 768px) {
+  .prognosis-grid,
+  .gauges-grid,
+  .gaps-grid,
+  .positive-grid,
+  .diagnoses-grid,
+  .schedule-grid,
+  .monitoring-grid,
+  .lifestyle-grid,
+  .keystone-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .flowchart { flex-direction: column; }
+  .flow-arrow { transform: rotate(90deg); }
+
+  .chain-flow { flex-direction: column; }
+  .chain-arrow { transform: rotate(90deg); }
+
+  .visual-timeline { padding-left: 40px; }
+  .visual-timeline::before { left: 20px; }
+  .timeline-date { position: static; width: auto; text-align: left; padding: 0 0 8px 0; }
+  .timeline-date .month, .timeline-date .year { display: inline; }
+  .timeline-marker { left: -32px; }
+
+  .question-card { flex-direction: column; }
+}
+
+/* ============================================================================
+   Print Styles
+   ============================================================================ */
+@media print {
+  .blob { display: none; }
+  body { background: white; }
+  .executive-summary,
+  .action-plan,
+  .supplement-schedule,
+  .doctor-questions,
+  .prognosis-section,
+  .positive-findings,
+  .data-gaps-section,
+  .references-section,
+  .integrative-reasoning-section,
+  .safety-net-section,
+  .flowchart-section {
+    break-inside: avoid;
+  }
+}
