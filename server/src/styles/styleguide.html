@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>N1 Care Report — Component Styleguide</title>
+  <link rel="stylesheet" href="report-styles.css">
+  <style>
+    /* Styleguide-only styles */
+    .sg-toc { background: #1e293b; color: white; padding: 30px 40px; }
+    .sg-toc h2 { font-size: 1.4rem; margin-bottom: 15px; }
+    .sg-toc a { color: #93C5FD; text-decoration: none; }
+    .sg-toc a:hover { text-decoration: underline; }
+    .sg-toc ul { list-style: none; columns: 3; gap: 20px; }
+    .sg-toc li { padding: 4px 0; }
+    @media (max-width: 768px) { .sg-toc ul { columns: 1; } }
+    .sg-section { padding: 40px 48px 20px; }
+    .sg-label { font-family: monospace; font-size: 0.85rem; color: #64748B; background: #f1f5f9; padding: 4px 10px; border-radius: 4px; margin-bottom: 20px; display: inline-block; }
+    .sg-title { font-size: 1.5rem; color: var(--brand); margin-bottom: 8px; }
+    .sg-desc { color: #64748B; margin-bottom: 20px; font-size: 0.95rem; }
+    .sg-demo { padding: 0 48px 40px; border-bottom: 2px dashed var(--border); }
+    .sg-demo:last-child { border-bottom: none; }
+  </style>
+</head>
+<body>
+
+<div class="report">
+
+<!-- =============== STYLEGUIDE HEADER =============== -->
+<div class="report-header">
+  <div class="header-brand">
+    <svg class="n1-logo" width="32" height="32" viewBox="0 0 100 100">
+      <path d="M20 80V20h12l36 42V20h12v60H68L32 38v42z"/>
+    </svg>
+    <h1>N1 Care Report Styleguide</h1>
+  </div>
+  <div class="meta">
+    Design System Reference<br>
+    easy-chr / report-styles.css<br>
+    February 2026
+  </div>
+</div>
+
+<!-- =============== TABLE OF CONTENTS =============== -->
+<div class="sg-toc">
+  <h2>Components</h2>
+  <ul>
+    <li><a href="#header">1. Report Header</a></li>
+    <li><a href="#executive-summary">2. Executive Summary</a></li>
+    <li><a href="#diagnoses">3. Diagnosis Cards</a></li>
+    <li><a href="#gauges">4. Gauge Cards</a></li>
+    <li><a href="#charts">5. Chart Containers</a></li>
+    <li><a href="#data-table">6. Data Table</a></li>
+    <li><a href="#connections">7. Flowchart / Connections</a></li>
+    <li><a href="#integrative-reasoning">8. Integrative Reasoning</a></li>
+    <li><a href="#causal-chain">9. Causal Chain</a></li>
+    <li><a href="#keystones">10. Keystone Findings</a></li>
+    <li><a href="#narrative">11. Temporal Narrative</a></li>
+    <li><a href="#priority-stack">12. Priority Stack</a></li>
+    <li><a href="#action-plan">13. Action Plan</a></li>
+    <li><a href="#supplements">14. Supplement Schedule</a></li>
+    <li><a href="#questions">15. Doctor Questions</a></li>
+    <li><a href="#prognosis">16. Prognosis</a></li>
+    <li><a href="#organ-health">17. Organ Health</a></li>
+    <li><a href="#timeline">18. Visual Timeline</a></li>
+    <li><a href="#positive-findings">19. Positive Findings</a></li>
+    <li><a href="#data-gaps">20. Data Gaps</a></li>
+    <li><a href="#patterns">21. Patterns</a></li>
+    <li><a href="#monitoring">22. Monitoring Protocol</a></li>
+    <li><a href="#lifestyle">23. Lifestyle</a></li>
+    <li><a href="#references">24. References</a></li>
+    <li><a href="#badges">25. Badges (All Types)</a></li>
+    <li><a href="#callout">26. Callout</a></li>
+    <li><a href="#disclaimer-footer">27. Disclaimer &amp; Footer</a></li>
+  </ul>
+</div>
+
+<div class="content">
+
+<!-- =============== 1. REPORT HEADER =============== -->
+<div class="sg-section" id="header">
+  <h2 class="sg-title">1. Report Header</h2>
+  <div class="sg-label">.report-header .header-brand .n1-logo .meta</div>
+  <p class="sg-desc">The top-level brand bar with logo, title, and report metadata. Uses the brand teal background with white text.</p>
+</div>
+<div class="sg-demo">
+  <div class="report-header">
+    <div class="header-brand">
+      <svg class="n1-logo" width="32" height="32" viewBox="0 0 100 100">
+        <path d="M20 80V20h12l36 42V20h12v60H68L32 38v42z"/>
+      </svg>
+      <h1>N1 Care Report</h1>
+    </div>
+    <div class="meta">
+      Comprehensive Health Report<br>
+      Generated: 13 Feb 2026<br>
+      Report ID: RPT-2026-0213
+    </div>
+  </div>
+</div>
+
+<!-- =============== 2. EXECUTIVE SUMMARY =============== -->
+<div class="sg-section" id="executive-summary">
+  <h2 class="sg-title">2. Executive Summary</h2>
+  <div class="sg-label">.executive-summary .question-text .short-answer .key-findings-preview .top-priority</div>
+  <p class="sg-desc">Opening section with patient question, short answer, key findings bullet list, and a top priority callout.</p>
+</div>
+<div class="sg-demo">
+  <div class="executive-summary">
+    <h2>Executive Summary</h2>
+
+    <div>
+      <h3>Patient Question</h3>
+      <div class="question-text">
+        Why do I feel fatigued despite sleeping 8 hours per night, and could my recent lab results explain the persistent brain fog?
+      </div>
+    </div>
+
+    <div>
+      <h3>Short Answer</h3>
+      <div class="short-answer">
+        <p>Your fatigue and brain fog are likely driven by a combination of subclinical hypothyroidism (TSH 4.8 mIU/L), significant Vitamin D deficiency (12 ng/mL), and early insulin resistance (HbA1c 6.8%). These three factors create a reinforcing cycle where each condition worsens the others. Addressing them simultaneously should produce noticeable improvement within 8-12 weeks.</p>
+      </div>
+    </div>
+
+    <div>
+      <h3>Key Findings</h3>
+      <div class="key-findings-preview">
+        <ul>
+          <li><span class="dot dot-red"></span> <strong>HbA1c 6.8%</strong> &mdash; Pre-diabetic range, indicating early insulin resistance</li>
+          <li><span class="dot dot-red"></span> <strong>Vitamin D 12 ng/mL</strong> &mdash; Severely deficient (&lt;20 ng/mL), affecting energy and immune function</li>
+          <li><span class="dot dot-amber"></span> <strong>TSH 4.8 mIU/L</strong> &mdash; Subclinical hypothyroidism, contributing to fatigue and cognitive fog</li>
+          <li><span class="dot dot-green"></span> <strong>LDL 118 mg/dL</strong> &mdash; Within acceptable range, no immediate cardiovascular concern</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="top-priority">
+      <h3>Top Priority</h3>
+      <p>Begin Vitamin D3 supplementation (5000 IU daily) and schedule follow-up thyroid panel in 6 weeks. The Vitamin D deficiency is the most impactful intervention given its role in both energy metabolism and thyroid function.</p>
+    </div>
+  </div>
+</div>
+
+<!-- =============== 3. DIAGNOSIS CARDS =============== -->
+<div class="sg-section" id="diagnoses">
+  <h2 class="sg-title">3. Diagnosis Cards</h2>
+  <div class="sg-label">.diagnoses-grid .diagnosis-card .diagnosis-status-badge .diagnosis-header .diagnosis-name .diagnosis-evidence .evidence-item .diagnosis-implications</div>
+  <p class="sg-desc">Grid of diagnosis cards with severity variants: critical (red), moderate (amber), and mild (teal). Each card shows a status badge, evidence items, and clinical implications.</p>
+</div>
+<div class="sg-demo">
+  <div class="diagnoses-grid">
+    <!-- Critical -->
+    <div class="diagnosis-card critical">
+      <div class="diagnosis-header">
+        <span class="diagnosis-status-badge status-critical">Critical</span>
+        <span class="diagnosis-category">Metabolic</span>
+      </div>
+      <div class="diagnosis-name">Pre-Diabetes (Insulin Resistance)</div>
+      <div class="diagnosis-evidence">
+        <span class="evidence-item">HbA1c 6.8%</span>
+        <span class="evidence-item">Fasting Glucose 118 mg/dL</span>
+        <span class="evidence-item">HOMA-IR 3.2</span>
+      </div>
+      <div class="diagnosis-implications">
+        Elevated HbA1c and fasting glucose indicate impaired glucose metabolism. Without intervention, progression to Type 2 diabetes within 3-5 years is likely. Insulin resistance also amplifies fatigue and cognitive symptoms.
+      </div>
+    </div>
+    <!-- Moderate -->
+    <div class="diagnosis-card moderate">
+      <div class="diagnosis-header">
+        <span class="diagnosis-status-badge status-warning">Moderate</span>
+        <span class="diagnosis-category">Endocrine</span>
+      </div>
+      <div class="diagnosis-name">Subclinical Hypothyroidism</div>
+      <div class="diagnosis-evidence">
+        <span class="evidence-item">TSH 4.8 mIU/L</span>
+        <span class="evidence-item">Free T4 0.9 ng/dL</span>
+      </div>
+      <div class="diagnosis-implications">
+        TSH is elevated above the functional range (>3.0 mIU/L) with low-normal Free T4, suggesting the thyroid is under strain. This contributes to fatigue, weight gain, and cognitive fog. Monitor for progression.
+      </div>
+    </div>
+    <!-- Mild -->
+    <div class="diagnosis-card mild">
+      <div class="diagnosis-header">
+        <span class="diagnosis-status-badge status-stable">Mild</span>
+        <span class="diagnosis-category">Nutritional</span>
+      </div>
+      <div class="diagnosis-name">Vitamin D Deficiency</div>
+      <div class="diagnosis-evidence">
+        <span class="evidence-item">25-OH Vitamin D 12 ng/mL</span>
+      </div>
+      <div class="diagnosis-implications">
+        Severe deficiency (&lt;20 ng/mL) affects calcium absorption, immune regulation, and mood. Supplementation at therapeutic doses should restore levels within 8-12 weeks.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =============== 4. GAUGE CARDS =============== -->
+<div class="sg-section" id="gauges">
+  <h2 class="sg-title">4. Gauge Cards</h2>
+  <div class="sg-label">.gauge-card .gauge-title .plotly-gauge .gauge-description</div>
+  <p class="sg-desc">Cards designed to hold Plotly gauge visualizations. Shown here with placeholder boxes in place of actual Plotly charts.</p>
+</div>
+<div class="sg-demo">
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+    <div class="gauge-card">
+      <div class="gauge-title">Metabolic Health Score</div>
+      <div class="plotly-gauge" style="background: var(--border-light); display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;">[Plotly Gauge: 42/100]</div>
+      <div class="gauge-description">Composite score based on HbA1c, fasting glucose, HOMA-IR, and triglycerides. Below 50 indicates significant metabolic dysfunction.</div>
+    </div>
+    <div class="gauge-card">
+      <div class="gauge-title">Thyroid Function Index</div>
+      <div class="plotly-gauge" style="background: var(--border-light); display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;">[Plotly Gauge: 65/100]</div>
+      <div class="gauge-description">Derived from TSH, Free T4, Free T3, and thyroid antibodies. Borderline range suggests subclinical dysfunction.</div>
+    </div>
+  </div>
+</div>
+
+<!-- =============== 5. CHART CONTAINERS =============== -->
+<div class="sg-section" id="charts">
+  <h2 class="sg-title">5. Chart Containers</h2>
+  <div class="sg-label">.plotly-chart .chart-section .trend-interpretation .plotly-radar</div>
+  <p class="sg-desc">Containers for Plotly interactive charts. Placeholder boxes shown in lieu of actual rendered charts.</p>
+</div>
+<div class="sg-demo">
+  <div class="chart-section">
+    <h3>HbA1c Trend Over Time</h3>
+    <div class="plotly-chart" style="background: var(--border-light); display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;">[Plotly Line Chart: HbA1c values 2022-2026]</div>
+    <div class="trend-interpretation">HbA1c has risen steadily from 5.9% (2022) to 6.8% (2025), crossing the pre-diabetic threshold in late 2023. The rate of increase suggests that without dietary intervention, values could exceed 7.0% within 12 months.</div>
+  </div>
+  <div class="chart-section" style="margin-top: 24px;">
+    <h3>Body Systems Radar</h3>
+    <div class="plotly-radar" style="background: var(--border-light); display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.85rem;">[Plotly Radar Chart: Metabolic, Endocrine, Immune, Cardiovascular, Hepatic]</div>
+  </div>
+</div>
+
+<!-- =============== 6. DATA TABLE =============== -->
+<div class="sg-section" id="data-table">
+  <h2 class="sg-title">6. Data Table</h2>
+  <div class="sg-label">.data-table .row-critical .row-warning .row-ok .value-col .ref-col .status-cell .trend .trend-up .trend-down .trend-flat</div>
+  <p class="sg-desc">Clinical data table with row status indicators (critical, warning, ok), value formatting, reference ranges, and trend arrows.</p>
+</div>
+<div class="sg-demo">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Biomarker</th>
+        <th>Value</th>
+        <th>Reference Range</th>
+        <th>Status</th>
+        <th>Trend</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="row-critical">
+        <td>HbA1c</td>
+        <td class="value-col">6.8%</td>
+        <td class="ref-col">4.0 &ndash; 5.6%</td>
+        <td class="status-cell"><span class="dot dot-red"></span> High</td>
+        <td><span class="trend trend-up">Rising</span></td>
+      </tr>
+      <tr class="row-critical">
+        <td>Vitamin D (25-OH)</td>
+        <td class="value-col">12 ng/mL</td>
+        <td class="ref-col">30 &ndash; 100 ng/mL</td>
+        <td class="status-cell"><span class="dot dot-red"></span> Low</td>
+        <td><span class="trend trend-down">Declining</span></td>
+      </tr>
+      <tr class="row-warning">
+        <td>TSH</td>
+        <td class="value-col">4.8 mIU/L</td>
+        <td class="ref-col">0.4 &ndash; 4.0 mIU/L</td>
+        <td class="status-cell"><span class="dot dot-amber"></span> Elevated</td>
+        <td><span class="trend trend-up">Rising</span></td>
+      </tr>
+      <tr class="row-ok">
+        <td>LDL Cholesterol</td>
+        <td class="value-col">118 mg/dL</td>
+        <td class="ref-col">&lt;130 mg/dL</td>
+        <td class="status-cell"><span class="dot dot-green"></span> Normal</td>
+        <td><span class="trend trend-flat">Stable</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- =============== 7. FLOWCHART / CONNECTIONS =============== -->
+<div class="sg-section" id="connections">
+  <h2 class="sg-title">7. Flowchart / Connections</h2>
+  <div class="sg-label">.flowchart-section .flowchart .flow-node .flow-node.root-cause .flow-node.mechanism .flow-node.effect .flow-arrow .flow-node-label .flow-node-value .flow-node-data</div>
+  <p class="sg-desc">Visualizes causal connections between findings. Three node types: root-cause (red), mechanism (amber), and effect (teal). Connected by flow arrows.</p>
+</div>
+<div class="sg-demo">
+  <div class="flowchart-section">
+    <h3>Insulin Resistance Cascade</h3>
+    <div class="flowchart">
+      <div class="flow-node root-cause">
+        <div class="flow-node-label">Root Cause</div>
+        <div class="flow-node-value">Insulin Resistance</div>
+        <div class="flow-node-data">HOMA-IR: 3.2</div>
+      </div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-node mechanism">
+        <div class="flow-node-label">Mechanism</div>
+        <div class="flow-node-value">Impaired Glucose Uptake</div>
+        <div class="flow-node-data">Fasting Glucose: 118 mg/dL</div>
+      </div>
+      <span class="flow-arrow">&rarr;</span>
+      <div class="flow-node effect">
+        <div class="flow-node-label">Effect</div>
+        <div class="flow-node-value">Chronic Fatigue</div>
+        <div class="flow-node-data">Reduced cellular energy</div>
+      </div>
+    </div>
+    <span class="confidence-badge medium">Moderate Confidence</span>
+  </div>
+</div>
+
+<!-- =============== 8. INTEGRATIVE REASONING =============== -->
+<div class="sg-section" id="integrative-reasoning">
+  <h2 class="sg-title">8. Integrative Reasoning</h2>
+  <div class="sg-label">.integrative-reasoning-section .root-cause-card .root-cause-header .root-cause-icon .root-cause-hypothesis .root-cause-evidence</div>
+  <p class="sg-desc">Root cause analysis cards with hypothesis text and supporting evidence. Used in the integrative reasoning section to explain systemic connections.</p>
+</div>
+<div class="sg-demo">
+  <div class="integrative-reasoning-section">
+    <h2>Integrative Reasoning</h2>
+    <div class="root-cause-card">
+      <div class="root-cause-header">
+        <span class="root-cause-icon">&#x1F50D;</span>
+        <h3>Hypothalamic-Pituitary-Thyroid Axis Dysregulation</h3>
+      </div>
+      <div class="root-cause-hypothesis">
+        The combination of elevated TSH, low Vitamin D, and insulin resistance suggests a unified pathophysiology centered on chronic low-grade inflammation. Vitamin D deficiency impairs thyroid hormone conversion (T4 to T3), while insulin resistance increases inflammatory cytokines that further suppress thyroid function, creating a self-reinforcing cycle.
+      </div>
+      <div class="root-cause-evidence">
+        <h4>Supporting Evidence</h4>
+        <ul>
+          <li>TSH 4.8 mIU/L with low-normal Free T4 (0.9 ng/dL) indicates conversion impairment</li>
+          <li>Vitamin D 12 ng/mL &mdash; deficiency is associated with 2-3x higher risk of thyroid dysfunction (Mackawy et al., 2013)</li>
+          <li>HbA1c 6.8% with elevated HOMA-IR confirms insulin resistance, a known driver of systemic inflammation</li>
+          <li>hs-CRP 3.2 mg/L confirms low-grade inflammation</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =============== 9. CAUSAL CHAIN =============== -->
+<div class="sg-section" id="causal-chain">
+  <h2 class="sg-title">9. Causal Chain</h2>
+  <div class="sg-label">.causal-chain .chain-flow .chain-step .chain-number .chain-event .chain-leads-to .chain-arrow</div>
+  <p class="sg-desc">Sequential numbered steps showing how one condition leads to the next. Each step has a number badge and event description.</p>
+</div>
+<div class="sg-demo">
+  <div class="causal-chain">
+    <h3>Vitamin D Deficiency Cascade</h3>
+    <div class="chain-flow">
+      <div class="chain-step">
+        <div class="chain-number">1</div>
+        <div>
+          <div class="chain-event">Vitamin D Deficiency</div>
+          <div class="chain-leads-to">25-OH Vitamin D: 12 ng/mL</div>
+        </div>
+      </div>
+      <span class="chain-arrow">&rarr;</span>
+      <div class="chain-step">
+        <div class="chain-number">2</div>
+        <div>
+          <div class="chain-event">Impaired T4-to-T3 Conversion</div>
+          <div class="chain-leads-to">Reduced deiodinase activity</div>
+        </div>
+      </div>
+      <span class="chain-arrow">&rarr;</span>
+      <div class="chain-step">
+        <div class="chain-number">3</div>
+        <div>
+          <div class="chain-event">Subclinical Hypothyroidism</div>
+          <div class="chain-leads-to">TSH rises to 4.8 mIU/L</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =============== 10. KEYSTONE FINDINGS =============== -->
+<div class="sg-section" id="keystones">
+  <h2 class="sg-title">10. Keystone Findings</h2>
+  <div class="sg-label">.keystone-findings .keystone-grid .keystone-card .keystone-priority .keystone-why .keystone-effects</div>
+  <p class="sg-desc">High-priority findings that have outsized impact on multiple systems. Each card shows priority level, rationale, and downstream effects.</p>
+</div>
+<div class="sg-demo">
+  <div class="keystone-findings">
+    <h3>Keystone Findings</h3>
+    <p class="keystone-intro">These findings have disproportionate impact across multiple body systems and should be prioritized in the treatment plan.</p>
+    <div class="keystone-grid">
+      <div class="keystone-card">
+        <span class="keystone-priority">Priority 1</span>
+        <h4>Vitamin D Deficiency (12 ng/mL)</h4>
+        <div class="keystone-why">Vitamin D acts as a hormone affecting 200+ genes. At 12 ng/mL, immune regulation, bone metabolism, thyroid conversion, and insulin sensitivity are all compromised. This single deficiency explains or contributes to 4 of 6 abnormal findings.</div>
+        <div class="keystone-effects">
+          <span>Thyroid dysfunction</span>
+          <span>Insulin resistance</span>
+          <span>Immune suppression</span>
+          <span>Fatigue</span>
+        </div>
+      </div>
+      <div class="keystone-card">
+        <span class="keystone-priority">Priority 2</span>
+        <h4>Insulin Resistance (HOMA-IR 3.2)</h4>
+        <div class="keystone-why">Insulin resistance drives systemic inflammation via elevated TNF-alpha and IL-6, which suppress thyroid function and worsen Vitamin D metabolism. Addressing this breaks the inflammatory feedback loop.</div>
+        <div class="keystone-effects">
+          <span>Pre-diabetes</span>
+          <span>Inflammation</span>
+          <span>Weight gain</span>
+          <span>Cognitive fog</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =============== 11. TEMPORAL NARRATIVE =============== -->
+<div class="sg-section" id="narrative">
+  <h2 class="sg-title">11. Temporal Narrative</h2>
+  <div class="sg-label">.temporal-narrative .narrative-text</div>
+  <p class="sg-desc">A narrative summary with italic styling and a teal left border, used to tell the story of how conditions evolved over time.</p>
+</div>
+<div class="sg-demo">
+  <div class="temporal-narrative">
+    <h3>How We Got Here</h3>
+    <div class="narrative-text">
+      The earliest available labs from 2022 show Vitamin D at 22 ng/mL &mdash; already below optimal but not yet deficient. By mid-2023, levels had dropped to 15 ng/mL, coinciding with the patient's report of increasing fatigue. TSH began climbing in late 2023 (from 3.1 to 4.2 mIU/L), and HbA1c crossed the pre-diabetic threshold at 6.1% in early 2024. The current results (February 2026) show all three markers at their worst recorded values, suggesting a progressive deterioration that accelerated over the past 18 months. This timeline strongly supports a common inflammatory driver rather than three independent conditions.
+    </div>
+  </div>
+</div>
+
+<!-- =============== 12. PRIORITY STACK =============== -->
+<div class="sg-section" id="priority-stack">
+  <h2 class="sg-title">12. Priority Stack</h2>
+  <div class="sg-label">.priority-stack .priority-list .priority-rationale</div>
+  <p class="sg-desc">Numbered priority list with auto-generated counter badges. Each item includes a title and rationale text.</p>
+</div>
+<div class="sg-demo">
+  <div class="priority-stack">
+    <h3>Clinical Priority Stack</h3>
+    <p class="priority-intro">Findings ranked by clinical urgency and potential for systemic improvement.</p>
+    <ol class="priority-list">
+      <li>
+        <strong>Correct Vitamin D Deficiency</strong>
+        <span class="priority-rationale">Fastest intervention with broadest systemic impact. Supplementation at 5000 IU/day should restore levels within 8-12 weeks, improving thyroid conversion and insulin sensitivity.</span>
+      </li>
+      <li>
+        <strong>Address Insulin Resistance</strong>
+        <span class="priority-rationale">Dietary modifications (low glycemic, Mediterranean-style) combined with berberine 500mg 2x/day can reduce HOMA-IR by 30-40% within 3 months.</span>
+      </li>
+      <li>
+        <strong>Monitor Thyroid Function</strong>
+        <span class="priority-rationale">Retest TSH, Free T4, and Free T3 in 6 weeks. If TSH remains elevated after Vitamin D correction, consider low-dose levothyroxine.</span>
+      </li>
+    </ol>
+  </div>
+</div>
+
+<!-- =============== 13. ACTION PLAN =============== -->
+<div class="sg-section" id="action-plan">
+  <h2 class="sg-title">13. Action Plan</h2>
+  <div class="sg-label">.action-plan .action-phase .phase-header.immediate .phase-header.short-term .phase-header.follow-up .phase-actions .action-item .action-checkbox .action-title .action-description .action-related .action-timing</div>
+  <p class="sg-desc">Three-phase action plan with immediate (red), short-term (amber), and follow-up (teal) phases. Each phase contains actionable items with checkboxes.</p>
+</div>
+<div class="sg-demo">
+  <div class="action-plan">
+    <h2>Action Plan</h2>
+
+    <!-- Immediate -->
+    <div class="action-phase">
+      <div class="phase-header immediate">
+        <span class="phase-icon">&#9888;</span>
+        <span class="phase-title">Immediate (This Week)</span>
+      </div>
+      <div class="phase-actions">
+        <div class="action-item">
+          <div class="action-checkbox"></div>
+          <div>
+            <div class="action-timing">Start within 48 hours</div>
+            <div class="action-title">Begin Vitamin D3 supplementation</div>
+            <div class="action-description">Take 5000 IU Vitamin D3 daily with a fat-containing meal for optimal absorption. Use cholecalciferol form, not ergocalciferol.</div>
+            <div class="action-related">Related: Vitamin D Deficiency, Thyroid Dysfunction</div>
+          </div>
+        </div>
+        <div class="action-item">
+          <div class="action-checkbox"></div>
+          <div>
+            <div class="action-timing">Start within 48 hours</div>
+            <div class="action-title">Eliminate refined sugars and processed carbohydrates</div>
+            <div class="action-description">Remove white bread, pasta, sugary drinks, and packaged snacks. Replace with whole grains, vegetables, and lean protein to reduce glycemic load.</div>
+            <div class="action-related">Related: Pre-Diabetes, Insulin Resistance</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Short-term -->
+    <div class="action-phase">
+      <div class="phase-header short-term">
+        <span class="phase-icon">&#128338;</span>
+        <span class="phase-title">Short-term (1-4 Weeks)</span>
+      </div>
+      <div class="phase-actions">
+        <div class="action-item">
+          <div class="action-checkbox"></div>
+          <div>
+            <div class="action-timing">Begin within 1 week</div>
+            <div class="action-title">Start Berberine supplementation</div>
+            <div class="action-description">Take 500mg berberine twice daily with meals. Studies show comparable efficacy to metformin for improving insulin sensitivity (Yin et al., 2008).</div>
+            <div class="action-related">Related: Pre-Diabetes, Insulin Resistance</div>
+          </div>
+        </div>
+        <div class="action-item">
+          <div class="action-checkbox"></div>
+          <div>
+            <div class="action-timing">Begin within 2 weeks</div>
+            <div class="action-title">Implement 30-minute daily walking routine</div>
+            <div class="action-description">Post-meal walks of 15-30 minutes significantly improve glucose disposal. Even light-intensity walking reduces post-prandial glucose spikes by 20-30%.</div>
+            <div class="action-related">Related: Pre-Diabetes, Fatigue</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Follow-up -->
+    <div class="action-phase">
+      <div class="phase-header follow-up">
+        <span class="phase-icon">&#128197;</span>
+        <span class="phase-title">Follow-up (4-12 Weeks)</span>
+      </div>
+      <div class="phase-actions">
+        <div class="action-item">
+          <div class="action-checkbox"></div>
+          <div>
+            <div class="action-timing">At 6 weeks</div>
+            <div class="action-title">Retest thyroid panel (TSH, Free T4, Free T3)</div>
+            <div class="action-description">Vitamin D repletion may normalize thyroid function without medication. If TSH remains above 4.0 mIU/L, discuss levothyroxine with your physician.</div>
+            <div class="action-related">Related: Subclinical Hypothyroidism</div>
+          </div>
+        </div>
+        <div class="action-item">
+          <div class="action-checkbox"></div>
+          <div>
+            <div class="action-timing">At 12 weeks</div>
+            <div class="action-title">Comprehensive retest: HbA1c, Vitamin D, Lipid Panel</div>
+            <div class="action-description">Assess response to interventions. Expected improvements: Vitamin D >40 ng/mL, HbA1c &lt;6.2%, improved HOMA-IR. Adjust plan based on results.</div>
+            <div class="action-related">Related: All findings</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =============== 14. SUPPLEMENT SCHEDULE =============== -->
+<div class="sg-section" id="supplements">
+  <h2 class="sg-title">14. Supplement Schedule</h2>
+  <div class="sg-label">.supplement-schedule .schedule-grid .schedule-time-block .time-label .supplement-card .supplement-name .supplement-dose .supplement-purpose .supplement-notes .interactions-warning</div>
+  <p class="sg-desc">Daily supplement schedule organized by time of day. Each time block contains supplement cards with dose, purpose, and notes. Includes an interactions warning section.</p>
+</div>
+<div class="sg-demo">
+  <div class="supplement-schedule">
+    <h2>Supplement Schedule</h2>
+    <div class="schedule-grid">
+      <div class="schedule-time-block">
+        <div class="time-label">Morning (with breakfast)</div>
+        <div class="supplement-card">
+          <div class="supplement-name">Vitamin D3</div>
+          <div class="supplement-dose">5000 IU</div>
+          <div class="supplement-purpose">Restore deficient levels; supports thyroid and immune function</div>
+          <div class="supplement-notes">Take with fat-containing food for absorption</div>
+        </div>
+        <div class="supplement-card">
+          <div class="supplement-name">Omega-3 Fish Oil</div>
+          <div class="supplement-dose">1000 mg (EPA/DHA)</div>
+          <div class="supplement-purpose">Anti-inflammatory; supports cardiovascular and cognitive function</div>
+        </div>
+      </div>
+      <div class="schedule-time-block">
+        <div class="time-label">Evening (with dinner)</div>
+        <div class="supplement-card">
+          <div class="supplement-name">Berberine</div>
+          <div class="supplement-dose">500 mg</div>
+          <div class="supplement-purpose">Improves insulin sensitivity; supports glucose metabolism</div>
+          <div class="supplement-notes">May cause GI discomfort initially; start with 250mg and titrate up</div>
+        </div>
+        <div class="supplement-card">
+          <div class="supplement-name">Magnesium Glycinate</div>
+          <div class="supplement-dose">400 mg</div>
+          <div class="supplement-purpose">Supports insulin signaling, sleep quality, and thyroid function</div>
+        </div>
+      </div>
+    </div>
+    <div class="interactions-warning">
+      <h4>Supplement Interactions</h4>
+      <ul>
+        <li><strong>Berberine + medications:</strong> Berberine can interact with CYP3A4 substrates (statins, some blood pressure medications). Consult your physician if taking prescription drugs.</li>
+        <li><strong>Vitamin D + calcium:</strong> Monitor calcium levels if supplementing both. Excess calcium with high-dose Vitamin D may increase kidney stone risk.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- =============== 15. DOCTOR QUESTIONS =============== -->
+<div class="sg-section" id="questions">
+  <h2 class="sg-title">15. Doctor Questions</h2>
+  <div class="sg-label">.doctor-questions .questions-list .question-card .question-number .question-category .question-text .question-context .question-related</div>
+  <p class="sg-desc">Suggested questions for the patient to bring to their next doctor visit. Each card has a numbered badge, category tag, question text, and contextual background.</p>
+</div>
+<div class="sg-demo">
+  <div class="doctor-questions">
+    <h2>Questions for Your Doctor</h2>
+    <div class="questions-list">
+      <div class="question-card">
+        <div class="question-number">1</div>
+        <div>
+          <span class="question-category">Endocrine</span>
+          <div class="question-text">Given my TSH of 4.8 mIU/L and Vitamin D deficiency, should we trial low-dose levothyroxine or wait to see if Vitamin D repletion normalizes thyroid function?</div>
+          <div class="question-context">Research suggests that Vitamin D deficiency impairs T4-to-T3 conversion via deiodinase enzymes. Restoring Vitamin D may reduce TSH without thyroid medication. However, some clinicians prefer early intervention when TSH exceeds 4.0 mIU/L, especially with symptoms.</div>
+          <div class="question-related">Related findings: TSH 4.8, Vitamin D 12 ng/mL</div>
+        </div>
+      </div>
+      <div class="question-card">
+        <div class="question-number">2</div>
+        <div>
+          <span class="question-category">Metabolic</span>
+          <div class="question-text">My HbA1c is 6.8%. Would a continuous glucose monitor (CGM) help identify specific dietary triggers, or is a standard dietary approach sufficient at this stage?</div>
+          <div class="question-context">CGMs provide real-time glucose data that can reveal individual glycemic responses to specific foods. This personalized approach may be more effective than generic dietary guidelines for pre-diabetic patients, though cost and insurance coverage vary.</div>
+          <div class="question-related">Related findings: HbA1c 6.8%, Fasting Glucose 118 mg/dL</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =============== 16. PROGNOSIS =============== -->
+<div class="sg-section" id="prognosis">
+  <h2 class="sg-title">16. Prognosis</h2>
+  <div class="sg-label">.prognosis-section .prognosis-grid .prognosis-card.without-intervention .prognosis-card.with-intervention .milestones .milestones-timeline .milestone .milestone-time .milestone-expectation</div>
+  <p class="sg-desc">Side-by-side comparison of projected outcomes with and without intervention, plus a milestones timeline showing expected improvements at specific time points.</p>
+</div>
+<div class="sg-demo">
+  <div class="prognosis-section">
+    <h2>Prognosis</h2>
+    <div class="prognosis-grid">
+      <div class="prognosis-card without-intervention">
+        <h4>Without Intervention</h4>
+        <p>If current trends continue unchecked, HbA1c is projected to exceed 7.0% within 12 months, transitioning from pre-diabetes to Type 2 diabetes. TSH may rise above 6.0 mIU/L, requiring thyroid medication. Vitamin D levels will remain deficient, perpetuating the inflammatory cycle.</p>
+        <ul>
+          <li>Type 2 Diabetes diagnosis within 12-18 months</li>
+          <li>Overt hypothyroidism within 2-3 years</li>
+          <li>Increased cardiovascular risk from combined metabolic syndrome</li>
+          <li>Progressive cognitive decline and persistent fatigue</li>
+        </ul>
+      </div>
+      <div class="prognosis-card with-intervention">
+        <h4>With Recommended Interventions</h4>
+        <p>The proposed interventions target the root causes simultaneously. Vitamin D repletion, dietary changes, and berberine supplementation are expected to break the inflammatory cycle within 8-12 weeks, with measurable improvements in all three key markers.</p>
+        <ul>
+          <li>HbA1c reduction to &lt;6.0% within 3-6 months</li>
+          <li>TSH normalization (&lt;3.5 mIU/L) within 3 months</li>
+          <li>Vitamin D restoration to 50-60 ng/mL within 8-12 weeks</li>
+          <li>Noticeable energy improvement within 4-6 weeks</li>
+        </ul>
+      </div>
+    </div>
+    <div class="milestones">
+      <h3>Expected Milestones</h3>
+      <div class="milestones-timeline">
+        <div class="milestone">
+          <div class="milestone-time">2 Weeks</div>
+          <div class="milestone-expectation">Initial energy improvement from Vitamin D loading; reduced sugar cravings from dietary changes</div>
+        </div>
+        <div class="milestone">
+          <div class="milestone-time">6 Weeks</div>
+          <div class="milestone-expectation">Vitamin D levels should reach 25-30 ng/mL; thyroid retest to assess response</div>
+        </div>
+        <div class="milestone">
+          <div class="milestone-time">12 Weeks</div>
+          <div class="milestone-expectation">Full metabolic panel retest; expect HbA1c &lt;6.2%, Vitamin D >40 ng/mL, improved cognitive clarity</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =============== 17. ORGAN HEALTH =============== -->
+<div class="sg-section" id="organ-health">
+  <h2 class="sg-title">17. Organ Health</h2>
+  <div class="sg-label">.organ-health-section .section-intro .organ-card .organ-header .organ-body .organ-status-badge .status-critical .status-warning .status-stable .status-optimal</div>
+  <p class="sg-desc">Expandable organ cards using &lt;details&gt; elements. Each card has a status badge (critical, warning, stable, optimal) and collapsible body with detailed findings. The first card is shown open.</p>
+</div>
+<div class="sg-demo">
+  <div class="organ-health-section">
+    <h2>Organ &amp; System Health</h2>
+    <p class="section-intro">Each organ system is assessed based on available biomarkers, imaging, and clinical findings. Click to expand for detailed analysis.</p>
+
+    <!-- Critical - open -->
+    <details class="organ-card" open>
+      <summary class="organ-header">
+        <span>Endocrine System (Thyroid)</span>
+        <span class="organ-status-badge status-critical">Critical</span>
+      </summary>
+      <div class="organ-body">
+        <h3>Key Findings</h3>
+        <table>
+          <thead>
+            <tr><th>Marker</th><th>Value</th><th>Reference</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>TSH</td><td>4.8 mIU/L</td><td>0.4 &ndash; 4.0</td><td><span class="organ-status-badge status-critical">High</span></td></tr>
+            <tr><td>Free T4</td><td>0.9 ng/dL</td><td>0.8 &ndash; 1.8</td><td><span class="organ-status-badge status-warning">Low-Normal</span></td></tr>
+          </tbody>
+        </table>
+        <h3>Clinical Significance</h3>
+        <ul>
+          <li>TSH elevation with low-normal Free T4 indicates the thyroid is struggling to maintain adequate hormone output</li>
+          <li>Pattern consistent with early Hashimoto's thyroiditis; consider TPO antibody testing</li>
+        </ul>
+      </div>
+    </details>
+
+    <!-- Warning -->
+    <details class="organ-card">
+      <summary class="organ-header">
+        <span>Pancreas (Glucose Metabolism)</span>
+        <span class="organ-status-badge status-warning">Warning</span>
+      </summary>
+      <div class="organ-body">
+        <h3>Key Findings</h3>
+        <table>
+          <thead>
+            <tr><th>Marker</th><th>Value</th><th>Reference</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>HbA1c</td><td>6.8%</td><td>4.0 &ndash; 5.6%</td><td><span class="organ-status-badge status-critical">High</span></td></tr>
+            <tr><td>Fasting Glucose</td><td>118 mg/dL</td><td>70 &ndash; 100</td><td><span class="organ-status-badge status-warning">Elevated</span></td></tr>
+          </tbody>
+        </table>
+        <ul>
+          <li>Pre-diabetic range with clear insulin resistance pattern</li>
+          <li>Dietary intervention is first-line therapy at this stage</li>
+        </ul>
+      </div>
+    </details>
+
+    <!-- Stable -->
+    <details class="organ-card">
+      <summary class="organ-header">
+        <span>Cardiovascular System</span>
+        <span class="organ-status-badge status-stable">Stable</span>
+      </summary>
+      <div class="organ-body">
+        <table>
+          <thead>
+            <tr><th>Marker</th><th>Value</th><th>Reference</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>LDL</td><td>118 mg/dL</td><td>&lt;130</td><td><span class="organ-status-badge status-stable">Normal</span></td></tr>
+            <tr><td>HDL</td><td>52 mg/dL</td><td>>40</td><td><span class="organ-status-badge status-stable">Normal</span></td></tr>
+          </tbody>
+        </table>
+        <ul>
+          <li>Lipid panel within acceptable ranges</li>
+          <li>Monitor for changes as insulin resistance may eventually affect lipid metabolism</li>
+        </ul>
+      </div>
+    </details>
+
+    <!-- Optimal -->
+    <details class="organ-card">
+      <summary class="organ-header">
+        <span>Liver Function</span>
+        <span class="organ-status-badge status-optimal">Optimal</span>
+      </summary>
+      <div class="organ-body">
+        <table>
+          <thead>
+            <tr><th>Marker</th><th>Value</th><th>Reference</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>ALT</td><td>22 U/L</td><td>7 &ndash; 56</td><td><span class="organ-status-badge status-optimal">Normal</span></td></tr>
+            <tr><td>AST</td><td>18 U/L</td><td>10 &ndash; 40</td><td><span class="organ-status-badge status-optimal">Normal</span></td></tr>
+          </tbody>
+        </table>
+        <ul>
+          <li>Liver enzymes well within normal range</li>
+          <li>No evidence of hepatic stress or fatty liver disease</li>
+        </ul>
+      </div>
+    </details>
+  </div>
+</div>
+
+<!-- =============== 18. VISUAL TIMELINE =============== -->
+<div class="sg-section" id="timeline">
+  <h2 class="sg-title">18. Visual Timeline</h2>
+  <div class="sg-label">.timeline-section .visual-timeline .timeline-item .timeline-item.significance-high .timeline-item.significance-medium .timeline-date .timeline-marker .timeline-content .timeline-card .timeline-title .timeline-description .timeline-values .timeline-value.critical .timeline-value.warning .timeline-value.normal</div>
+  <p class="sg-desc">Vertical timeline with date labels, significance markers, and value badges. High-significance items use red markers, medium use amber, and default uses teal.</p>
+</div>
+<div class="sg-demo">
+  <div class="timeline-section">
+    <h2>Health Timeline</h2>
+    <div class="visual-timeline">
+
+      <div class="timeline-item significance-high">
+        <div class="timeline-date">
+          <span class="month">Feb</span>
+          <span class="year">2026</span>
+        </div>
+        <div class="timeline-marker"></div>
+        <div class="timeline-content">
+          <div class="timeline-card">
+            <div class="timeline-title">Comprehensive Metabolic Panel</div>
+            <div class="timeline-description">Latest lab results reveal worsening metabolic markers. HbA1c crossed into diabetic range for the first time. Vitamin D at lowest recorded level.</div>
+            <div class="timeline-values">
+              <span class="timeline-value critical">HbA1c: 6.8%</span>
+              <span class="timeline-value critical">Vitamin D: 12 ng/mL</span>
+              <span class="timeline-value warning">TSH: 4.8 mIU/L</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="timeline-item significance-medium">
+        <div class="timeline-date">
+          <span class="month">Aug</span>
+          <span class="year">2024</span>
+        </div>
+        <div class="timeline-marker"></div>
+        <div class="timeline-content">
+          <div class="timeline-card">
+            <div class="timeline-title">Annual Physical Labs</div>
+            <div class="timeline-description">First signs of thyroid dysfunction noted. HbA1c entered pre-diabetic range. Physician recommended dietary changes.</div>
+            <div class="timeline-values">
+              <span class="timeline-value warning">HbA1c: 6.1%</span>
+              <span class="timeline-value warning">TSH: 4.2 mIU/L</span>
+              <span class="timeline-value normal">LDL: 122 mg/dL</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-date">
+          <span class="month">Mar</span>
+          <span class="year">2022</span>
+        </div>
+        <div class="timeline-marker"></div>
+        <div class="timeline-content">
+          <div class="timeline-card">
+            <div class="timeline-title">Baseline Labs</div>
+            <div class="timeline-description">Initial labs showed all markers within or near normal range. Vitamin D was suboptimal but not yet deficient.</div>
+            <div class="timeline-values">
+              <span class="timeline-value normal">HbA1c: 5.9%</span>
+              <span class="timeline-value warning">Vitamin D: 22 ng/mL</span>
+              <span class="timeline-value normal">TSH: 3.1 mIU/L</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- =============== 19. POSITIVE FINDINGS =============== -->
+<div class="sg-section" id="positive-findings">
+  <h2 class="sg-title">19. Positive Findings</h2>
+  <div class="sg-label">.positive-findings .positive-grid .positive-card .positive-icon .positive-title .positive-description</div>
+  <p class="sg-desc">Cards highlighting healthy results. Green left border with an icon, title, and description.</p>
+</div>
+<div class="sg-demo">
+  <div class="positive-findings">
+    <h2>Positive Findings</h2>
+    <div class="positive-grid">
+      <div class="positive-card">
+        <div class="positive-icon">&#9989;</div>
+        <div>
+          <div class="positive-title">Normal Liver Function</div>
+          <div class="positive-description">ALT (22 U/L) and AST (18 U/L) are well within normal limits, indicating no hepatic stress despite metabolic dysfunction elsewhere. This is reassuring for supplement tolerance.</div>
+        </div>
+      </div>
+      <div class="positive-card">
+        <div class="positive-icon">&#9989;</div>
+        <div>
+          <div class="positive-title">Healthy Kidney Function</div>
+          <div class="positive-description">eGFR >90 mL/min and creatinine 0.9 mg/dL indicate excellent renal function. No contraindications for supplements or medications that require renal clearance.</div>
+        </div>
+      </div>
+      <div class="positive-card">
+        <div class="positive-icon">&#9989;</div>
+        <div>
+          <div class="positive-title">Acceptable Lipid Profile</div>
+          <div class="positive-description">LDL 118 mg/dL and HDL 52 mg/dL remain within healthy ranges. Despite insulin resistance, lipid metabolism has not yet been significantly impacted.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =============== 20. DATA GAPS =============== -->
+<div class="sg-section" id="data-gaps">
+  <h2 class="sg-title">20. Data Gaps</h2>
+  <div class="sg-label">.data-gaps-section .gaps-grid .gap-card .gap-title .gap-reason .gap-priority.high .gap-priority.medium .gap-priority.low</div>
+  <p class="sg-desc">Amber-background section highlighting missing data that limits analysis confidence. Gap cards have priority badges (high, medium, low).</p>
+</div>
+<div class="sg-demo">
+  <div class="data-gaps-section">
+    <h2>Data Gaps</h2>
+    <div class="gaps-grid">
+      <div class="gap-card">
+        <div class="gap-title">TPO Antibodies (Anti-Thyroid Peroxidase)</div>
+        <div class="gap-reason">Elevated TSH with low-normal Free T4 may indicate autoimmune thyroiditis (Hashimoto's). TPO antibodies would confirm or rule out this diagnosis, which has different treatment implications than non-autoimmune subclinical hypothyroidism.</div>
+        <span class="gap-priority high">High Priority</span>
+      </div>
+      <div class="gap-card">
+        <div class="gap-title">Fasting Insulin Level</div>
+        <div class="gap-reason">HOMA-IR was calculated from fasting glucose, but a direct fasting insulin measurement would provide more precise assessment of insulin resistance severity and help determine whether berberine alone is sufficient or if metformin should be considered.</div>
+        <span class="gap-priority medium">Medium Priority</span>
+      </div>
+      <div class="gap-card">
+        <div class="gap-title">Vitamin B12 and Folate</div>
+        <div class="gap-reason">Fatigue and cognitive fog can also result from B12/folate deficiency. While less likely given the other findings, ruling this out ensures a complete picture.</div>
+        <span class="gap-priority low">Low Priority</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =============== 21. PATTERNS =============== -->
+<div class="sg-section" id="patterns">
+  <h2 class="sg-title">21. Patterns</h2>
+  <div class="sg-label">.patterns-section .patterns-grid .pattern-card</div>
+  <p class="sg-desc">Cards identifying cross-system patterns and correlations discovered during analysis.</p>
+</div>
+<div class="sg-demo">
+  <div class="patterns-section">
+    <h2>Identified Patterns</h2>
+    <div class="patterns-grid">
+      <div class="pattern-card">
+        <h4>Inflammatory-Metabolic Feedback Loop</h4>
+        <p>Insulin resistance increases inflammatory cytokines (TNF-alpha, IL-6), which suppress thyroid function and impair Vitamin D metabolism. The resulting Vitamin D deficiency further worsens insulin sensitivity, creating a self-reinforcing cycle. This pattern explains why all three markers are deteriorating simultaneously rather than independently.</p>
+      </div>
+      <div class="pattern-card">
+        <h4>Progressive Deterioration (2022-2026)</h4>
+        <p>All three key markers have worsened consistently over the 4-year observation period: Vitamin D dropped from 22 to 12 ng/mL, TSH rose from 3.1 to 4.8 mIU/L, and HbA1c increased from 5.9% to 6.8%. The rate of change is accelerating, suggesting the feedback loop is intensifying. Early intervention is critical to reverse this trajectory.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =============== 22. MONITORING PROTOCOL =============== -->
+<div class="sg-section" id="monitoring">
+  <h2 class="sg-title">22. Monitoring Protocol</h2>
+  <div class="sg-label">.monitoring-section .monitoring-grid .monitoring-item .monitoring-when</div>
+  <p class="sg-desc">Grid of monitoring items with timing labels and descriptions for follow-up testing.</p>
+</div>
+<div class="sg-demo">
+  <div class="monitoring-section">
+    <h2>Monitoring Protocol</h2>
+    <div class="monitoring-grid">
+      <div class="monitoring-item">
+        <h4>Thyroid Panel (TSH, Free T4, Free T3)</h4>
+        <div class="monitoring-when">Retest at 6 weeks</div>
+        <p>Assess whether Vitamin D repletion has improved thyroid function. If TSH remains &gt;4.0 after 6 weeks of Vitamin D supplementation, consider levothyroxine initiation.</p>
+      </div>
+      <div class="monitoring-item">
+        <h4>HbA1c + Fasting Glucose</h4>
+        <div class="monitoring-when">Retest at 12 weeks</div>
+        <p>Evaluate response to dietary changes and berberine supplementation. Target: HbA1c &lt;6.0%. If insufficient improvement, consider adding metformin or CGM for personalized dietary optimization.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =============== 23. LIFESTYLE =============== -->
+<div class="sg-section" id="lifestyle">
+  <h2 class="sg-title">23. Lifestyle</h2>
+  <div class="sg-label">.lifestyle-section .lifestyle-grid .lifestyle-card</div>
+  <p class="sg-desc">Cards with lifestyle recommendations covering nutrition, exercise, sleep, and stress management.</p>
+</div>
+<div class="sg-demo">
+  <div class="lifestyle-section">
+    <h2>Lifestyle Recommendations</h2>
+    <div class="lifestyle-grid">
+      <div class="lifestyle-card">
+        <h4>Nutrition</h4>
+        <p>Adopt a Mediterranean-style diet emphasizing vegetables, healthy fats (olive oil, avocado, nuts), lean protein, and whole grains. Limit refined carbohydrates and added sugars. Consider time-restricted eating (16:8) to improve insulin sensitivity.</p>
+      </div>
+      <div class="lifestyle-card">
+        <h4>Exercise</h4>
+        <p>Start with 30-minute daily walks, preferably after meals to improve glucose disposal. Gradually add resistance training 2-3 times per week, which has been shown to improve insulin sensitivity by 20-30% within 12 weeks (Colberg et al., 2016).</p>
+      </div>
+      <div class="lifestyle-card">
+        <h4>Sleep &amp; Stress</h4>
+        <p>Despite sleeping 8 hours, assess sleep quality: consider a sleep study to rule out sleep apnea, which is common with insulin resistance. Practice stress management (meditation, breathwork) as cortisol elevation worsens both thyroid function and glucose metabolism.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =============== 24. REFERENCES =============== -->
+<div class="sg-section" id="references">
+  <h2 class="sg-title">24. References</h2>
+  <div class="sg-label">.references-section .references-intro .reference-list .reference-item .reference-number .reference-title .reference-claim .reference-meta .source-type-badge.journal .source-type-badge.institution .source-type-badge.guideline .source-type-badge.health-site .confidence-indicator .reference-snippet</div>
+  <p class="sg-desc">Numbered reference cards with source type badges, confidence indicators, claim text, and supporting snippets.</p>
+</div>
+<div class="sg-demo">
+  <div class="references-section">
+    <h2>References</h2>
+    <p class="references-intro">Sources cited in this report, with confidence indicators and evidence quality assessment.</p>
+    <div class="reference-list">
+      <div class="reference-item">
+        <div class="reference-number">1</div>
+        <div>
+          <div class="reference-title">
+            <a href="#">Salas-Salvado J, et al. "Effect of a Mediterranean Diet on Insulin Resistance." Diabetes Care, 2011;34(1):14-19.</a>
+          </div>
+          <div class="reference-claim">"Mediterranean diet reduces insulin resistance by 30-40% compared to low-fat diets in pre-diabetic populations."</div>
+          <div class="reference-meta">
+            <span class="source-type-badge journal">Peer-Reviewed Journal</span>
+            <span class="confidence-indicator">Confidence: High (RCT, n=418)</span>
+          </div>
+          <div class="reference-snippet">The PREDIMED trial demonstrated that a Mediterranean diet supplemented with extra-virgin olive oil significantly reduced the incidence of Type 2 diabetes by 40% compared to the control diet, with improvements in fasting glucose and HOMA-IR observed within 3 months.</div>
+        </div>
+      </div>
+      <div class="reference-item">
+        <div class="reference-number">2</div>
+        <div>
+          <div class="reference-title">
+            <a href="#">Mackawy AMH, et al. "Vitamin D Deficiency and Its Association with Thyroid Disease." Int J Health Sci, 2013;7(3):267-275.</a>
+          </div>
+          <div class="reference-claim">"Vitamin D deficiency is associated with a 2-3 fold increased risk of autoimmune thyroid disease."</div>
+          <div class="reference-meta">
+            <span class="source-type-badge institution">Research Institution</span>
+            <span class="confidence-indicator">Confidence: Moderate (Observational, n=221)</span>
+          </div>
+          <div class="reference-snippet">Patients with autoimmune thyroid disease had significantly lower serum 25(OH)D levels compared to healthy controls (14.9 vs 28.3 ng/mL, p&lt;0.001). Vitamin D supplementation in deficient patients showed improvement in TPO antibody titers over 4 months.</div>
+        </div>
+      </div>
+      <div class="reference-item">
+        <div class="reference-number">3</div>
+        <div>
+          <div class="reference-title">
+            <a href="#">American Thyroid Association. "Guidelines for Treatment of Hypothyroidism." Thyroid, 2014;24(12):1670-1751.</a>
+          </div>
+          <div class="reference-claim">"TSH above 4.0 mIU/L with symptoms warrants consideration of levothyroxine therapy."</div>
+          <div class="reference-meta">
+            <span class="source-type-badge guideline">Clinical Guideline</span>
+            <span class="confidence-indicator">Confidence: High (Expert Consensus)</span>
+          </div>
+        </div>
+      </div>
+      <div class="reference-item">
+        <div class="reference-number">4</div>
+        <div>
+          <div class="reference-title">
+            <a href="#">Endocrine Society. "Vitamin D Evaluation and Treatment." EndocrineWeb, 2023.</a>
+          </div>
+          <div class="reference-claim">"5000 IU daily supplementation is appropriate for severe Vitamin D deficiency (&lt;20 ng/mL)."</div>
+          <div class="reference-meta">
+            <span class="source-type-badge health-site">Health Site</span>
+            <span class="confidence-indicator">Confidence: Moderate (Expert Opinion)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- =============== 25. BADGES (ALL TYPES) =============== -->
+<div class="sg-section" id="badges">
+  <h2 class="sg-title">25. Badges (All Types)</h2>
+  <div class="sg-label">.confidence-badge .evidence-badge .data-badge .dot .source-type-badge .organ-status-badge .diagnosis-status-badge .trend</div>
+  <p class="sg-desc">Comprehensive showcase of all badge and indicator types used throughout the report.</p>
+</div>
+<div class="sg-demo">
+  <!-- Confidence Badges -->
+  <h3 style="margin-bottom: 12px;">Confidence Badges</h3>
+  <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px;">
+    <span class="confidence-badge high">High Confidence</span>
+    <span class="confidence-badge medium">Medium Confidence</span>
+    <span class="confidence-badge low">Low Confidence</span>
+  </div>
+
+  <!-- Evidence Badges -->
+  <h3 style="margin-bottom: 12px;">Evidence Badges</h3>
+  <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px;">
+    <span class="evidence-badge evidence-strong">Strong Evidence</span>
+    <span class="evidence-badge evidence-moderate">Moderate Evidence</span>
+    <span class="evidence-badge evidence-limited">Limited Evidence</span>
+    <span class="evidence-badge evidence-weak">Weak Evidence</span>
+    <span class="evidence-badge evidence-insufficient">Insufficient Evidence</span>
+  </div>
+
+  <!-- Data Recency Badges -->
+  <h3 style="margin-bottom: 12px;">Data Recency Badges</h3>
+  <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px;">
+    <span class="data-badge current">Current</span>
+    <span class="data-badge recent">Recent</span>
+    <span class="data-badge historical">Historical</span>
+  </div>
+
+  <!-- Status Dots -->
+  <h3 style="margin-bottom: 12px;">Status Dots</h3>
+  <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 24px;">
+    <span><span class="dot dot-red"></span> Critical</span>
+    <span><span class="dot dot-amber"></span> Warning</span>
+    <span><span class="dot dot-green"></span> Normal</span>
+  </div>
+
+  <!-- Source Type Badges -->
+  <h3 style="margin-bottom: 12px;">Source Type Badges</h3>
+  <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px;">
+    <span class="source-type-badge journal">Peer-Reviewed Journal</span>
+    <span class="source-type-badge institution">Research Institution</span>
+    <span class="source-type-badge guideline">Clinical Guideline</span>
+    <span class="source-type-badge health-site">Health Site</span>
+  </div>
+
+  <!-- Organ Status Badges -->
+  <h3 style="margin-bottom: 12px;">Organ Status Badges</h3>
+  <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px;">
+    <span class="organ-status-badge status-critical">Critical</span>
+    <span class="organ-status-badge status-warning">Warning</span>
+    <span class="organ-status-badge status-stable">Stable</span>
+    <span class="organ-status-badge status-optimal">Optimal</span>
+  </div>
+
+  <!-- Diagnosis Status Badges -->
+  <h3 style="margin-bottom: 12px;">Diagnosis Status Badges (in card context)</h3>
+  <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px;">
+    <span class="diagnosis-status-badge status-critical">Critical</span>
+    <span class="diagnosis-status-badge status-warning">Moderate</span>
+    <span class="diagnosis-status-badge status-stable">Mild</span>
+    <span class="diagnosis-status-badge status-optimal">Resolved</span>
+  </div>
+
+  <!-- Trend Indicators -->
+  <h3 style="margin-bottom: 12px;">Trend Indicators</h3>
+  <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 24px;">
+    <span class="trend trend-up">Rising</span>
+    <span class="trend trend-down">Declining</span>
+    <span class="trend trend-flat">Stable</span>
+  </div>
+</div>
+
+<!-- =============== 26. CALLOUT =============== -->
+<div class="sg-section" id="callout">
+  <h2 class="sg-title">26. Callout</h2>
+  <div class="sg-label">.callout .callout-amber .callout-red .callout-green</div>
+  <p class="sg-desc">Four callout variants: default (neutral), amber (warning), red (critical), and green (positive). Used for inline highlights and important notes.</p>
+</div>
+<div class="sg-demo">
+  <div class="callout">
+    <strong>Note:</strong> This report is based on available lab data and does not replace a clinical examination. Discuss all findings and recommendations with your healthcare provider.
+  </div>
+  <div class="callout callout-amber">
+    <strong>Warning:</strong> Berberine can interact with several prescription medications including statins, blood pressure medications, and anticoagulants. Consult your physician before starting any new supplements.
+  </div>
+  <div class="callout callout-red">
+    <strong>Critical:</strong> HbA1c at 6.8% is in the pre-diabetic range and approaching the Type 2 diabetes diagnostic threshold of 6.5% (already exceeded by ADA criteria). Immediate dietary intervention is strongly recommended.
+  </div>
+  <div class="callout callout-green">
+    <strong>Good news:</strong> Your liver and kidney function markers are excellent, which means your body has full capacity to process supplements and medications without dosage adjustments.
+  </div>
+</div>
+
+<!-- =============== 27. DISCLAIMER & FOOTER =============== -->
+<div class="sg-section" id="disclaimer-footer">
+  <h2 class="sg-title">27. Disclaimer &amp; Footer</h2>
+  <div class="sg-label">.report-disclaimer .report-footer</div>
+  <p class="sg-desc">End-of-report disclaimer text and brand footer bar. The disclaimer uses muted styling, and the footer mirrors the header with brand teal background.</p>
+</div>
+<div class="sg-demo" style="border-bottom: none;">
+  <div class="report-disclaimer">
+    <strong>Disclaimer:</strong> This report is generated by an AI-powered health analysis system and is intended for informational purposes only. It does not constitute medical advice, diagnosis, or treatment. The analysis is based on uploaded laboratory data and may not reflect your complete medical history. Always consult with a qualified healthcare professional before making any changes to your health regimen, starting new supplements, or discontinuing prescribed medications. AI-generated health reports should be reviewed by a licensed physician.
+  </div>
+  <div class="report-footer">
+    <span>N1 Care Report &mdash; Generated February 2026</span>
+    <span>n1.care &bull; Confidential</span>
+  </div>
+</div>
+
+</div><!-- .content -->
+</div><!-- .report -->
+
+</body>
+</html>
