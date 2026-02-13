@@ -233,6 +233,46 @@ const INTERPOLATED_PHASES: Record<string, { endProgress: number; cyclePattern: R
   'Validation':       { endProgress: 78, cyclePattern: /cycle (\d+)\/(\d+)/, userMessage: 'Validating analysis completeness...' },
 };
 
+// Validate that all progress values are strictly monotonic to prevent regressions.
+// Catches misconfigurations at startup rather than silently failing downstream.
+const _validateProgressValues = () => {
+  const phaseOrder = [
+    'Document Extraction',
+    'Medical Analysis',
+    'Research',
+    'Data Structuring',
+    'Validation',
+    'Organ Insights',
+    'Report Generation',
+    'Content Review',
+    'HTML Regeneration',
+  ];
+
+  for (const name of phaseOrder) {
+    if (!PHASE_PROGRESS_MAP[name]) {
+      throw new Error(`Missing phase in PHASE_PROGRESS_MAP: ${name}`);
+    }
+  }
+
+  const allSteps = [
+    PROGRESS_MAP.initializing,
+    PROGRESS_MAP.fetching_records,
+    PROGRESS_MAP.analyzing,
+    ...phaseOrder.map(name => PHASE_PROGRESS_MAP[name]),
+    PROGRESS_MAP.uploading,
+    PROGRESS_MAP.completed,
+  ].map(s => s.progress);
+
+  for (let i = 1; i < allSteps.length; i++) {
+    if (allSteps[i] <= allSteps[i - 1]) {
+      throw new Error(
+        `Progress values are not strictly monotonic: ${allSteps[i - 1]} -> ${allSteps[i]}`
+      );
+    }
+  }
+};
+_validateProgressValues();
+
 // ============================================================================
 // Exit Codes + Error Classification
 // ============================================================================
