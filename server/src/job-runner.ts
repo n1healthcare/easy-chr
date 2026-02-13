@@ -178,12 +178,13 @@ interface ProgressUpdate {
 }
 
 // Map our pipeline steps to N1 API progress stages
+// IMPORTANT: These must be monotonically increasing. Phase-level progress
+// (PHASE_PROGRESS_MAP) fills the gap between 'analyzing' (20%) and 'uploading' (90%).
 const PROGRESS_MAP: Record<string, ProgressUpdate> = {
   initializing:      { stage: 'Preparing',  progress: 5,   message: 'Setting up AI pipeline...' },
-  fetching_records:  { stage: 'Preparing',  progress: 15,  message: 'Retrieving your medical records...' },
-  analyzing:         { stage: 'Analyzing',  progress: 30,  message: 'Analyzing your health data...' },
-  generating_report: { stage: 'Writing',    progress: 60,  message: 'Building your health report...' },
-  uploading:         { stage: 'Finalizing', progress: 85,  message: 'Saving your report...' },
+  fetching_records:  { stage: 'Preparing',  progress: 10,  message: 'Retrieving your medical records...' },
+  analyzing:         { stage: 'Analyzing',  progress: 20,  message: 'Analyzing your health data...' },
+  uploading:         { stage: 'Finalizing', progress: 90,  message: 'Saving your report...' },
   completed:         { stage: 'Complete',   progress: 100, message: 'Your health report is ready!' },
   failed:            { stage: 'Has Error',  progress: 0,   message: 'Report generation failed' },
 };
@@ -192,7 +193,6 @@ const OPERATION_BY_STEP: Record<keyof typeof PROGRESS_MAP, string> = {
   initializing: 'internal',
   fetching_records: 'data_fetch',
   analyzing: 'analysis',
-  generating_report: 'report_generation',
   uploading: 'file_upload',
   completed: 'report_generation',
   failed: 'report_generation',
@@ -200,15 +200,18 @@ const OPERATION_BY_STEP: Record<keyof typeof PROGRESS_MAP, string> = {
 
 // Map AgenticDoctorUseCase phase names to progress updates
 // These phases are yielded as { type: 'step', name: '...', status: 'running'|'completed'|'failed' }
+// IMPORTANT: Values must be monotonically increasing and fit between
+// the outer notifyProgress calls: 'analyzing' (20%) ... 'uploading' (90%)
 const PHASE_PROGRESS_MAP: Record<string, ProgressUpdate> = {
-  'Document Extraction':    { stage: 'Preparing',  progress: 15,  message: 'Extracting content from your documents...' },
-  'Medical Analysis':       { stage: 'Analyzing',  progress: 30,  message: 'Performing medical analysis...' },
+  'Document Extraction':    { stage: 'Preparing',  progress: 25,  message: 'Extracting content from your documents...' },
+  'Medical Analysis':       { stage: 'Analyzing',  progress: 35,  message: 'Performing medical analysis...' },
   'Research':               { stage: 'Analyzing',  progress: 45,  message: 'Researching and validating claims...' },
   'Data Structuring':       { stage: 'Writing',    progress: 55,  message: 'Structuring data for visualization...' },
-  'Validation':             { stage: 'Checking',   progress: 65,  message: 'Validating analysis completeness...' },
-  'Realm Generation':       { stage: 'Finalizing', progress: 80,  message: 'Building your interactive health realm...' },
-  'Content Review':         { stage: 'Checking',   progress: 90,  message: 'Reviewing content completeness...' },
-  'HTML Regeneration':      { stage: 'Finalizing', progress: 95,  message: 'Refining the health realm...' },
+  'Validation':             { stage: 'Checking',   progress: 60,  message: 'Validating analysis completeness...' },
+  'Organ Insights':         { stage: 'Analyzing',  progress: 65,  message: 'Generating organ-by-organ insights...' },
+  'Report Generation':      { stage: 'Finalizing', progress: 75,  message: 'Building your interactive health report...' },
+  'Content Review':         { stage: 'Checking',   progress: 82,  message: 'Reviewing content completeness...' },
+  'HTML Regeneration':      { stage: 'Finalizing', progress: 87,  message: 'Refining the health report...' },
 };
 
 // ============================================================================
@@ -641,7 +644,6 @@ async function runJob() {
       throw new Error('No realm was generated');
     }
 
-    await notifyProgress(config, 'generating_report');
     logger.info('Processing complete');
 
     // Extract realm ID from path and read HTML from storage
