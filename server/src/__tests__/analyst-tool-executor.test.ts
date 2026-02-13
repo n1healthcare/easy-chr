@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { AnalystToolExecutor } from '../services/agentic-medical-analyst.service.js';
+import { AnalystToolExecutor } from '../services/agentic-medical-analyst.service.ts';
 
 // Sample extracted content mimicking real pipeline output
 const SAMPLE_EXTRACTED = `## [CBC Report]

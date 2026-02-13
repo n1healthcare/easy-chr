@@ -83,7 +83,7 @@ describe('createGoogleGenAI', () => {
     expect(config).not.toHaveProperty('httpOptions');
   });
 
-  it('omits httpOptions when billingContext produces empty headers', () => {
+  it('includes minimal billing headers when only userId is provided', () => {
     process.env.GEMINI_API_KEY = 'test-key';
     // BillingContext always has userId, so headers always have at least that
     createGoogleGenAI({ userId: 'user-1' });

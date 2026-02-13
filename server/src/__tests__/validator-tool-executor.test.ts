@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ValidatorToolExecutor } from '../services/agentic-validator.service.js';
+import { ValidatorToolExecutor } from '../services/agentic-validator.service.ts';
 
 const SAMPLE_EXTRACTED = `## [CBC Report]
 Date: 2024-03-15
