@@ -692,7 +692,7 @@ async function runJob() {
       );
 
       // Verify the file was written successfully
-      const writeVerified = await withRetry(
+      await withRetry(
         async () => {
           const exists = await baseStorage.exists(prodPath);
           if (!exists) {
@@ -706,9 +706,6 @@ async function runJob() {
           operationName: 'Storage.exists',
         }
       );
-      if (!writeVerified) {
-        throw new Error(`Failed to verify write to storage: ${prodPath}`);
-      }
       logger.info({ prodPath }, 'Write verified');
 
       // Get signed URL for access

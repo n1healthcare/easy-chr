@@ -24,6 +24,38 @@ export interface RetryConfig {
   operationName?: string;
 }
 
+const NON_RETRYABLE_ERROR_CODES = new Set([
+  'accessdenied',
+  'invalidaccesskeyid',
+  'signaturedoesnotmatch',
+  'nobucket',
+  'nosuchbucket',
+  'nosuchkey',
+  'notfound',
+  'invalidargument',
+  'missingrequiredparameter',
+  'forbidden',
+  'unauthorized',
+]);
+
+const RETRYABLE_ERROR_CODES = new Set([
+  'slowdown',
+  'requesttimeout',
+  'requesttimeoutexception',
+  'throttling',
+  'throttlingexception',
+  'toomanyrequestsexception',
+  'serviceunavailable',
+  'internalerror',
+  'internalservererror',
+  'econnreset',
+  'econnrefused',
+  'enotfound',
+  'eai_again',
+  'etimedout',
+  'epipe',
+]);
+
 // ============================================================================
 // Error Classification
 // ============================================================================
@@ -59,41 +91,11 @@ function isRetryable(error: unknown): boolean {
   }
 
   // Structured error codes from storage/network SDKs.
-  const nonRetryableCodes = [
-    'accessdenied',
-    'invalidaccesskeyid',
-    'signaturedoesnotmatch',
-    'nobucket',
-    'nosuchbucket',
-    'nosuchkey',
-    'notfound',
-    'invalidargument',
-    'missingrequiredparameter',
-    'forbidden',
-    'unauthorized',
-  ];
-  if (errorCode && nonRetryableCodes.includes(errorCode)) {
+  if (errorCode && NON_RETRYABLE_ERROR_CODES.has(errorCode)) {
     return false;
   }
 
-  const retryableCodes = [
-    'slowdown',
-    'requesttimeout',
-    'requesttimeoutexception',
-    'throttling',
-    'throttlingexception',
-    'toomanyrequestsexception',
-    'serviceunavailable',
-    'internalerror',
-    'internalservererror',
-    'econnreset',
-    'econnrefused',
-    'enotfound',
-    'eai_again',
-    'etimedout',
-    'epipe',
-  ];
-  if (errorCode && retryableCodes.includes(errorCode)) {
+  if (errorCode && RETRYABLE_ERROR_CODES.has(errorCode)) {
     return true;
   }
 
