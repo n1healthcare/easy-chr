@@ -558,16 +558,6 @@ async function runJob() {
     'Effective runtime configuration resolved',
   );
 
-  rootLogger.info(
-    {
-      startedAt: new Date().toISOString(),
-      environment: ENVIRONMENT,
-      skipUploads: SKIP_UPLOADS,
-      skipProgressTracking: SKIP_PROGRESS_TRACKING,
-    },
-    'N1 Interface - Job Runner starting',
-  );
-
   let config: JobConfig;
   try {
     config = validateEnvironment();

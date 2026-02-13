@@ -212,29 +212,21 @@ export function installConsoleBridge(logger: AppLogger = getLogger()): void {
   if (_consoleBridgeInstalled || !_pinoAvailable) return;
   _consoleBridgeInstalled = true;
 
-  console.log = (...args: unknown[]) => {
+  const createBridge = (
+    level: 'info' | 'warn' | 'error' | 'debug',
+    fallbackName: string,
+  ) => (...args: unknown[]) => {
     const [obj, msg] = normalizeConsoleArgs(args);
-    if (obj) logger.info(obj, msg || 'console.log');
-    else logger.info(msg || 'console.log');
+    if (obj) {
+      logger[level](obj, msg || fallbackName);
+    } else {
+      logger[level](msg || fallbackName);
+    }
   };
-  console.info = (...args: unknown[]) => {
-    const [obj, msg] = normalizeConsoleArgs(args);
-    if (obj) logger.info(obj, msg || 'console.info');
-    else logger.info(msg || 'console.info');
-  };
-  console.warn = (...args: unknown[]) => {
-    const [obj, msg] = normalizeConsoleArgs(args);
-    if (obj) logger.warn(obj, msg || 'console.warn');
-    else logger.warn(msg || 'console.warn');
-  };
-  console.error = (...args: unknown[]) => {
-    const [obj, msg] = normalizeConsoleArgs(args);
-    if (obj) logger.error(obj, msg || 'console.error');
-    else logger.error(msg || 'console.error');
-  };
-  console.debug = (...args: unknown[]) => {
-    const [obj, msg] = normalizeConsoleArgs(args);
-    if (obj) logger.debug(obj, msg || 'console.debug');
-    else logger.debug(msg || 'console.debug');
-  };
+
+  console.log = createBridge('info', 'console.log');
+  console.info = createBridge('info', 'console.info');
+  console.warn = createBridge('warn', 'console.warn');
+  console.error = createBridge('error', 'console.error');
+  console.debug = createBridge('debug', 'console.debug');
 }
