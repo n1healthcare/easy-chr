@@ -60,18 +60,19 @@ export function injectStyles(html: string): string {
 
   const styleBlock = `<style data-source="n1-report-styles">\n${css}\n</style>`;
 
-  // Inject before </head> if present
-  const headCloseIndex = result.indexOf('</head>');
-  if (headCloseIndex !== -1) {
+  // Inject before </head> if present (case-insensitive)
+  const headCloseMatch = result.match(/<\/head>/i);
+  if (headCloseMatch?.index !== undefined) {
+    const headCloseIndex = headCloseMatch.index;
     result = result.slice(0, headCloseIndex) + styleBlock + '\n' + result.slice(headCloseIndex);
   } else {
-    // Fallback: inject after opening <html> or at the start
-    const htmlOpenIndex = result.indexOf('<html');
-    if (htmlOpenIndex !== -1) {
-      const afterHtmlTag = result.indexOf('>', htmlOpenIndex) + 1;
-      result = result.slice(0, afterHtmlTag) + '\n' + styleBlock + '\n' + result.slice(afterHtmlTag);
+    // Fallback: wrap in <head> and inject before <body> for valid HTML
+    const headBlock = `<head>\n${styleBlock}\n</head>`;
+    const bodyMatch = result.match(/<body/i);
+    if (bodyMatch?.index !== undefined) {
+      result = result.slice(0, bodyMatch.index) + headBlock + '\n' + result.slice(bodyMatch.index);
     } else {
-      result = styleBlock + '\n' + result;
+      result = headBlock + '\n' + result;
     }
   }
 

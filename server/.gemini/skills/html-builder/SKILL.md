@@ -204,8 +204,10 @@ Severity classes: `critical`, `moderate`, `mild`
 </div>
 
 <script>
+// Build arrays from trend.dataPoints[] — each has { label, value }
 Plotly.newPlot('trend-{{marker}}', [{
-  x: [{{dates}}], y: [{{values}}],
+  x: [{{#each dataPoints}}'{{label}}'{{#unless @last}}, {{/unless}}{{/each}}],
+  y: [{{#each dataPoints}}{{value}}{{#unless @last}}, {{/unless}}{{/each}}],
   type: 'scatter', mode: 'lines+markers',
   name: '{{marker}}',
   line: { color: '#8B5CF6', width: 3, shape: 'spline' },
@@ -265,7 +267,9 @@ Plotly.newPlot('gauge-{{marker}}', [{
 <script>
 Plotly.newPlot('systems-radar', [{
   type: 'scatterpolar',
-  r: [{{scores}}], theta: [{{systems}}],
+  // Build arrays from systemsHealth[] — each has { system, score }
+  r: [{{#each systemsHealth}}{{score}}{{#unless @last}}, {{/unless}}{{/each}}],
+  theta: [{{#each systemsHealth}}'{{system}}'{{#unless @last}}, {{/unless}}{{/each}}],
   fill: 'toself', fillcolor: 'rgba(139, 92, 246, 0.2)',
   line: { color: '#8B5CF6', width: 2 }, marker: { size: 8, color: '#8B5CF6' },
   hovertemplate: '<b>%{theta}</b><br>Score: %{r}/100<extra></extra>'
@@ -368,12 +372,12 @@ Phase classes: `immediate`, `short-term`, `follow-up`.
 <div class="doctor-questions"><h2>Questions for Your Doctor</h2>
   {{#each doctorQuestions}}
   <div class="question-card">
-    <div class="question-number">{{index}}</div>
+    <div class="question-number">{{@index + 1}}</div>
     <div class="question-content">
       <div class="question-category">{{category}}</div>
       <div class="question-text">"{{question}}"</div>
       <div class="question-context">{{context}}</div>
-      <div class="question-related">Related: {{relatedFindings}}</div>
+      <div class="question-related">Related: {{#each relatedFindings}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}</div>
     </div>
   </div>
   {{/each}}
@@ -409,18 +413,18 @@ Phase classes: `immediate`, `short-term`, `follow-up`.
   <div class="root-cause-card">
     <div class="root-cause-header"><span class="root-cause-icon">🎯</span><h3>Root Cause Hypothesis</h3></div>
     <p class="root-cause-hypothesis">{{hypothesis}}</p>
-    <div class="root-cause-evidence"><h4>Supporting Evidence</h4><ul><li>{{evidence}}</li></ul></div>
+    <div class="root-cause-evidence"><h4>Supporting Evidence</h4><ul>{{#each evidence}}<li>{{this}}</li>{{/each}}</ul></div>
     <div class="confidence-badge confidence-high">{{confidence}} Confidence</div>
   </div>
   <div class="causal-chain"><h3>How It Happened</h3>
     <div class="chain-flow">
-      {{#each causalChain}}<div class="chain-step"><div class="chain-number">{{index}}</div><div class="chain-content"><div class="chain-event">{{event}}</div><div class="chain-leads-to">{{leadsTo}}</div></div></div><div class="chain-arrow">→</div>{{/each}}
+      {{#each causalChain}}<div class="chain-step"><div class="chain-number">{{@index + 1}}</div><div class="chain-content"><div class="chain-event">{{event}}</div><div class="chain-leads-to">{{leadsTo}}</div></div></div>{{#unless @last}}<div class="chain-arrow">→</div>{{/unless}}{{/each}}
     </div>
   </div>
   <div class="keystone-findings"><h3>Keystone Findings</h3>
     <p class="keystone-intro">These findings have the highest downstream impact.</p>
     <div class="keystone-grid">
-      {{#each keystoneFindings}}<div class="keystone-card"><div class="keystone-priority">Priority {{index}}</div><h4>{{finding}}</h4><p class="keystone-why">{{reason}}</p><div class="keystone-effects"><span>{{effect}}</span></div></div>{{/each}}
+      {{#each keystoneFindings}}<div class="keystone-card"><div class="keystone-priority">Priority {{@index + 1}}</div><h4>{{finding}}</h4><p class="keystone-why">{{reason}}</p><div class="keystone-effects">{{#each effects}}<span>{{this}}</span>{{/each}}</div></div>{{/each}}
     </div>
   </div>
   <div class="temporal-narrative"><h3>Your Health Story</h3><p class="narrative-text">{{narrative}}</p></div>
