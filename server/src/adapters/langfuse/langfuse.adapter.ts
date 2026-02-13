@@ -28,6 +28,8 @@ interface LangfuseConfig {
 }
 
 export class LangfuseObservabilityAdapter implements ObservabilityPort {
+  private static readonly SERVICE_NAME = 'easy-chr';
+
   private client: Langfuse | null = null;
   private enabled = false;
   private config: LangfuseConfig;
@@ -83,7 +85,7 @@ export class LangfuseObservabilityAdapter implements ObservabilityPort {
         name: params.name,
         userId: params.userId,
         sessionId: params.sessionId,
-        metadata: { service: 'easy-chr', ...params.metadata },
+        metadata: { service: LangfuseObservabilityAdapter.SERVICE_NAME, ...params.metadata },
         tags: params.tags,
       });
       const traceId = trace.id;
