@@ -18,7 +18,6 @@ import fs from 'fs';
 
 import { LLMClientPort } from '../ports/llm-client.port.js';
 import type { StoragePort } from '../ports/storage.port.js';
-import { injectStyles } from '../../styles/inject-styles.js';
 import { LegacyPaths } from '../../common/storage-paths.js';
 import { readFileWithEncoding } from '../../../vendor/gemini-cli/packages/core/src/utils/fileUtils.js';
 import { PDFExtractionService } from '../../services/pdf-extraction.service.js';
@@ -976,9 +975,6 @@ ${structuredDataContent}
       }
       htmlContent = htmlContent.trim();
 
-      // Inject centralized CSS (replaces LLM-generated styles)
-      htmlContent = await injectStyles(htmlContent);
-
       // Write HTML to file
       await this.storage.writeFile(realmPath, htmlContent, 'text/html');
       console.log(`[AgenticDoctor] HTML report: ${htmlContent.length} chars`);
@@ -1257,7 +1253,7 @@ ${structuredDataContent}
 
             // Validate it's valid HTML
             if (regenHtml.includes('<!DOCTYPE') && regenHtml.includes('</html>')) {
-              htmlContent = await injectStyles(regenHtml);
+              htmlContent = regenHtml;
               await this.storage.writeFile(realmPath, htmlContent, 'text/html');
               console.log(`[AgenticDoctor] Regenerated HTML: ${htmlContent.length} chars`);
               yield { type: 'log', message: 'HTML regenerated with fixes.' };
