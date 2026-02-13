@@ -46,15 +46,15 @@ export type { RealmGenerationEvent };
 const SHORT_ID_LENGTH = 8;
 
 const PipelinePhase = {
-  DocumentExtraction: PipelinePhase.DocumentExtraction,
-  MedicalAnalysis: PipelinePhase.MedicalAnalysis,
-  Research: PipelinePhase.Research,
-  DataStructuring: PipelinePhase.DataStructuring,
-  Validation: PipelinePhase.Validation,
-  OrganInsights: PipelinePhase.OrganInsights,
-  HtmlGeneration: PipelinePhase.HtmlGeneration,
-  ContentReview: PipelinePhase.ContentReview,
-  HtmlRegeneration: PipelinePhase.HtmlRegeneration,
+  DocumentExtraction: 'Phase 1 - Document Extraction',
+  MedicalAnalysis: 'Phase 2 - Medical Analysis',
+  Research: 'Phase 3 - Research',
+  DataStructuring: 'Phase 4 - Data Structuring',
+  Validation: 'Phase 5 - Validation',
+  OrganInsights: 'Phase 6 - Organ Insights',
+  HtmlGeneration: 'Phase 7 - HTML Generation',
+  ContentReview: 'Phase 8 - Content Review',
+  HtmlRegeneration: 'Phase 9 - HTML Regeneration',
 } as const;
 
 // ============================================================================

@@ -19,9 +19,9 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { GeminiAdapter } from '../src/adapters/gemini/gemini.adapter.js';
-import { AgenticMedicalAnalyst } from '../src/services/agentic-medical-analyst.service.js';
-import { AgenticValidator } from '../src/services/agentic-validator.service.js';
-import { researchClaims, formatResearchAsMarkdown, type ResearchOutput } from '../src/services/research-agent.service.js';
+import { AgenticMedicalAnalyst, type AnalystEvent } from '../src/services/agentic-medical-analyst.service.js';
+import { AgenticValidator, type ValidatorEvent } from '../src/services/agentic-validator.service.js';
+import { researchClaims, formatResearchAsMarkdown, type ResearchOutput, type ResearchEvent } from '../src/services/research-agent.service.js';
 import { REALM_CONFIG } from '../src/config.js';
 import { extractSourceExcerpts } from '../src/utils/source-excerpts.js';
 import { deepMergeJsonPatch } from '../src/utils/json-patch-merge.js';
@@ -150,7 +150,7 @@ async function regenerateAnalysis(userPrompt?: string) {
 
   let result = await analysisGenerator.next();
   while (!result.done) {
-    const event = result.value;
+    const event = result.value as AnalystEvent;
     switch (event.type) {
       case 'log':
         console.log(`  ${event.data.message || ''}`);
@@ -194,7 +194,7 @@ async function regenerateAnalysis(userPrompt?: string) {
   let researchOutput: ResearchOutput = { researchedClaims: [], unsupportedClaims: [], additionalFindings: [] };
   let researchMarkdown = '';
 
-  const geminiConfig = gemini.getConfig();
+  const geminiConfig = await gemini.getConfig();
   if (geminiConfig) {
     console.log('Validating claims with external sources...');
     const researchGenerator = researchClaims(
@@ -205,7 +205,7 @@ async function regenerateAnalysis(userPrompt?: string) {
 
     let researchResult = await researchGenerator.next();
     while (!researchResult.done) {
-      const event = researchResult.value;
+      const event = researchResult.value as ResearchEvent;
       switch (event.type) {
         case 'claim_extracted':
         case 'searching':
@@ -316,7 +316,7 @@ ${researchMarkdown}
 
     let validationResult = await validationGenerator.next();
     while (!validationResult.done) {
-      const event = validationResult.value;
+      const event = validationResult.value as ValidatorEvent;
       switch (event.type) {
         case 'log':
           console.log(`  ${event.data.message || ''}`);

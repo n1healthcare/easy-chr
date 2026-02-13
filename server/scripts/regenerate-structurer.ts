@@ -20,7 +20,7 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { GeminiAdapter } from '../src/adapters/gemini/gemini.adapter.js';
-import { AgenticValidator } from '../src/services/agentic-validator.service.js';
+import { AgenticValidator, type ValidatorEvent } from '../src/services/agentic-validator.service.js';
 import { formatResearchAsMarkdown, type ResearchOutput } from '../src/services/research-agent.service.js';
 import { REALM_CONFIG } from '../src/config.js';
 import { extractSourceExcerpts, extractLabSections } from '../src/utils/source-excerpts.js';
@@ -244,7 +244,7 @@ ${labSections}
 
     let validationResult = await validationGenerator.next();
     while (!validationResult.done) {
-      const event = validationResult.value;
+      const event = validationResult.value as ValidatorEvent;
       switch (event.type) {
         case 'log':
           console.log(`  ${event.data.message || ''}`);
