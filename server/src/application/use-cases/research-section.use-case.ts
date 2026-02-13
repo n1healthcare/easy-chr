@@ -2,6 +2,7 @@ import { LLMClientPort } from '../ports/llm-client.port.js';
 import { REALM_CONFIG } from '../../config.js';
 import fs from 'fs';
 import path from 'path';
+import type { BillingContext } from '../../utils/billing.js';
 
 // ============================================================================
 // Skill Loader
@@ -30,7 +31,7 @@ function loadResearcherSkill(): string {
 export class ResearchSectionUseCase {
   constructor(private readonly llmClient: LLMClientPort) {}
 
-  async *execute(sectionContext: string, userQuery?: string): AsyncGenerator<string, void, unknown> {
+  async *execute(sectionContext: string, userQuery?: string, billingContext?: BillingContext): AsyncGenerator<string, void, unknown> {
     console.log("Researcher: Digging deeper into section...");
 
     const modelName = REALM_CONFIG.models.intermediate;
@@ -60,7 +61,8 @@ Start directly with the content.`;
         [], // No files
         {
           model: modelName,
-          tools: [{ googleSearch: {} }]
+          tools: [{ googleSearch: {} }],
+          billingContext,
         }
       );
 

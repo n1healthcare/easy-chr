@@ -127,7 +127,12 @@ export async function createContentGenerator(
     const customHeadersEnv =
       process.env['GEMINI_CLI_CUSTOM_HEADERS'] || undefined;
     const userAgent = `GeminiCLI/${version}/${model} (${process.platform}; ${process.arch})`;
-    const customHeadersMap = parseCustomHeaders(customHeadersEnv);
+    const envCustomHeaders = parseCustomHeaders(customHeadersEnv);
+    const configCustomHeaders = gcConfig.getCustomHeaders();
+    const customHeadersMap = {
+      ...envCustomHeaders,
+      ...configCustomHeaders,
+    };
     const apiKeyAuthMechanism =
       process.env['GEMINI_API_KEY_AUTH_MECHANISM'] || 'x-goog-api-key';
 
