@@ -19,7 +19,7 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { GeminiAdapter } from '../src/adapters/gemini/gemini.adapter.js';
-import { AgenticValidator } from '../src/services/agentic-validator.service.js';
+import { AgenticValidator, type ValidatorEvent } from '../src/services/agentic-validator.service.js';
 import { REALM_CONFIG } from '../src/config.js';
 import { extractSourceExcerpts } from '../src/utils/source-excerpts.js';
 import { deepMergeJsonPatch } from '../src/utils/json-patch-merge.js';
@@ -179,7 +179,7 @@ async function regenerateValidation(userPrompt?: string) {
 
     let validationResult = await validationGenerator.next();
     while (!validationResult.done) {
-      const event = validationResult.value;
+      const event = validationResult.value as ValidatorEvent;
       switch (event.type) {
         case 'log':
           console.log(`  ${event.data.message || ''}`);
