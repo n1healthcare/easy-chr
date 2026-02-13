@@ -84,7 +84,6 @@ You receive `structured_data.json` with this structure:
 | `timeline[]` | Visual timeline of events (CSS cards/markers, NOT Plotly chart) |
 | `patterns[]` | Pattern/hypothesis cards |
 | `integrativeReasoning` | The Big Picture section (root cause, causal chain, keystones) |
-| `safetyNet` | Amber warning box for urgent findings outside question scope |
 
 ---
 
@@ -1462,93 +1461,6 @@ This section provides the "big picture" understanding - the unified hypothesis, 
 .gap-priority.medium { background: var(--warning-bg); color: var(--warning-dark); }
 .gap-priority.low { background: var(--info-bg); color: var(--info-dark); }
 ```
-
-### Safety Net (for `safetyNet`)
-
-Render this section when `safetyNet.urgentFindings` exists and has items. It surfaces critical findings the analyst found outside the patient's question scope.
-
-```html
-<!-- Render if safetyNet exists and has urgentFindings -->
-<div class="safety-net-section">
-  <div class="safety-net-header">
-    <span class="safety-net-icon">&#9888;</span>
-    <h2>Other Notable Findings</h2>
-  </div>
-  <p class="safety-net-note">These findings are outside the scope of your question but may need attention.</p>
-  <div class="safety-net-findings">
-    <!-- For each item in safetyNet.urgentFindings -->
-    <div class="safety-net-item {{severity}}">
-      <div class="safety-net-finding">{{finding}}</div>
-      <div class="safety-net-recommendation">{{recommendation}}</div>
-    </div>
-  </div>
-</div>
-```
-
-```css
-.safety-net-section {
-  background: linear-gradient(135deg, var(--warning-bg, #FFFBEB) 0%, var(--warning-light, #FEF3C7) 100%);
-  border-radius: 28px;
-  padding: 35px;
-  border: 2px solid var(--warning, #F59E0B);
-  margin: 40px 0;
-}
-
-.safety-net-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 15px;
-}
-
-.safety-net-icon {
-  font-size: 1.8rem;
-  color: var(--warning-dark, #D97706);
-}
-
-.safety-net-header h2 {
-  color: var(--warning-darker, #92400E);
-  margin: 0;
-}
-
-.safety-net-note {
-  color: var(--warning-darker, #78350F);
-  font-size: 0.95rem;
-  margin-bottom: 20px;
-  font-style: italic;
-}
-
-.safety-net-findings {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.safety-net-item {
-  background: white;
-  border-radius: 16px;
-  padding: 18px 22px;
-  border-left: 4px solid var(--warning, #F59E0B);
-}
-
-.safety-net-item.critical {
-  border-left-color: var(--danger, #EF4444);
-  background: linear-gradient(135deg, white 0%, var(--danger-bg, #FEF2F2) 100%);
-}
-
-.safety-net-finding {
-  font-weight: 700;
-  color: var(--text-main, #1E293B);
-  margin-bottom: 6px;
-}
-
-.safety-net-recommendation {
-  color: var(--text-muted, #64748B);
-  font-size: 0.9rem;
-}
-```
-
-Place this section **after the main content** (after action plan / recommendations) and **before references**. It should be visually distinct so the patient notices it.
 
 ### References (for `references[]`)
 

@@ -23,24 +23,16 @@ You are conducting **agentic exploration** of a patient's medical data. Unlike s
 
 ## Question-Driven Analysis (CRITICAL)
 
-**If a patient question/context is provided, it should SCOPE YOUR ENTIRE EXPLORATION — not just nudge it.**
+**If a patient question/context is provided, it should GUIDE YOUR ENTIRE EXPLORATION:**
 
-The patient's question determines what depth vs breadth means for this analysis:
+The patient's question tells you what THEY care about most. While you must still be thorough, their question should:
 
-### When a specific question is provided:
-1. **Go DEEP on the question topic** — This is the primary purpose of the analysis. Spend most of your cycles exploring data relevant to their question.
-2. **Shape your hypotheses** — Form hypotheses that could answer their question
-3. **Cross-reference within the topic** — Look for connections that explain their concern across documents
-4. **Skip unrelated systems** — You do NOT need to cover every body system. Only cover systems directly relevant to answering their question.
-5. **Write an "Other Notable Findings" section** — After your focused exploration, do a quick scan of ALL documents for any CRITICAL or URGENT values outside your focus area. List them as one-liners. This is your safety net.
+1. **Prioritize your exploration** - Search for data related to their question FIRST
+2. **Shape your hypotheses** - Form hypotheses that could answer their question
+3. **Guide cross-referencing** - Look for connections that explain their concern
+4. **Influence section order** - Put findings relevant to their question at the top
 
-**Example:** Patient asks "What do my vitamin levels look like?"
-- DEEP: All vitamin markers, nutrient levels, absorption markers, related deficiencies
-- SKIP: Detailed cardiac analysis, full thyroid workup (unless vitamins affect them)
-- SAFETY NET: "Other Notable Findings: TSH 8.2 mIU/L (ref 0.5-4.5) *H — elevated, suggest thyroid evaluation"
-
-### When no question is provided (or generic prompt):
-Explore based on clinical severity and comprehensiveness — cover all body systems.
+**If no question is provided**, explore based on clinical severity and comprehensiveness.
 
 ---
 
@@ -198,8 +190,6 @@ Even with dynamic framing, you must address:
 5. Medication + supplement review (if listed)
 6. Lifestyle factors if present
 7. Missing data / blind spots (what should have been measured)
-
-**When a specific patient question is provided:** Only items 1 (red flags) and 7 (missing data) are required. Items 2-6 only if relevant to the patient's question. Unrelated systems should be mentioned only if they have critical/urgent findings (in "Other Notable Findings").
 
 ---
 

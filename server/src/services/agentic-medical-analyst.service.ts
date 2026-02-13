@@ -24,7 +24,6 @@ import {
   type BillingContext,
 } from '../utils/genai-factory.js';
 import { ChatCompressionService } from './chat-compression.service.js';
-import type { AnalysisMode } from '../domain/types.js';
 
 // ============================================================================
 // Skill Loader
@@ -48,68 +47,6 @@ function loadMedicalAnalysisSkill(): string {
     console.warn('[AgenticAnalyst] Could not load medical-analysis SKILL.md, using fallback');
     return 'You are an elite Integrative Systems Physician. Explore the patient data thoroughly using the available tools and build a comprehensive analysis.';
   }
-}
-
-// ============================================================================
-// Question Detection
-// ============================================================================
-
-/** Default/generic prompts that should NOT trigger question-driven mode */
-const DEFAULT_PROMPTS = [
-  'visualize this document',
-  'analyze my health',
-  'generate a report',
-  'analyze this',
-  'create a health report',
-];
-
-/**
- * System prompt supplement injected when analysis runs in focused mode.
- * Uses ${maxIter} placeholder replaced at runtime with the actual iteration limit.
- */
-function buildFocusedModePrompt(maxIterations: number): string {
-  return `
-
----
-
-## ACTIVE MODE: QUESTION-DRIVEN ANALYSIS
-
-The patient asked a specific question. Your analysis should be **focused on answering that question deeply**, not covering every body system equally.
-
-### What changes:
-1. **Depth over breadth** — Go DEEP on topics relevant to the patient's question. Skip unrelated body systems.
-2. **Fewer cycles** — Aim for ~${maxIterations} iterations. Spend them on the question topic.
-3. **Required sections**: Executive Summary, Focused Analysis (on the question topic), Recommendations, Other Notable Findings
-4. **Safety net REQUIRED** — Write an "Other Notable Findings" section listing any CRITICAL or URGENT values you encounter outside the question's scope (one-liners only).
-
-### What does NOT change:
-- Safety principles, data fidelity, evidence calibration
-- Must still call get_date_range()
-- Must still use exact values with units and reference ranges
-
-### Question-Driven Workflow:
-1. list_documents() + get_date_range() (1 cycle)
-2. Search for data related to the patient's question across all documents (2-3 cycles)
-3. Read relevant documents in detail (3-5 cycles)
-4. Cross-reference findings within the question's topic area (2-3 cycles)
-5. Quick scan for urgent findings outside the question scope (1-2 cycles) — SAFETY NET
-6. Write focused analysis + recommendations (2-3 cycles)
-7. complete_analysis()`;
-}
-
-/**
- * Returns true when the prompt is empty or matches a default/generic prompt.
- * Exported for testing.
- */
-export function isDefaultPrompt(prompt: string): boolean {
-  if (!prompt || prompt.trim().length === 0) return true;
-  const normalized = prompt
-    .trim()
-    .toLowerCase()
-    .replace(/^(please|can you|could you)\s*/, '')
-    .replace(/\s*(please)$/, '')
-    .replace(/[.!?]+$/, '');
-  return DEFAULT_PROMPTS.some(d => normalized === d);
 }
 
 // ============================================================================
@@ -540,27 +477,6 @@ const EXPECTED_SECTIONS: Array<{ key: string; alternatives?: string[]; label: st
 
 const MIN_EXPECTED_SECTIONS = 3;
 
-// Question-driven mode: when patient asks a specific question, the analysis
-// should go deep on that topic instead of covering everything equally.
-// Fewer required sections, lower coverage threshold.
-const QUESTION_DRIVEN_REQUIRED_SECTIONS: Array<{ key: string; alternatives?: string[]; label: string }> = [
-  { key: 'executive summary', label: 'Executive Summary' },
-  { key: 'focused analysis', alternatives: ['analysis', 'system'], label: 'Focused Analysis' },
-  { key: 'recommendation', label: 'Recommendations' },
-  { key: 'other notable', alternatives: ['safety net', 'notable findings', 'urgent'], label: 'Other Notable Findings' },
-];
-
-const QUESTION_DRIVEN_EXPECTED_SECTIONS: Array<{ key: string; alternatives?: string[]; label: string }> = [
-  { key: 'missing data', alternatives: ['data gaps'], label: 'Missing Data' },
-  { key: 'questions for doctor', alternatives: ['doctor questions'], label: 'Questions for Doctor' },
-];
-
-const QUESTION_DRIVEN_MIN_EXPECTED = 1;
-
-// Coverage thresholds per mode
-const COMPREHENSIVE_MIN_DOCUMENT_COVERAGE = 50;
-const FOCUSED_MIN_DOCUMENT_COVERAGE = 30;
-
 // ============================================================================
 // Tool Execution
 // ============================================================================
@@ -568,7 +484,6 @@ const FOCUSED_MIN_DOCUMENT_COVERAGE = 30;
 class AnalystToolExecutor {
   private parsedData: ParsedExtractedData;
   private currentAnalysis: Map<string, string> = new Map();
-  private questionDriven: boolean;
 
   // Tracking for enforcement
   private documentsRead: Set<string> = new Set();
@@ -576,9 +491,8 @@ class AnalystToolExecutor {
   private dateRangeChecked: boolean = false;
   private timelineExtracted: boolean = false;
 
-  constructor(extractedContent: string, mode: 'focused' | 'comprehensive' = 'comprehensive') {
+  constructor(extractedContent: string) {
     this.parsedData = parseExtractedData(extractedContent);
-    this.questionDriven = mode === 'focused';
   }
 
   // Check if any written section matches a key (fuzzy match via toLowerCase().includes())
@@ -777,7 +691,8 @@ class AnalystToolExecutor {
     const stats = this.getCoverageStats();
     const issues: string[] = [];
 
-    const MIN_DOCUMENT_COVERAGE = this.questionDriven ? FOCUSED_MIN_DOCUMENT_COVERAGE : COMPREHENSIVE_MIN_DOCUMENT_COVERAGE;
+    // Minimum thresholds
+    const MIN_DOCUMENT_COVERAGE = 50;
     const MIN_SEARCHES = 3;
 
     if (stats.documentCoverage < MIN_DOCUMENT_COVERAGE && stats.totalDocuments > 2) {
@@ -792,19 +707,13 @@ class AnalystToolExecutor {
       issues.push(`Date range not checked. Call get_date_range() to understand the temporal scope of the data.`);
     }
 
-    // Timeline extraction only required in comprehensive mode
-    if (!this.questionDriven && !stats.timelineExtracted && this.parsedData.timelineEvents.length > 0) {
+    if (!stats.timelineExtracted && this.parsedData.timelineEvents.length > 0) {
       issues.push(`Timeline events not extracted. Call extract_timeline_events() to build the Medical History Timeline.`);
     }
 
-    // Select section requirements based on mode
-    const requiredSections = this.questionDriven ? QUESTION_DRIVEN_REQUIRED_SECTIONS : REQUIRED_SECTIONS;
-    const expectedSections = this.questionDriven ? QUESTION_DRIVEN_EXPECTED_SECTIONS : EXPECTED_SECTIONS;
-    const minExpected = this.questionDriven ? QUESTION_DRIVEN_MIN_EXPECTED : MIN_EXPECTED_SECTIONS;
-
     // Required section enforcement — these map to structurer JSON fields
     const missingRequired: string[] = [];
-    for (const req of requiredSections) {
+    for (const req of REQUIRED_SECTIONS) {
       if (!this.hasSectionMatching(req.key, req.alternatives)) {
         missingRequired.push(req.label);
       }
@@ -818,16 +727,16 @@ class AnalystToolExecutor {
 
     // Expected section enforcement — at least some of these should be covered
     const missingExpected: string[] = [];
-    for (const exp of expectedSections) {
+    for (const exp of EXPECTED_SECTIONS) {
       if (!this.hasSectionMatching(exp.key, exp.alternatives)) {
         missingExpected.push(exp.label);
       }
     }
-    const expectedPresent = expectedSections.length - missingExpected.length;
-    if (expectedPresent < minExpected) {
+    const expectedPresent = EXPECTED_SECTIONS.length - missingExpected.length;
+    if (expectedPresent < MIN_EXPECTED_SECTIONS) {
       issues.push(
-        `Only ${expectedPresent}/${expectedSections.length} expected sections written (need at least ${minExpected}). ` +
-        `Missing: ${missingExpected.join(', ')}. Write at least ${minExpected - expectedPresent} more.`
+        `Only ${expectedPresent}/${EXPECTED_SECTIONS.length} expected sections written (need at least ${MIN_EXPECTED_SECTIONS}). ` +
+        `Missing: ${missingExpected.join(', ')}. Write at least ${MIN_EXPECTED_SECTIONS - expectedPresent} more.`
       );
     }
 
@@ -1164,21 +1073,17 @@ export class AgenticMedicalAnalyst {
   async *analyze(
     extractedContent: string,
     patientContext?: string,
-    analysisMode?: AnalysisMode
+    maxIterations: number = 50
   ): AsyncGenerator<AnalystEvent, string, unknown> {
-    const mode = analysisMode?.mode ?? 'comprehensive';
-    const maxIterations = analysisMode?.maxIterations ?? 50;
-    const toolExecutor = new AnalystToolExecutor(extractedContent, mode);
-
-    console.log(`[AgenticAnalyst] Analysis mode: ${mode}`);
+    const toolExecutor = new AnalystToolExecutor(extractedContent);
 
     yield {
       type: 'log',
-      data: { message: `Starting agentic medical analysis (${mode})...` },
+      data: { message: 'Starting agentic medical analysis...' },
     };
 
     // Build the system prompt
-    const systemPrompt = this.buildSystemPrompt(patientContext, analysisMode);
+    const systemPrompt = this.buildSystemPrompt(patientContext);
 
     // Conversation history for multi-turn
     let conversationHistory: Array<{
@@ -1438,16 +1343,10 @@ export class AgenticMedicalAnalyst {
     return finalAnalysis;
   }
 
-  private buildSystemPrompt(patientContext?: string, analysisMode?: AnalysisMode): string {
+  private buildSystemPrompt(patientContext?: string): string {
     // Load the comprehensive skill from file (includes task instructions and placeholders)
     const prompt = loadMedicalAnalysisSkill();
-    let result = applyPatientContext(prompt, patientContext);
-
-    if (analysisMode?.mode === 'focused') {
-      result += buildFocusedModePrompt(analysisMode.maxIterations);
-    }
-
-    return result;
+    return applyPatientContext(prompt, patientContext);
   }
 }
 
