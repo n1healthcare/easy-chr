@@ -5,6 +5,7 @@ try { setupOtel(); } catch { /* OTEL is optional — never crash */ }
 import dotenv from 'dotenv';
 import { createServer } from './adapters/http/server.js';
 import { createStorageAdapterFromEnv } from './adapters/storage/storage.factory.js';
+import { createObservabilityAdapter } from './adapters/langfuse/observability.factory.js';
 import { getLogger } from './logger.js';
 
 dotenv.config();
@@ -44,10 +45,20 @@ const start = async () => {
     const provider = process.env.STORAGE_PROVIDER ?? 'local';
     logger.info(`Storage provider: ${provider}`);
 
-    const server = await createServer(storage);
+    // Initialize observability (Langfuse) — never crashes startup
+    const observability = await createObservabilityAdapter();
+
+    const server = await createServer(storage, observability);
     const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
     await server.listen({ port, host: '0.0.0.0' });
     logger.info(`Server listening on port ${port}`);
+
+    // Graceful shutdown for observability — best-effort, never throws
+    const shutdownObservability = () => {
+      observability.shutdown().catch(() => {});
+    };
+    process.on('SIGTERM', shutdownObservability);
+    process.on('SIGINT', shutdownObservability);
   } catch (err) {
     logger.error(err, 'Server startup failed');
     process.exit(1);

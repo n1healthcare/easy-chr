@@ -24,6 +24,8 @@ import {
   type BillingContext,
 } from '../utils/genai-factory.js';
 import { ChatCompressionService } from './chat-compression.service.js';
+import type { ObservabilityPort } from '../application/ports/observability.port.js';
+import { NoopObservabilityAdapter } from '../adapters/langfuse/noop-observability.adapter.js';
 
 // ============================================================================
 // Skill Loader
@@ -1059,11 +1061,22 @@ export class AgenticMedicalAnalyst {
   private genai: GoogleGenAI;
   private model: string;
   private compressionService: ChatCompressionService;
+  private readonly obs: ObservabilityPort;
+  private readonly traceId: string;
+  private readonly parentSpanId: string;
 
-  constructor(billingContext?: BillingContext) {
+  constructor(
+    billingContext?: BillingContext,
+    observability?: ObservabilityPort,
+    traceId?: string,
+    parentSpanId?: string,
+  ) {
     this.genai = createGoogleGenAI(billingContext);
     this.model = REALM_CONFIG.models.doctor;
     this.compressionService = new ChatCompressionService(this.genai, billingContext);
+    this.obs = observability ?? new NoopObservabilityAdapter();
+    this.traceId = traceId ?? '';
+    this.parentSpanId = parentSpanId ?? '';
     console.log(`[AgenticAnalyst] Initialized with model: ${this.model}`);
   }
 
@@ -1135,6 +1148,10 @@ export class AgenticMedicalAnalyst {
       }
 
       try {
+        // Observability: track each generateContent call
+        const genId = `gen-analyst-cycle-${iteration}`;
+        try { this.obs.startGeneration(genId, { name: `cycle-${iteration}`, traceId: this.traceId, parentSpanId: this.parentSpanId, model: this.model }); } catch { /* non-fatal */ }
+
         // Call the model with tools
         const response = await retryLLM(
           () => this.genai.models.generateContent({
@@ -1146,6 +1163,18 @@ export class AgenticMedicalAnalyst {
           }),
           { operationName: 'AgenticAnalyst.generateContent' }
         );
+
+        // Observability: record token usage from response
+        try {
+          const usage = (response as unknown as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
+          this.obs.endGeneration(genId, {
+            usage: usage ? {
+              promptTokens: usage.promptTokenCount,
+              completionTokens: usage.candidatesTokenCount,
+              totalTokens: usage.totalTokenCount,
+            } : undefined,
+          });
+        } catch { /* non-fatal */ }
 
         // Check for function calls
         // Access parts directly from candidates to get thoughtSignature (sibling to functionCall)
@@ -1302,6 +1331,9 @@ export class AgenticMedicalAnalyst {
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
+        // End the generation with error status
+        try { this.obs.endGeneration(`gen-analyst-cycle-${iteration}`, { level: 'ERROR', statusMessage: errorMessage }); } catch { /* non-fatal */ }
+
         yield {
           type: 'error',
           data: { message: `Error in iteration ${iteration}: ${errorMessage}` },

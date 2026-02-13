@@ -76,6 +76,7 @@
     "https-proxy-agent": "^7.0.6",
     "ignore": "^7.0.5",
     "js-yaml": "^4.1.1",
+    "langfuse": "3.38.6",
     "marked": "^17.0.1",
     "mime": "^4.1.0",
     "mnemonist": "^0.40.3",
