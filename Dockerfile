@@ -41,9 +41,9 @@ COPY client/public/models/human_organ.glb /client/public/models/human_organ.glb
 # Create storage directories for temporary file processing
 RUN mkdir -p storage/input storage/realms
 
-
 # Use existing node user (UID 1000 in node:20-alpine) and set ownership
-RUN chown -R node:node /app
+# Include /client for the 3D organ model
+RUN chown -R node:node /app /client
 
 # Switch to non-root user
 USER node
