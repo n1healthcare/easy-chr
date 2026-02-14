@@ -866,8 +866,7 @@ async function runJob() {
       );
       logger.info({ prodPath }, 'Write verified');
 
-      // Copy 3D organ model to production path and inject signed URL into HTML (only when body twin enabled)
-      if (REALM_CONFIG.agenticLoop.enableBodyTwin) {
+      // Copy 3D organ model to production path and inject signed URL into HTML
       try {
         const glbScopedPath = `realms/${realmId}/${OrganModel.FILENAME}`;
         const glbExists = await scopedStorage.exists(glbScopedPath);
@@ -915,7 +914,6 @@ async function runJob() {
           logger.warn({ error: String(glbErr) }, '3D organ model copy failed (non-critical)');
         }
       }
-      } // enableBodyTwin
 
       // Get signed URL for access
       publicUrl = await baseStorage.getSignedUrl(prodPath);
