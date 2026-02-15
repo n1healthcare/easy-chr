@@ -1507,8 +1507,8 @@ ${organInsightsContent}
         }
       }
 
-      // Inject 3D body twin viewer if organ insights are available and feature is enabled
-      if (organInsightsContent && REALM_CONFIG.agenticLoop.enableBodyTwin) {
+      // Inject 3D body twin viewer if organ insights are available
+      if (organInsightsContent) {
         try {
           const bodyTwinData = transformOrganInsightsToBodyTwin(organInsightsContent);
           htmlContent = injectBodyTwinViewer(htmlContent, bodyTwinData);
