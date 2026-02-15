@@ -47,8 +47,6 @@ export const REALM_CONFIG = {
     maxIterations: parseInt(process.env.MAX_AGENTIC_ITERATIONS || '10'),
     // Enable/disable web search for medical knowledge
     enableWebSearch: process.env.ENABLE_WEB_SEARCH !== 'false',
-    // 3D Body Twin viewer with landing page hub — disabled by default
-    enableBodyTwin: ['true', '1', 'yes'].includes((process.env.ENABLE_BODY_TWIN ?? 'false').toLowerCase()),
   },
   retry: {
     // LLM calls: generous retries for expensive operations
