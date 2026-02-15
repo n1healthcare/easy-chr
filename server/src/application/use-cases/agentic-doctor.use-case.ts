@@ -1,15 +1,16 @@
 /**
  * AgenticDoctorUseCase - Medical Document Analysis Pipeline
  *
- * 8-Phase Pipeline:
+ * 9-Phase Pipeline:
  * Phase 1: Document Extraction - PDFs via Vision OCR, text files directly → extracted.md
  * Phase 2: Medical Analysis - LLM with medical-analysis skill → analysis.md (includes cross-system analysis)
  * Phase 3: Research - Web search to validate claims with external sources → research.json
  * Phase 4: Data Structuring - LLM extracts chart-ready JSON (SOURCE OF TRUTH) → structured_data.json
  * Phase 5: Validation - LLM validates structured_data.json completeness → validation.md (with correction loop)
- * Phase 6: Report Generation - LLM with html-builder skill → interactive N1 Care Report (index.html)
- * Phase 7: Content Review - LLM compares structured_data.json vs index.html for gaps → content_review.json
- * Phase 8: HTML Regeneration - If gaps found, LLM regenerates HTML with feedback
+ * Phase 6: Organ Insights - LLM generates organ-by-organ findings from validated data → organ_insights.md
+ * Phase 7: Report Generation - LLM with html-builder skill → interactive N1 Care Report (index.html)
+ * Phase 8: Content Review - LLM compares structured_data.json vs index.html for gaps → content_review.json
+ * Phase 9: HTML Regeneration - If gaps found, LLM regenerates HTML with feedback
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -18,7 +19,7 @@ import fs from 'fs';
 
 import { LLMClientPort } from '../ports/llm-client.port.js';
 import type { StoragePort } from '../ports/storage.port.js';
-import { LegacyPaths } from '../../common/storage-paths.js';
+import { LegacyPaths, OrganModel } from '../../common/storage-paths.js';
 import { readFileWithEncoding } from '../../../vendor/gemini-cli/packages/core/src/utils/fileUtils.js';
 import { PDFExtractionService } from '../../services/pdf-extraction.service.js';
 import { AgenticMedicalAnalyst, type AnalystEvent } from '../../services/agentic-medical-analyst.service.js';
@@ -27,7 +28,11 @@ import { researchClaims, formatResearchAsMarkdown, type ResearchOutput, type Res
 import { REALM_CONFIG } from '../../config.js';
 import { extractSourceExcerpts, extractLabSections } from '../../utils/source-excerpts.js';
 import { deepMergeJsonPatch } from '../../utils/json-patch-merge.js';
+import { transformOrganInsightsToBodyTwin } from '../../services/body-twin-transformer.service.js';
+import { injectBodyTwinViewer } from '../../utils/inject-body-twin.js';
 import type { RealmGenerationEvent } from '../../domain/types.js';
+import type { ObservabilityPort } from '../ports/observability.port.js';
+import { NoopObservabilityAdapter } from '../../adapters/langfuse/noop-observability.adapter.js';
 // Note: Retry logic is handled at the adapter level (GeminiAdapter.sendMessageStream)
 // No need to wrap LLM calls here - they are already protected by retryLLM in the adapter
 import type { BillingContext } from '../../utils/billing.js';
@@ -35,7 +40,25 @@ import type { BillingContext } from '../../utils/billing.js';
 export type { RealmGenerationEvent };
 
 // ============================================================================
-// Skill Loaders
+// Observability Constants
+// ============================================================================
+
+const SHORT_ID_LENGTH = 8;
+
+const PipelinePhase = {
+  DocumentExtraction: 'Phase 1 - Document Extraction',
+  MedicalAnalysis: 'Phase 2 - Medical Analysis',
+  Research: 'Phase 3 - Research',
+  DataStructuring: 'Phase 4 - Data Structuring',
+  Validation: 'Phase 5 - Validation',
+  OrganInsights: 'Phase 6 - Organ Insights',
+  HtmlGeneration: 'Phase 7 - HTML Generation',
+  ContentReview: 'Phase 8 - Content Review',
+  HtmlRegeneration: 'Phase 9 - HTML Regeneration',
+} as const;
+
+// ============================================================================
+// Skill & Template Loaders
 // ============================================================================
 
 function loadSkill(skillName: string, fallback: string): string {
@@ -78,6 +101,59 @@ const loadContentReviewerSkill = () => loadSkill(
   'You are a QA agent. Compare structured_data.json against index.html to identify information loss.'
 );
 
+const loadOrganInsightsSkill = () => loadSkill(
+  'organ-insights',
+  'You are an organ-level clinical insight specialist. Analyze validated structured data and produce organ-by-organ findings in markdown.'
+);
+
+/**
+ * Load the report HTML template (CSS + placeholders + snippet library).
+ * The template is the single source of truth for visual design — the LLM
+ * fills in {{SECTION:*}} placeholders instead of generating CSS.
+ */
+async function loadReportTemplate(): Promise<string> {
+  const templatePath = path.join(
+    process.cwd(),
+    'src',
+    'templates',
+    'report_template.html'
+  );
+
+  try {
+    return await fs.promises.readFile(templatePath, 'utf-8');
+  } catch (error) {
+    console.warn('[AgenticDoctor] Could not load report_template.html — LLM will generate CSS');
+    return '';
+  }
+}
+
+/**
+ * Build template instructions for LLM prompts.
+ * Shared between Phase 7 (initial generation) and Phase 9 (regeneration)
+ * to ensure consistent behavior.
+ */
+function createTemplateInstructions(reportTemplate: string): string {
+  if (!reportTemplate) {
+    return '';
+  }
+  return `
+
+---
+
+### Report Template (START FROM THIS — DO NOT GENERATE CSS)
+Work directly in this template. Replace each {{SECTION:*}} placeholder with generated HTML.
+Use the snippet library at the bottom of the template for correct HTML structures.
+- For JSON fields with data: replace the matching placeholder with rendered HTML
+- For JSON fields without data: replace the placeholder with empty string
+- Generate Plotly JavaScript for charts and place in {{CHARTS_INIT}}
+- Replace {{REPORT_DATE}} with today's date
+- Replace {{ADDITIONAL_CSS}} with empty string (or minimal overrides if needed)
+<report_template>
+${reportTemplate}
+</report_template>
+`;
+}
+
 // ============================================================================
 // Helper: Strip LLM thinking text
 // ============================================================================
@@ -107,6 +183,7 @@ interface StreamWithRetryOptions {
   maxRetries?: number;
   operationName: string;
   onRetry?: (attempt: number, error: string) => void;
+  billingContext?: BillingContext;
 }
 
 async function streamWithRetry(
@@ -129,7 +206,10 @@ async function streamWithRetry(
         prompt,
         `${sessionId}-${attempt}`,
         undefined,
-        { model }
+        {
+          model,
+          billingContext: options.billingContext,
+        }
       );
 
       for await (const chunk of stream) {
@@ -183,11 +263,15 @@ function cleanupJson(content: string): string {
 
 export class AgenticDoctorUseCase {
   private billingContext?: BillingContext;
+  private readonly obs: ObservabilityPort;
 
   constructor(
     private readonly llmClient: LLMClientPort,
-    private readonly storage: StoragePort
-  ) {}
+    private readonly storage: StoragePort,
+    observability?: ObservabilityPort,
+  ) {
+    this.obs = observability ?? new NoopObservabilityAdapter();
+  }
 
   /**
    * Set billing context for LiteLLM cost tracking.
@@ -213,11 +297,38 @@ export class AgenticDoctorUseCase {
     console.log(`[AgenticDoctor] Session ${sessionId}: Processing ${uploadedFilePaths.length} files...`);
     console.log(`[AgenticDoctor] User prompt: ${prompt ? `(${prompt.length} chars)` : '(empty)'}`);
 
+    // --- Observability: create trace for entire pipeline run ---
+    const chrIdShort = this.billingContext?.chrId?.substring(0, SHORT_ID_LENGTH) ?? sessionId.substring(0, SHORT_ID_LENGTH);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    let traceId = '';
+    try {
+      traceId = this.obs.createTrace({
+        name: `chr-${this.billingContext?.userId ?? 'anon'}-easy-chr-${dateStr}-${chrIdShort}`,
+        userId: this.billingContext?.userId,
+        sessionId,
+        metadata: {
+          chrId: this.billingContext?.chrId,
+          fileCount: uploadedFilePaths.length,
+          promptLength: prompt?.length ?? 0,
+        },
+        tags: ['easy-chr'],
+      });
+    } catch { /* observability never blocks pipeline */ }
+
+    // Helper: safely start/end spans
+    const startSpan = (phase: string) => {
+      try { this.obs.startSpan(phase, { name: phase, traceId }); } catch { /* non-fatal */ }
+    };
+    const endSpan = (phase: string, meta?: Record<string, unknown>) => {
+      try { this.obs.endSpan(phase, meta); } catch { /* non-fatal */ }
+    };
+
     // ========================================================================
     // Phase 1: Document Extraction
     // PDFs: Vision OCR → Markdown
     // Other files: Direct text extraction
     // ========================================================================
+    startSpan(PipelinePhase.DocumentExtraction);
     yield { type: 'step', name: 'Document Extraction', status: 'running' };
     yield { type: 'log', message: `Processing ${uploadedFilePaths.length} document(s)...` };
 
@@ -311,6 +422,7 @@ export class AgenticDoctorUseCase {
     // Save final extracted.md
     await this.storage.writeFile(LegacyPaths.extracted, allExtractedContent);
 
+    endSpan(PipelinePhase.DocumentExtraction, { chars: allExtractedContent.length });
     yield { type: 'step', name: 'Document Extraction', status: 'completed' };
 
     if (!allExtractedContent || allExtractedContent.trim().length === 0) {
@@ -328,13 +440,14 @@ export class AgenticDoctorUseCase {
     // The agent explores the data, forms hypotheses, seeks evidence, and builds
     // comprehensive analysis through multiple exploration cycles
     // ========================================================================
+    startSpan(PipelinePhase.MedicalAnalysis);
     yield { type: 'step', name: 'Medical Analysis', status: 'running' };
     yield { type: 'log', message: 'Starting agentic medical analysis...' };
 
     let analysisContent = '';
 
     try {
-      const agenticAnalyst = new AgenticMedicalAnalyst(this.billingContext);
+      const agenticAnalyst = new AgenticMedicalAnalyst(this.billingContext, this.obs, traceId, PipelinePhase.MedicalAnalysis);
 
       yield { type: 'log', message: 'Agent is exploring the medical data...' };
 
@@ -403,11 +516,13 @@ export class AgenticDoctorUseCase {
       console.log(`[AgenticDoctor] Agentic analysis complete: ${analysisContent.length} chars`);
 
       yield { type: 'log', message: `Medical analysis complete (${analysisContent.length} chars)` };
+      endSpan(PipelinePhase.MedicalAnalysis, { chars: analysisContent.length });
       yield { type: 'step', name: 'Medical Analysis', status: 'completed' };
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[AgenticDoctor] Agentic analysis failed:', errorMessage);
+      endSpan(PipelinePhase.MedicalAnalysis, { error: errorMessage });
       yield { type: 'log', message: `Medical analysis failed: ${errorMessage}` };
       yield { type: 'step', name: 'Medical Analysis', status: 'failed' };
       yield { type: 'result', url: LegacyPaths.extracted };
@@ -418,6 +533,7 @@ export class AgenticDoctorUseCase {
     // Phase 3: Research
     // Validates medical claims with external sources using web search
     // ========================================================================
+    startSpan(PipelinePhase.Research);
     yield { type: 'step', name: 'Research', status: 'running' };
     yield { type: 'log', message: 'Validating claims with external sources...' };
 
@@ -426,7 +542,7 @@ export class AgenticDoctorUseCase {
 
     try {
       // Get the Gemini config from the LLM client
-      const geminiConfig = this.llmClient.getConfig();
+      const geminiConfig = await this.llmClient.getConfig(this.billingContext);
 
       if (geminiConfig) {
         const researchGenerator = researchClaims(
@@ -472,9 +588,11 @@ export class AgenticDoctorUseCase {
         console.log(`[AgenticDoctor] Research complete: ${researchOutput.researchedClaims.length} claims verified`);
 
         yield { type: 'log', message: `Research complete: ${researchOutput.researchedClaims.length} claims verified, ${researchOutput.unsupportedClaims.length} unsupported` };
+        endSpan(PipelinePhase.Research, { claimsVerified: researchOutput.researchedClaims.length });
         yield { type: 'step', name: 'Research', status: 'completed' };
       } else {
         console.warn('[AgenticDoctor] Gemini config not available, skipping research phase');
+        endSpan(PipelinePhase.Research, { skipped: true });
         yield { type: 'log', message: 'Research skipped (Gemini config not available)' };
         yield { type: 'step', name: 'Research', status: 'completed' };
       }
@@ -482,6 +600,7 @@ export class AgenticDoctorUseCase {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[AgenticDoctor] Research failed:', errorMessage);
+      endSpan(PipelinePhase.Research, { error: errorMessage });
       yield { type: 'log', message: `Research failed: ${errorMessage}. Continuing without external validation.` };
       yield { type: 'step', name: 'Research', status: 'failed' };
       // Continue anyway - research is enhancement, not critical
@@ -492,6 +611,7 @@ export class AgenticDoctorUseCase {
     // Extracts chart-ready JSON from analysis data
     // This becomes the source of truth for both Validation and HTML Builder
     // ========================================================================
+    startSpan(PipelinePhase.DataStructuring);
     yield { type: 'step', name: 'Data Structuring', status: 'running' };
     yield { type: 'log', message: 'Extracting structured data for visualizations...' };
 
@@ -527,6 +647,10 @@ ${labSections}
       // Log payload size for debugging network issues
       console.log(`[AgenticDoctor] Data structuring prompt payload: ${Math.round(structurePrompt.length / 1024)}KB`);
 
+      const dsGenId = `gen-data-structuring-${sessionId}`;
+      const dsStartTime = Date.now();
+      try { this.obs.startGeneration(dsGenId, { name: 'data-structuring', traceId, parentSpanId: PipelinePhase.DataStructuring, model: REALM_CONFIG.models.doctor }); } catch { /* non-fatal */ }
+
       structuredDataContent = await streamWithRetry(
         this.llmClient,
         structurePrompt,
@@ -535,8 +659,11 @@ ${labSections}
         {
           operationName: 'DataStructuring',
           maxRetries: 3,
+          billingContext: this.billingContext,
         }
       );
+
+      try { this.obs.endGeneration(dsGenId, { outputCharCount: structuredDataContent.length, latencyMs: Date.now() - dsStartTime }); } catch { /* non-fatal */ }
 
       if (structuredDataContent.trim().length === 0) {
         throw new Error('LLM returned empty structured data');
@@ -586,11 +713,13 @@ ${labSections}
       await this.storage.writeFile(LegacyPaths.structuredData, structuredDataContent);
 
       yield { type: 'log', message: 'Data structuring complete.' };
+      endSpan(PipelinePhase.DataStructuring, { chars: structuredDataContent.length });
       yield { type: 'step', name: 'Data Structuring', status: 'completed' };
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[AgenticDoctor] Data structuring failed:', errorMessage);
+      endSpan(PipelinePhase.DataStructuring, { error: errorMessage });
       yield { type: 'log', message: `Data structuring failed: ${errorMessage}. Cannot proceed without structured data.` };
       yield { type: 'step', name: 'Data Structuring', status: 'failed' };
       yield { type: 'error', content: `Data structuring failed: ${errorMessage}. The analysis cannot be visualized without structured data.` };
@@ -619,6 +748,7 @@ ${labSections}
     // Can compare source date ranges vs JSON timeline to catch missing data
     // Maximum 1 correction cycle to avoid infinite loops
     // ========================================================================
+    startSpan(PipelinePhase.Validation);
     yield { type: 'step', name: 'Validation', status: 'running' };
     yield { type: 'log', message: 'Starting agentic validation (tool-based)...' };
 
@@ -633,7 +763,7 @@ ${labSections}
     while (correctionCycle <= MAX_CORRECTION_CYCLES && !validationPassed) {
       try {
         // Use AgenticValidator for tool-based validation
-        const validator = new AgenticValidator(this.billingContext);
+        const validator = new AgenticValidator(this.billingContext, this.obs, traceId, PipelinePhase.Validation);
         const validationGenerator = validator.validate(
           allExtractedContent,
           structuredDataContent,
@@ -768,7 +898,10 @@ Output the JSON PATCH now (starting with \`{\`):`;
               correctionPrompt,
               `${sessionId}-correction-${correctionCycle}`,
               undefined,
-              { model: REALM_CONFIG.models.doctor }
+              {
+                model: REALM_CONFIG.models.doctor,
+                billingContext: this.billingContext,
+              }
             );
 
             for await (const chunk of correctionStream) {
@@ -873,13 +1006,93 @@ This validation was performed using the AgenticValidator with tool-based explora
       await this.storage.writeFile(LegacyPaths.validation, validationContent);
     }
 
+    endSpan(PipelinePhase.Validation, { correctionCycles: correctionCycle });
     yield { type: 'step', name: 'Validation', status: 'completed' };
 
     // ========================================================================
-    // Phase 6: HTML Generation
+    // Phase 6: Organ Insights
+    // Generates organ-by-organ clinical findings from validated structured data
+    // Non-critical enrichment - pipeline continues if this fails
+    // ========================================================================
+    startSpan(PipelinePhase.OrganInsights);
+    yield { type: 'step', name: 'Organ Insights', status: 'running' };
+    yield { type: 'log', message: 'Generating organ-by-organ insights...' };
+
+    let organInsightsContent = '';
+
+    try {
+      const organInsightsSkill = loadOrganInsightsSkill();
+
+      const organInsightsPrompt = `${organInsightsSkill}
+
+---
+
+### Structured Data (Validated Source of Truth)
+<structured_data>
+${structuredDataContent}
+</structured_data>
+
+${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}`;
+
+      console.log(`[AgenticDoctor] Organ insights prompt payload: ${Math.round(organInsightsPrompt.length / 1024)}KB`);
+
+      const oiGenId = `gen-organ-insights-${sessionId}`;
+      const oiStartTime = Date.now();
+      try { this.obs.startGeneration(oiGenId, { name: 'organ-insights', traceId, parentSpanId: PipelinePhase.OrganInsights, model: REALM_CONFIG.models.doctor }); } catch { /* non-fatal */ }
+
+      organInsightsContent = await streamWithRetry(
+        this.llmClient,
+        organInsightsPrompt,
+        `${sessionId}-organ-insights`,
+        REALM_CONFIG.models.doctor,
+        {
+          operationName: 'OrganInsights',
+          maxRetries: 3,
+        }
+      );
+
+      try { this.obs.endGeneration(oiGenId, { outputCharCount: organInsightsContent.length, latencyMs: Date.now() - oiStartTime }); } catch { /* non-fatal */ }
+
+      if (organInsightsContent.trim().length === 0) {
+        throw new Error('LLM returned empty organ insights');
+      }
+
+      // Strip any thinking text before the markdown header
+      organInsightsContent = stripThinkingText(organInsightsContent, '# Organ');
+
+      await this.storage.writeFile(LegacyPaths.organInsights, organInsightsContent);
+      console.log(`[AgenticDoctor] Organ insights complete: ${organInsightsContent.length} chars`);
+
+      // Persist pre-computed body-twin.json for the 3D body viewer
+      try {
+        const bodyTwinData = transformOrganInsightsToBodyTwin(organInsightsContent);
+        const bodyTwinJson = JSON.stringify(bodyTwinData, null, 2);
+        await this.storage.writeFile(LegacyPaths.bodyTwin, bodyTwinJson, 'application/json');
+        console.log(`[AgenticDoctor] Body twin data persisted: ${bodyTwinData.organs.length} organs, ${bodyTwinData.systems.length} systems`);
+      } catch (btError) {
+        const btMsg = btError instanceof Error ? btError.message : String(btError);
+        console.warn(`[AgenticDoctor] Body twin transform failed (non-critical): ${btMsg}`);
+      }
+
+      yield { type: 'log', message: `Organ insights complete (${organInsightsContent.length} chars).` };
+      endSpan(PipelinePhase.OrganInsights, { chars: organInsightsContent.length });
+      yield { type: 'step', name: 'Organ Insights', status: 'completed' };
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[AgenticDoctor] Organ insights failed:', errorMessage);
+      endSpan(PipelinePhase.OrganInsights, { error: errorMessage });
+      yield { type: 'log', message: `Organ insights failed: ${errorMessage}. Continuing without organ insights.` };
+      yield { type: 'step', name: 'Organ Insights', status: 'failed' };
+      // Non-critical — continue pipeline without organ insights
+    }
+
+    // ========================================================================
+    // Phase 7: HTML Generation
     // Uses sendMessageStream with html-builder skill
     // DATA-DRIVEN: structured_data.json is the ONLY source - JSON drives structure
     // ========================================================================
+    startSpan(PipelinePhase.HtmlGeneration);
     yield { type: 'step', name: 'Report Generation', status: 'running' };
     yield { type: 'log', message: 'Building your N1 Care Report...' };
 
@@ -891,11 +1104,11 @@ This validation was performed using the AgenticValidator with tool-based explora
 
     try {
       const htmlSkill = loadHTMLBuilderSkill();
+      const reportTemplate = await loadReportTemplate();
+      const templateInstructions = createTemplateInstructions(reportTemplate);
 
-      // DATA-DRIVEN: structured_data.json is the ONLY source of structure
-      // The JSON fields determine what sections to render
       const htmlPrompt = `${htmlSkill}
-
+${templateInstructions}
 ---
 
 ### Structured Data (SOURCE OF TRUTH)
@@ -903,12 +1116,24 @@ This JSON contains ALL data for rendering. Iterate through each field and render
 Only render sections for fields that have data. Do not invent sections not in this JSON.
 <structured_data>
 ${structuredDataContent}
-</structured_data>`;
+</structured_data>
+${organInsightsContent ? `
+### Organ-by-Organ Insights (ENRICHMENT — use to enhance organ/system sections)
+Use these insights to add clinical depth to relevant sections (systemsHealth, diagnoses, connections).
+Render an "Organ Health Details" section with collapsible cards for each organ listed below.
+Do NOT create sections for organs not listed here.
+<organ_insights>
+${organInsightsContent}
+</organ_insights>` : ''}`;
 
       // Log payload size for debugging network issues
       const payloadSizeKB = Math.round(htmlPrompt.length / 1024);
       console.log(`[AgenticDoctor] HTML prompt payload: ${payloadSizeKB}KB (${htmlPrompt.length} chars)`);
       yield { type: 'log', message: `Generating interactive HTML experience (${payloadSizeKB}KB payload)...` };
+
+      const htmlGenId = `gen-html-generation-${sessionId}`;
+      const htmlStartTime = Date.now();
+      try { this.obs.startGeneration(htmlGenId, { name: 'html-generation', traceId, parentSpanId: PipelinePhase.HtmlGeneration, model: REALM_CONFIG.models.html }); } catch { /* non-fatal */ }
 
       let htmlContent = await streamWithRetry(
         this.llmClient,
@@ -918,8 +1143,11 @@ ${structuredDataContent}
         {
           operationName: 'HTMLGeneration',
           maxRetries: 3,
+          billingContext: this.billingContext,
         }
       );
+
+      try { this.obs.endGeneration(htmlGenId, { outputCharCount: htmlContent.length, latencyMs: Date.now() - htmlStartTime }); } catch { /* non-fatal */ }
 
       if (htmlContent.trim().length === 0) {
         throw new Error('LLM returned empty HTML');
@@ -929,7 +1157,9 @@ ${structuredDataContent}
       htmlContent = htmlContent.trim();
 
       // Strip any thinking text before <!DOCTYPE
-      const doctypeIndex = htmlContent.indexOf('<!DOCTYPE');
+      // Use lastIndexOf: the LLM sometimes mentions <!DOCTYPE in its thinking,
+      // so the real one is the last occurrence.
+      const doctypeIndex = htmlContent.lastIndexOf('<!DOCTYPE');
       if (doctypeIndex > 0) {
         console.log(`[AgenticDoctor] Stripping ${doctypeIndex} chars of thinking text from HTML`);
         htmlContent = htmlContent.slice(doctypeIndex);
@@ -951,12 +1181,14 @@ ${structuredDataContent}
       console.log(`[AgenticDoctor] HTML report: ${htmlContent.length} chars`);
 
       yield { type: 'log', message: 'Initial HTML generation complete.' };
+      endSpan(PipelinePhase.HtmlGeneration, { chars: htmlContent.length });
       yield { type: 'step', name: 'Report Generation', status: 'completed' };
 
       // ========================================================================
       // Phase 7: Content Review
       // Compares structured_data.json against index.html to identify information loss
       // ========================================================================
+      startSpan(PipelinePhase.ContentReview);
       yield { type: 'step', name: 'Content Review', status: 'running' };
       yield { type: 'log', message: 'Reviewing HTML for completeness...' };
 
@@ -1032,17 +1264,26 @@ ${htmlContent}
 
         console.log(`[AgenticDoctor] Content review prompt payload: ${Math.round(reviewPrompt.length / 1024)}KB`);
 
+        const crGenId = `gen-content-review-${sessionId}`;
+        const crStartTime = Date.now();
+        try { this.obs.startGeneration(crGenId, { name: 'content-review', traceId, parentSpanId: PipelinePhase.ContentReview, model: REALM_CONFIG.models.doctor }); } catch { /* non-fatal */ }
+
         let reviewContent = '';
         const reviewStream = await this.llmClient.sendMessageStream(
           reviewPrompt,
           `${sessionId}-content-review`,
           undefined,
-          { model: REALM_CONFIG.models.doctor }
+          {
+            model: REALM_CONFIG.models.doctor,
+            billingContext: this.billingContext,
+          }
         );
 
         for await (const chunk of reviewStream) {
           reviewContent += chunk;
         }
+
+        try { this.obs.endGeneration(crGenId, { outputCharCount: reviewContent.length, latencyMs: Date.now() - crStartTime }); } catch { /* non-fatal */ }
 
         if (reviewContent.trim().length === 0) {
           throw new Error('Content review returned empty');
@@ -1112,11 +1353,13 @@ ${htmlContent}
           }
         }
 
+        endSpan(PipelinePhase.ContentReview, { passed: contentReviewResult.overall.passed });
         yield { type: 'step', name: 'Content Review', status: 'completed' };
 
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error('[AgenticDoctor] Content review failed:', errorMessage);
+        endSpan(PipelinePhase.ContentReview, { error: errorMessage });
         yield { type: 'log', message: `Content review failed: ${errorMessage}. Proceeding with current HTML.` };
         yield { type: 'step', name: 'Content Review', status: 'failed' };
         contentReviewResult = { overall: { passed: true, summary: '', action: 'pass' } }; // Skip patching on error
@@ -1127,15 +1370,18 @@ ${htmlContent}
       // If content review found issues, regenerate HTML with feedback
       // ========================================================================
       if (contentReviewResult.overall.action === 'regenerate_with_feedback' && contentReviewResult.overall.feedback_for_regeneration) {
+        startSpan(PipelinePhase.HtmlRegeneration);
         yield { type: 'step', name: 'HTML Regeneration', status: 'running' };
         yield { type: 'log', message: 'Regenerating HTML with reviewer feedback...' };
 
         try {
           const htmlSkill = loadHTMLBuilderSkill();
+          const reportTemplate = await loadReportTemplate();
+          const templateInstructions = createTemplateInstructions(reportTemplate);
 
           // Build regeneration prompt with feedback
           const regenPrompt = `${htmlSkill}
-
+${templateInstructions}
 ---
 
 ## REGENERATION TASK
@@ -1179,6 +1425,11 @@ ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Structured D
 <structured_data>
 ${structuredDataContent}
 </structured_data>
+${organInsightsContent ? `
+### Organ-by-Organ Insights (ENRICHMENT)
+<organ_insights>
+${organInsightsContent}
+</organ_insights>` : ''}
 
 ## CRITICAL INSTRUCTIONS
 
@@ -1193,22 +1444,31 @@ ${structuredDataContent}
 
           console.log(`[AgenticDoctor] Regeneration prompt payload: ${Math.round(regenPrompt.length / 1024)}KB`);
 
+          const regenGenId = `gen-html-regeneration-${sessionId}`;
+          const regenStartTime = Date.now();
+          try { this.obs.startGeneration(regenGenId, { name: 'html-regeneration', traceId, parentSpanId: PipelinePhase.HtmlRegeneration, model: REALM_CONFIG.models.html }); } catch { /* non-fatal */ }
+
           let regenHtml = '';
           const regenStream = await this.llmClient.sendMessageStream(
             regenPrompt,
             `${sessionId}-html-regen`,
             undefined,
-            { model: REALM_CONFIG.models.html }
+            {
+              model: REALM_CONFIG.models.html,
+              billingContext: this.billingContext,
+            }
           );
 
           for await (const chunk of regenStream) {
             regenHtml += chunk;
           }
 
+          try { this.obs.endGeneration(regenGenId, { outputCharCount: regenHtml.length, latencyMs: Date.now() - regenStartTime }); } catch { /* non-fatal */ }
+
           if (regenHtml.trim().length > 0) {
             // Clean up regenerated HTML
             regenHtml = regenHtml.trim();
-            const regenDoctypeIndex = regenHtml.indexOf('<!DOCTYPE');
+            const regenDoctypeIndex = regenHtml.lastIndexOf('<!DOCTYPE');
             if (regenDoctypeIndex > 0) {
               regenHtml = regenHtml.slice(regenDoctypeIndex);
             }
@@ -1235,28 +1495,67 @@ ${structuredDataContent}
             yield { type: 'log', message: 'Regeneration returned empty, keeping original HTML.' };
           }
 
+          endSpan(PipelinePhase.HtmlRegeneration);
           yield { type: 'step', name: 'HTML Regeneration', status: 'completed' };
 
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error('[AgenticDoctor] HTML regeneration failed:', errorMessage);
+          endSpan(PipelinePhase.HtmlRegeneration, { error: errorMessage });
           yield { type: 'log', message: `HTML regeneration failed: ${errorMessage}. Using original HTML.` };
           yield { type: 'step', name: 'HTML Regeneration', status: 'failed' };
+        }
+      }
+
+      // Inject 3D body twin viewer if organ insights are available
+      if (organInsightsContent) {
+        try {
+          const bodyTwinData = transformOrganInsightsToBodyTwin(organInsightsContent);
+          htmlContent = injectBodyTwinViewer(htmlContent, bodyTwinData);
+          await this.storage.writeFile(realmPath, htmlContent, 'text/html');
+          console.log(`[AgenticDoctor] Injected 3D body twin viewer`);
+          yield { type: 'log', message: 'Injected 3D body twin viewer into HTML.' };
+
+          // Copy 3D organ model to realm directory so it's served alongside the HTML
+          try {
+            const glbSource = OrganModel.localSourcePath();
+            const glbBuffer = fs.readFileSync(glbSource);
+            const glbDestPath = `realms/${realmId}/${OrganModel.FILENAME}`;
+            await this.storage.writeFile(glbDestPath, glbBuffer, OrganModel.CONTENT_TYPE);
+            console.log(`[AgenticDoctor] Copied 3D organ model to ${glbDestPath} (${(glbBuffer.length / 1024 / 1024).toFixed(1)}MB)`);
+          } catch (glbErr) {
+            const glbMsg = glbErr instanceof Error ? glbErr.message : String(glbErr);
+            console.warn(`[AgenticDoctor] GLB copy failed (non-critical): ${glbMsg}`);
+          }
+        } catch (btErr) {
+          const msg = btErr instanceof Error ? btErr.message : String(btErr);
+          console.warn(`[AgenticDoctor] Body twin injection failed (non-critical): ${msg}`);
         }
       }
 
       // Return the realm URL
       const realmUrl = `/realms/${realmId}/index.html`;
 
+      console.log(`[AgenticDoctor] Pipeline complete. Realm: ${realmUrl}`);
       yield { type: 'log', message: `N1 Care Report ready: ${realmUrl}` };
       yield { type: 'result', url: realmUrl };
+
+      // Score trace as success
+      try { this.obs.scoreTrace(traceId, 'pipeline_success', 1, 'Pipeline completed successfully'); } catch { /* non-fatal */ }
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[AgenticDoctor] HTML generation failed:', errorMessage);
+      endSpan(PipelinePhase.HtmlGeneration, { error: errorMessage });
       yield { type: 'log', message: `Report generation failed: ${errorMessage}` };
       yield { type: 'step', name: 'Report Generation', status: 'failed' };
       yield { type: 'error', content: `Report generation failed: ${errorMessage}` };
+
+      // Score trace as failure
+      try { this.obs.scoreTrace(traceId, 'pipeline_success', 0, errorMessage); } catch { /* non-fatal */ }
     }
+
+    // Flush observability data — best-effort, never blocks
+    try { this.obs.flush().catch(() => {}); } catch { /* non-fatal */ }
   }
 }

@@ -1,7 +1,6 @@
-import fastify from 'fastify';
+import fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
-import fastifyStatic from '@fastify/static';
 import path from 'path';
 import fs from 'fs';
 import { pipeline } from 'stream/promises';
@@ -11,9 +10,66 @@ import { SendChatUseCase } from '../../application/use-cases/send-chat.use-case.
 import { AgenticDoctorUseCase } from '../../application/use-cases/agentic-doctor.use-case.js';
 import { ResearchSectionUseCase } from '../../application/use-cases/research-section.use-case.js';
 import type { StoragePort } from '../../application/ports/storage.port.js';
-import { UploadPaths } from '../../common/storage-paths.js';
+import type { ObservabilityPort } from '../../application/ports/observability.port.js';
+import type { BillingContext } from '../../utils/billing.js';
+import { LegacyPaths } from '../../common/storage-paths.js';
+import { transformOrganInsightsToBodyTwin } from '../../services/body-twin-transformer.service.js';
 
-export async function createServer(storage: StoragePort) {
+const MISSING_BILLING_CONTEXT_ERROR = 'Missing billing context header: x-subject-user-id';
+type BillingAwareRequest = FastifyRequest & { billingContext?: BillingContext };
+
+export function getHeaderValue(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return typeof value[0] === 'string' ? value[0] : undefined;
+  }
+  return undefined;
+}
+
+export function extractBillingContext(headers: Record<string, unknown>): BillingContext | undefined {
+  const userId = getHeaderValue(headers['x-subject-user-id']);
+  const chrId = getHeaderValue(headers['x-chr-id']);
+  if (!userId) {
+    return undefined;
+  }
+
+  return {
+    userId,
+    ...(chrId && { chrId }),
+  };
+}
+
+export function isMissingBillingContextAllowed(): boolean {
+  return process.env.ALLOW_MISSING_BILLING_CONTEXT === 'true';
+}
+
+async function requireBillingContext(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
+  const billingContext = extractBillingContext(request.headers as Record<string, unknown>);
+  if (!billingContext && !isMissingBillingContextAllowed()) {
+    reply.status(400).send({
+      error: MISSING_BILLING_CONTEXT_ERROR,
+    });
+    return;
+  }
+  if (!billingContext) {
+    request.log.warn(`Missing billing context for ${request.url} request`);
+  }
+
+  (request as BillingAwareRequest).billingContext = billingContext;
+}
+
+function getBillingContextFromRequest(
+  request: FastifyRequest,
+): BillingContext | undefined {
+  return (request as BillingAwareRequest).billingContext;
+}
+
+export async function createServer(storage: StoragePort, observability?: ObservabilityPort) {
   const server = fastify({
     logger: true,
   });
@@ -29,10 +85,77 @@ export async function createServer(storage: StoragePort) {
     }
   });
 
-  // Serve generated realms statically
-  await server.register(fastifyStatic, {
-    root: path.join(process.cwd(), 'storage', 'realms'),
-    prefix: '/realms/',
+  // Serve generated realms via StoragePort (works with local filesystem and S3)
+  server.get('/realms/:realmId/*', async (request, reply) => {
+    const { realmId, '*': filePath } = request.params as { realmId: string; '*': string };
+    const storagePath = `realms/${realmId}/${filePath || 'index.html'}`;
+
+    try {
+      if (!(await storage.exists(storagePath))) {
+        return reply.status(404).send({ error: 'Not found' });
+      }
+
+      const content = await storage.readFile(storagePath);
+      const ext = (filePath || 'index.html').split('.').pop()?.toLowerCase();
+      const contentType = ext === 'html' ? 'text/html'
+        : ext === 'json' ? 'application/json'
+        : ext === 'css' ? 'text/css'
+        : ext === 'js' ? 'application/javascript'
+        : ext === 'glb' ? 'model/gltf-binary'
+        : ext === 'gltf' ? 'model/gltf+json'
+        : 'application/octet-stream';
+
+      const cacheHeader = (ext === 'glb' || ext === 'gltf') ? 'public, max-age=86400' : 'no-cache';
+      return reply.header('Content-Type', contentType).header('Cache-Control', cacheHeader).send(content);
+    } catch (error) {
+      request.log.error(error);
+      return reply.status(500).send({ error: 'Failed to serve realm file' });
+    }
+  });
+
+  // Serve 3D model files from client/public/models/
+  server.get('/models/:fileName', async (request, reply) => {
+    const { fileName } = request.params as { fileName: string };
+
+    // Directory traversal protection
+    if (fileName.includes('..') || fileName.includes('/') || fileName.includes('\\')) {
+      return reply.status(400).send({ error: 'Invalid file name' });
+    }
+
+    const modelsDir = path.join(process.cwd(), '..', 'client', 'public', 'models');
+    const filePath = path.join(modelsDir, fileName);
+
+    // Ensure resolved path is within modelsDir
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(path.resolve(modelsDir))) {
+      return reply.status(400).send({ error: 'Invalid file path' });
+    }
+
+    try {
+      if (!fs.existsSync(resolved)) {
+        return reply.status(404).send({ error: 'Model not found' });
+      }
+
+      const ext = path.extname(fileName).toLowerCase();
+      const contentType = ext === '.glb' ? 'model/gltf-binary'
+        : ext === '.gltf' ? 'model/gltf+json'
+        : 'application/octet-stream';
+
+      const fileBuffer = fs.readFileSync(resolved);
+      return reply
+        .header('Content-Type', contentType)
+        .header('Cache-Control', 'public, max-age=86400')
+        .send(fileBuffer);
+    } catch (error) {
+      request.log.error(error);
+      return reply.status(500).send({ error: 'Failed to serve model file' });
+    }
+  });
+
+  // Redirect /realms/:realmId to /realms/:realmId/index.html
+  server.get('/realms/:realmId', async (request, reply) => {
+    const { realmId } = request.params as { realmId: string };
+    return reply.redirect(`/realms/${realmId}/index.html`);
   });
 
   // Dependency Injection
@@ -42,16 +165,13 @@ export async function createServer(storage: StoragePort) {
   const sendChatUseCase = new SendChatUseCase(geminiAdapter);
   const researchSectionUseCase = new ResearchSectionUseCase(geminiAdapter);
 
-  // Initialize the Agentic Doctor Use Case with storage
-  const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter, storage);
-  await agenticDoctorUseCase.initialize();
-
-  server.post('/api/chat', async (request, reply) => {
+  server.post('/api/chat', { preHandler: requireBillingContext }, async (request, reply) => {
     const { message, sessionId } = request.body as { message: string, sessionId?: string };
     const finalSessionId = sessionId || 'default-session';
+    const billingContext = getBillingContextFromRequest(request);
 
     try {
-      const stream = await sendChatUseCase.execute(message, finalSessionId);
+      const stream = await sendChatUseCase.execute(message, finalSessionId, billingContext);
       const readableStream = Readable.from(stream);
       return reply.send(readableStream);
     } catch (error) {
@@ -69,11 +189,15 @@ export async function createServer(storage: StoragePort) {
     },
   };
 
-  server.post('/api/research', { schema: { body: researchBodySchema } }, async (request, reply) => {
+  server.post('/api/research', {
+    preHandler: requireBillingContext,
+    schema: { body: researchBodySchema },
+  }, async (request, reply) => {
     const { sectionContext, userQuery } = request.body as { sectionContext: string, userQuery?: string };
+    const billingContext = getBillingContextFromRequest(request);
 
     try {
-      const stream = researchSectionUseCase.execute(sectionContext, userQuery);
+      const stream = researchSectionUseCase.execute(sectionContext, userQuery, billingContext);
       const readableStream = Readable.from(stream);
       return reply.send(readableStream);
     } catch (error) {
@@ -82,7 +206,8 @@ export async function createServer(storage: StoragePort) {
     }
   });
 
-  server.post('/api/realm', async (request, reply) => {
+  server.post('/api/realm', { preHandler: requireBillingContext }, async (request, reply) => {
+    const billingContext = getBillingContextFromRequest(request);
     const parts = request.parts();
     const uploadedFilePaths: string[] = [];
     let prompt = "Visualize this document.";
@@ -107,6 +232,12 @@ export async function createServer(storage: StoragePort) {
     }
 
     try {
+      const agenticDoctorUseCase = new AgenticDoctorUseCase(geminiAdapter, storage, observability);
+      if (billingContext) {
+        agenticDoctorUseCase.setBillingContext(billingContext);
+      }
+      await agenticDoctorUseCase.initialize();
+
       // Set SSE headers
       reply.raw.setHeader('Content-Type', 'text/event-stream');
       reply.raw.setHeader('Cache-Control', 'no-cache');
@@ -129,6 +260,29 @@ export async function createServer(storage: StoragePort) {
       reply.raw.write(`event: error\n`);
       reply.raw.write(`data: ${JSON.stringify({ error: 'Internal Server Error' })}\n\n`);
       reply.raw.end();
+    }
+  });
+
+  // Body Twin API — serves pre-computed body-twin.json, falls back to on-the-fly transform
+  server.get('/api/realms/:realmId/body-twin', async (request, reply) => {
+    try {
+      // Try pre-computed body-twin.json
+      if (await storage.exists(LegacyPaths.bodyTwin)) {
+        const bodyTwinJson = await storage.readFileAsString(LegacyPaths.bodyTwin);
+        return reply.header('Content-Type', 'application/json').send(bodyTwinJson);
+      }
+
+      // Fallback: transform organ_insights.md on-the-fly
+      if (await storage.exists(LegacyPaths.organInsights)) {
+        const organInsightsMd = await storage.readFileAsString(LegacyPaths.organInsights);
+        const bodyTwinData = transformOrganInsightsToBodyTwin(organInsightsMd);
+        return reply.send(bodyTwinData);
+      }
+
+      return reply.status(404).send({ error: 'Body twin data not available' });
+    } catch (error) {
+      request.log.error(error);
+      return reply.status(500).send({ error: 'Failed to retrieve body twin data' });
     }
   });
 

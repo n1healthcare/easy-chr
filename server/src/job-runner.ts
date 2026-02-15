@@ -32,9 +32,13 @@ import { setupOtel } from './otel.js';
 try { setupOtel(); } catch { /* OTEL is optional — never crash */ }
 
 import dotenv from 'dotenv';
+import { getLogger, createChildLogger, installConsoleBridge, type AppLogger } from './logger.js';
 
 // Load environment variables from .env file (if present)
 dotenv.config();
+
+const rootLogger = getLogger();
+installConsoleBridge(rootLogger);
 
 // Convert standard OPENAI env vars to Gemini-specific ones
 // This allows forge-sentinel to be agnostic about Gemini
@@ -43,7 +47,7 @@ if (process.env.OPENAI_API_KEY) {
   process.env.GEMINI_API_KEY = process.env.OPENAI_API_KEY;
 } else if (!process.env.GEMINI_API_KEY) {
   // Neither is set - let the service throw the error
-  console.warn('Warning: Neither OPENAI_API_KEY nor GEMINI_API_KEY is set');
+  rootLogger.warn('Neither OPENAI_API_KEY nor GEMINI_API_KEY is set');
 }
 
 // OPENAI_BASE_URL takes priority - if present, it overwrites GOOGLE_GEMINI_BASE_URL
@@ -53,7 +57,7 @@ if (process.env.OPENAI_BASE_URL) {
   process.env.GOOGLE_GEMINI_BASE_URL = baseUrl;
 } else if (!process.env.GOOGLE_GEMINI_BASE_URL) {
   // Neither is set - let the service throw the error
-  console.warn('Warning: Neither OPENAI_BASE_URL nor GOOGLE_GEMINI_BASE_URL is set');
+  rootLogger.warn('Neither OPENAI_BASE_URL nor GOOGLE_GEMINI_BASE_URL is set');
 }
 
 // Set billing headers for LiteLLM cost tracking via vendored gemini-cli
@@ -74,16 +78,14 @@ import { AgenticDoctorUseCase } from './application/use-cases/agentic-doctor.use
 import { FetchAndProcessPDFsUseCase } from './application/use-cases/fetch-and-process-pdfs.use-case.js';
 import { RetryableError, ValidationError } from './common/exceptions.js';
 import { withRetry } from './common/retry.js';
-import { REALM_CONFIG } from './config.js';
+import { REALM_CONFIG, getModelInventory } from './config.js';
 import { createStorageAdapterFromEnv } from './adapters/storage/storage.factory.js';
 import { PrefixedStorageAdapter } from './adapters/storage/prefixed-storage.adapter.js';
-import { LegacyPaths, ProductionPaths } from './common/storage-paths.js';
+import { RetryableStorageAdapter } from './adapters/storage/retryable-storage.adapter.js';
+import { LegacyPaths, OrganModel, ProductionPaths } from './common/storage-paths.js';
 import type { StoragePort } from './application/ports/storage.port.js';
-import { getLogger, createChildLogger, type AppLogger } from './logger.js';
 import path from 'path';
 import fs from 'fs';
-
-const rootLogger = getLogger();
 
 // ============================================================================
 // Environment Configuration
@@ -102,8 +104,7 @@ const ENVIRONMENT = getEnvironment();
 const IS_DEVELOPMENT = ENVIRONMENT === 'development';
 const SKIP_UPLOADS = IS_DEVELOPMENT;
 const SKIP_PROGRESS_TRACKING = IS_DEVELOPMENT;
-const MIN_STORAGE_WRITE_RETRIES = 5;
-const MIN_SIGNED_URL_RETRIES = 3;
+const MIN_STORAGE_EXISTS_RETRIES = 3;
 
 // ============================================================================
 // Blindspot Feedback Widget (staging only)
@@ -150,8 +151,12 @@ function injectBlindspotWidget(html: string): string {
     const idx = html.lastIndexOf('</body>');
     if (idx === -1) return html + widget;
     return html.slice(0, idx) + widget + '\n' + html.slice(idx);
-  } catch {
-    console.warn('[Blindspot] Failed to inject widget, returning original HTML');
+  } catch (error) {
+    if (error instanceof Error) {
+      rootLogger.warn(error, '[Blindspot] Failed to inject widget, returning original HTML');
+    } else {
+      rootLogger.warn({ error: String(error) }, '[Blindspot] Failed to inject widget, returning original HTML');
+    }
     return html;
   }
 }
@@ -178,12 +183,13 @@ interface ProgressUpdate {
 }
 
 // Map our pipeline steps to N1 API progress stages
+// IMPORTANT: These must be monotonically increasing. Phase-level progress
+// (PHASE_PROGRESS_MAP) fills the gap between 'analyzing' (20%) and 'uploading' (90%).
 const PROGRESS_MAP: Record<string, ProgressUpdate> = {
   initializing:      { stage: 'Preparing',  progress: 5,   message: 'Setting up AI pipeline...' },
-  fetching_records:  { stage: 'Preparing',  progress: 15,  message: 'Retrieving your medical records...' },
-  analyzing:         { stage: 'Analyzing',  progress: 30,  message: 'Analyzing your health data...' },
-  generating_report: { stage: 'Writing',    progress: 60,  message: 'Building your health report...' },
-  uploading:         { stage: 'Finalizing', progress: 85,  message: 'Saving your report...' },
+  fetching_records:  { stage: 'Preparing',  progress: 10,  message: 'Retrieving your medical records...' },
+  analyzing:         { stage: 'Analyzing',  progress: 20,  message: 'Analyzing your health data...' },
+  uploading:         { stage: 'Finalizing', progress: 90,  message: 'Saving your report...' },
   completed:         { stage: 'Complete',   progress: 100, message: 'Your health report is ready!' },
   failed:            { stage: 'Has Error',  progress: 0,   message: 'Report generation failed' },
 };
@@ -192,7 +198,6 @@ const OPERATION_BY_STEP: Record<keyof typeof PROGRESS_MAP, string> = {
   initializing: 'internal',
   fetching_records: 'data_fetch',
   analyzing: 'analysis',
-  generating_report: 'report_generation',
   uploading: 'file_upload',
   completed: 'report_generation',
   failed: 'report_generation',
@@ -200,16 +205,78 @@ const OPERATION_BY_STEP: Record<keyof typeof PROGRESS_MAP, string> = {
 
 // Map AgenticDoctorUseCase phase names to progress updates
 // These phases are yielded as { type: 'step', name: '...', status: 'running'|'completed'|'failed' }
+// IMPORTANT: Values must be monotonically increasing and fit between
+// the outer notifyProgress calls: 'analyzing' (20%) ... 'uploading' (92%)
+//
+// Time-proportional distribution (Medical Analysis ~45% of runtime, Validation ~12%):
+//   Phase                    Start%   End%     Runtime
+//   Document Extraction       22       25       ~3 min
+//   Medical Analysis          25       55       ~15 min (35 cycles, interpolated)
+//   Research                  55       63       ~4 min
+//   Data Structuring          63       68       ~2 min
+//   Validation                68       78       ~4 min (15 cycles, interpolated)
+//   Organ Insights            78       81       ~1 min
+//   Report Generation         81       86       ~2 min
+//   Content Review            86       89       ~1 min
+//   HTML Regeneration         89       92       ~1 min (conditional)
 const PHASE_PROGRESS_MAP: Record<string, ProgressUpdate> = {
-  'Document Extraction':    { stage: 'Preparing',  progress: 15,  message: 'Extracting content from your documents...' },
-  'Medical Analysis':       { stage: 'Analyzing',  progress: 30,  message: 'Performing medical analysis...' },
-  'Research':               { stage: 'Analyzing',  progress: 45,  message: 'Researching and validating claims...' },
-  'Data Structuring':       { stage: 'Writing',    progress: 55,  message: 'Structuring data for visualization...' },
-  'Validation':             { stage: 'Checking',   progress: 65,  message: 'Validating analysis completeness...' },
-  'Realm Generation':       { stage: 'Finalizing', progress: 80,  message: 'Building your interactive health realm...' },
-  'Content Review':         { stage: 'Checking',   progress: 90,  message: 'Reviewing content completeness...' },
-  'HTML Regeneration':      { stage: 'Finalizing', progress: 95,  message: 'Refining the health realm...' },
+  'Document Extraction':    { stage: 'Preparing',  progress: 22,  message: 'Extracting content from your documents...' },
+  'Medical Analysis':       { stage: 'Analyzing',  progress: 25,  message: 'Performing medical analysis...' },
+  'Research':               { stage: 'Analyzing',  progress: 55,  message: 'Researching and validating claims...' },
+  'Data Structuring':       { stage: 'Writing',    progress: 63,  message: 'Structuring data for visualization...' },
+  'Validation':             { stage: 'Checking',   progress: 68,  message: 'Validating analysis completeness...' },
+  'Organ Insights':         { stage: 'Analyzing',  progress: 78,  message: 'Generating organ-by-organ insights...' },
+  'Report Generation':      { stage: 'Finalizing', progress: 81,  message: 'Building your interactive health report...' },
+  'Content Review':         { stage: 'Checking',   progress: 86,  message: 'Reviewing content completeness...' },
+  'HTML Regeneration':      { stage: 'Finalizing', progress: 89,  message: 'Refining the health report...' },
 };
+
+// Phases with iterative cycles get sub-phase progress interpolation.
+// Maps phase name → { endProgress, cyclePattern } for parsing log messages.
+const INTERPOLATED_PHASES: Record<string, { endProgress: number; cyclePattern: RegExp; userMessage: string }> = {
+  'Medical Analysis': { endProgress: 55, cyclePattern: /cycle (\d+)\/(\d+)/, userMessage: 'Analyzing your health data...' },
+  'Validation':       { endProgress: 78, cyclePattern: /cycle (\d+)\/(\d+)/, userMessage: 'Validating analysis completeness...' },
+};
+
+// Validate that all progress values are strictly monotonic to prevent regressions.
+// Catches misconfigurations at startup rather than silently failing downstream.
+const _validateProgressValues = () => {
+  const phaseOrder = [
+    'Document Extraction',
+    'Medical Analysis',
+    'Research',
+    'Data Structuring',
+    'Validation',
+    'Organ Insights',
+    'Report Generation',
+    'Content Review',
+    'HTML Regeneration',
+  ];
+
+  for (const name of phaseOrder) {
+    if (!PHASE_PROGRESS_MAP[name]) {
+      throw new Error(`Missing phase in PHASE_PROGRESS_MAP: ${name}`);
+    }
+  }
+
+  const allSteps = [
+    PROGRESS_MAP.initializing,
+    PROGRESS_MAP.fetching_records,
+    PROGRESS_MAP.analyzing,
+    ...phaseOrder.map(name => PHASE_PROGRESS_MAP[name]),
+    PROGRESS_MAP.uploading,
+    PROGRESS_MAP.completed,
+  ].map(s => s.progress);
+
+  for (let i = 1; i < allSteps.length; i++) {
+    if (allSteps[i] <= allSteps[i - 1]) {
+      throw new Error(
+        `Progress values are not strictly monotonic: ${allSteps[i - 1]} -> ${allSteps[i]}`
+      );
+    }
+  }
+};
+_validateProgressValues();
 
 // ============================================================================
 // Exit Codes + Error Classification
@@ -455,6 +522,48 @@ async function notifyPhaseProgress(
   }
 }
 
+/**
+ * Send sub-phase progress update for interpolated cycle-based progress.
+ * Used within long iterative phases (Medical Analysis, Validation) to
+ * report granular progress based on cycle X/Y log messages.
+ */
+async function notifySubPhaseProgress(
+  config: { n1ApiBaseUrl: string; n1ApiKey: string; userId: string; chrId: string },
+  progress: number,
+  stage: ProgressStage,
+  message: string
+): Promise<void> {
+  rootLogger.info({ stage, progress }, message);
+
+  if (SKIP_PROGRESS_TRACKING) return;
+
+  const payload: Record<string, unknown> = {
+    report_id: config.chrId,
+    user_id: config.userId,
+    progress,
+    status: 'in_progress',
+    message,
+    progress_stage: stage,
+  };
+
+  try {
+    const response = await fetch(`${config.n1ApiBaseUrl}/reports/status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'N1-Api-Key': config.n1ApiKey,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      rootLogger.warn({ statusCode: response.status }, `Sub-phase progress API call failed: ${await response.text()}`);
+    }
+  } catch (error) {
+    rootLogger.warn(error, 'Sub-phase progress API error');
+  }
+}
+
 dotenv.config();
 
 interface JobConfig {
@@ -522,7 +631,36 @@ function validateEnvironment(): JobConfig {
 }
 
 async function runJob() {
-  rootLogger.info({ startedAt: new Date().toISOString(), environment: ENVIRONMENT, skipUploads: SKIP_UPLOADS, skipProgressTracking: SKIP_PROGRESS_TRACKING }, 'N1 Interface - Job Runner starting');
+  const modelInventory = getModelInventory();
+  if (Object.keys(modelInventory.ignoredEnvOverrides).length > 0) {
+    rootLogger.warn(
+      { ignoredModelEnvOverrides: modelInventory.ignoredEnvOverrides },
+      'Ignoring deprecated model env overrides due to defaults-only model policy',
+    );
+  }
+
+  rootLogger.info(
+    {
+      configuration: {
+        runtime: {
+          startedAt: new Date().toISOString(),
+          environment: ENVIRONMENT,
+          skipUploads: SKIP_UPLOADS,
+          skipProgressTracking: SKIP_PROGRESS_TRACKING,
+          modelPolicy: modelInventory.policy,
+          resolvedModels: modelInventory.resolvedModels,
+          ignoredModelEnvOverrides: modelInventory.ignoredEnvOverrides,
+          observability: {
+            otelEnabled: process.env.OTEL_ENABLED ?? 'false',
+            otelExporterOtlpEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? '',
+            otelServiceName: process.env.OTEL_SERVICE_NAME ?? 'easy-chr',
+            observabilityEnabled: process.env.OBSERVABILITY_ENABLED ?? 'false',
+          },
+        },
+      },
+    },
+    'Effective runtime configuration resolved',
+  );
 
   let config: JobConfig;
   try {
@@ -575,7 +713,11 @@ async function runJob() {
     // Create storage adapters:
     // - baseStorage: raw S3/local adapter for production paths (users/{userId}/chr/...)
     // - scopedStorage: prefixed adapter for pipeline files (users/{userId}/easychr_files/...)
-    const baseStorage = createStorageAdapterFromEnv();
+    const rawStorage = createStorageAdapterFromEnv();
+    const baseStorage = new RetryableStorageAdapter(rawStorage, {
+      ...REALM_CONFIG.retry.api,
+      maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, 5),
+    });
     const intermediatesPrefix = `users/${config.userId}/easychr_files`;
     const scopedStorage = new PrefixedStorageAdapter(baseStorage, intermediatesPrefix);
     const storageProvider = process.env.STORAGE_PROVIDER ?? 'local';
@@ -604,16 +746,26 @@ async function runJob() {
     logger.info('[4/5] Processing PDFs through multi-agent pipeline...');
     const generator = fetchAndProcessUseCase.execute(config.userId, config.prompt);
 
+    // Track current phase for sub-phase progress interpolation
+    let currentPhaseName = '';
+    let lastReportedProgress = 20; // Start after 'analyzing' (20%)
+
     for await (const event of generator) {
       if (event.type === 'step') {
         // Handle phase progress updates from AgenticDoctorUseCase
         const phaseName = 'name' in event ? event.name : '';
         const phaseStatus = 'status' in event ? event.status : '';
 
-        if (phaseStatus === 'running' && phaseName && PHASE_PROGRESS_MAP[phaseName]) {
-          logger.info({ phase: phaseName, status: 'running' }, `Phase started: ${phaseName}`);
-          // Send granular progress update to N1 API
-          await notifyPhaseProgress(config, phaseName);
+        if (phaseStatus === 'running' && phaseName) {
+          currentPhaseName = phaseName;
+
+          if (PHASE_PROGRESS_MAP[phaseName]) {
+            logger.info({ phase: phaseName, status: 'running' }, `Phase started: ${phaseName}`);
+            await notifyPhaseProgress(config, phaseName);
+            lastReportedProgress = PHASE_PROGRESS_MAP[phaseName].progress;
+          } else {
+            logger.warn({ phase: phaseName }, 'Phase not in PHASE_PROGRESS_MAP');
+          }
         } else if (phaseStatus === 'completed') {
           logger.info({ phase: phaseName, status: 'completed' }, `Phase completed: ${phaseName}`);
         } else if (phaseStatus === 'failed') {
@@ -622,7 +774,30 @@ async function runJob() {
       } else if (event.type === 'thought') {
         logger.debug({ eventType: 'thought' }, `${'content' in event ? event.content : ''}`);
       } else if (event.type === 'log') {
-        logger.info({ eventType: 'log' }, `${'message' in event ? event.message : ''}`);
+        const logMessage = 'message' in event ? (event.message || '') : '';
+        logger.info({ eventType: 'log' }, logMessage);
+
+        // Sub-phase progress: interpolate within long iterative phases
+        const interpolation = INTERPOLATED_PHASES[currentPhaseName];
+        if (interpolation) {
+          const match = logMessage.match(interpolation.cyclePattern);
+          if (match) {
+            const cycle = parseInt(match[1], 10);
+            const totalCycles = parseInt(match[2], 10);
+            if (totalCycles > 0) {
+              const phaseStart = PHASE_PROGRESS_MAP[currentPhaseName]?.progress ?? lastReportedProgress;
+              const phaseEnd = interpolation.endProgress;
+              const interpolatedProgress = Math.round(phaseStart + (cycle / totalCycles) * (phaseEnd - phaseStart));
+
+              // Only send if progress actually advanced (avoid API spam)
+              if (interpolatedProgress > lastReportedProgress) {
+                lastReportedProgress = interpolatedProgress;
+                const phaseEntry = PHASE_PROGRESS_MAP[currentPhaseName];
+                await notifySubPhaseProgress(config, interpolatedProgress, phaseEntry?.stage ?? 'Analyzing', interpolation.userMessage);
+              }
+            }
+          }
+        }
       } else if (event.type === 'result') {
         realmPath = 'url' in event ? event.url : '';
         logger.info({ realmPath }, 'Realm generated');
@@ -637,7 +812,6 @@ async function runJob() {
       throw new Error('No realm was generated');
     }
 
-    await notifyProgress(config, 'generating_report');
     logger.info('Processing complete');
 
     // Extract realm ID from path and read HTML from storage
@@ -673,31 +847,76 @@ async function runJob() {
 
       // Write to production path using baseStorage (not scoped)
       logger.info({ prodPath }, 'Writing to production path');
-      await withRetry(
-        () => baseStorage.writeFile(prodPath, htmlContent, 'text/html'),
-        {
-          ...REALM_CONFIG.retry.api,
-          maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_WRITE_RETRIES),
-          operationName: 'Storage.writeFile',
-        }
-      );
+      await baseStorage.writeFile(prodPath, htmlContent, 'text/html');
 
       // Verify the file was written successfully
-      const writeVerified = await baseStorage.exists(prodPath);
-      if (!writeVerified) {
-        throw new Error(`Failed to verify write to S3: ${prodPath}`);
-      }
-      logger.info({ prodPath }, 'Write verified');
-
-      // Get signed URL for access
-      publicUrl = await withRetry(
-        () => baseStorage.getSignedUrl(prodPath),
+      await withRetry(
+        async () => {
+          const exists = await rawStorage.exists(prodPath);
+          if (!exists) {
+            throw new RetryableError(`Storage.exists returned false for ${prodPath}`);
+          }
+          return true;
+        },
         {
           ...REALM_CONFIG.retry.api,
-          maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_SIGNED_URL_RETRIES),
-          operationName: 'Storage.getSignedUrl',
+          maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_EXISTS_RETRIES),
+          operationName: 'Storage.exists',
         }
       );
+      logger.info({ prodPath }, 'Write verified');
+
+      // Copy 3D organ model to production path and inject signed URL into HTML
+      try {
+        const glbScopedPath = `realms/${realmId}/${OrganModel.FILENAME}`;
+        const glbExists = await scopedStorage.exists(glbScopedPath);
+        if (glbExists) {
+          const glbBuffer = await scopedStorage.readFile(glbScopedPath);
+          const glbProdPath = ProductionPaths.userChr(config.userId, config.chrId, OrganModel.FILENAME);
+          await withRetry(
+            () => baseStorage.writeFile(glbProdPath, glbBuffer, OrganModel.CONTENT_TYPE),
+            {
+              ...REALM_CONFIG.retry.api,
+              maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_EXISTS_RETRIES),
+              operationName: 'Storage.writeFile(GLB)',
+            }
+          );
+          logger.info({ glbProdPath, sizeBytes: glbBuffer.length }, '3D organ model copied to production');
+
+          // Generate signed URL for the GLB and inject into HTML
+          // (S3 requires signed URLs — relative paths won't work)
+          const glbSignedUrl = await withRetry(
+            () => baseStorage.getSignedUrl(glbProdPath),
+            {
+              ...REALM_CONFIG.retry.api,
+              maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_EXISTS_RETRIES),
+              operationName: 'Storage.getSignedUrl(GLB)',
+            }
+          );
+          htmlContent = htmlContent.replace(OrganModel.FILENAME, glbSignedUrl);
+          // Re-write HTML with the signed GLB URL
+          await withRetry(
+            () => baseStorage.writeFile(prodPath, htmlContent, 'text/html'),
+            {
+              ...REALM_CONFIG.retry.api,
+              maxRetries: Math.max(REALM_CONFIG.retry.api.maxRetries, MIN_STORAGE_EXISTS_RETRIES),
+              operationName: 'Storage.writeFile(HTML+GLB)',
+            }
+          );
+          logger.info('HTML updated with signed GLB URL');
+        } else {
+          logger.warn({ glbScopedPath }, '3D organ model not found in scoped storage, skipping');
+        }
+      } catch (glbErr) {
+        if (glbErr instanceof Error) {
+          logger.warn(glbErr, '3D organ model copy failed (non-critical)');
+        } else {
+          logger.warn({ error: String(glbErr) }, '3D organ model copy failed (non-critical)');
+        }
+      }
+
+      // Get signed URL for access
+      publicUrl = await baseStorage.getSignedUrl(prodPath);
 
       logger.info({ prodPath }, 'Uploaded to production');
     }
@@ -721,13 +940,25 @@ async function runJob() {
       errorInfo.errorCode
     );
 
-    logger.error({
-      failedAt: new Date().toISOString(),
-      errorCode: errorInfo.errorCode,
-      retryable: errorInfo.retryable,
-      exitCode: errorInfo.exitCode,
-      err: error,
-    }, 'Job failed');
+    logger.error(
+      {
+        failedAt: new Date().toISOString(),
+        errorCode: errorInfo.errorCode,
+        retryable: errorInfo.retryable,
+        exitCode: errorInfo.exitCode,
+        error:
+          error instanceof Error
+            ? {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+              }
+            : {
+                message: String(error),
+              },
+      },
+      'Job failed',
+    );
 
     process.exit(errorInfo.exitCode);
   }

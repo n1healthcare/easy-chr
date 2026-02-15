@@ -20,6 +20,8 @@ export type { S3StorageConfig } from './s3-storage.adapter.js';
 
 export { PrefixedStorageAdapter } from './prefixed-storage.adapter.js';
 
+export { RetryableStorageAdapter } from './retryable-storage.adapter.js';
+
 // Factory
 export {
   createStorageAdapter,

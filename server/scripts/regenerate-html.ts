@@ -16,6 +16,8 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { GeminiAdapter } from '../src/adapters/gemini/gemini.adapter.js';
 import { REALM_CONFIG } from '../src/config.js';
+import { transformOrganInsightsToBodyTwin } from '../src/services/body-twin-transformer.service.js';
+import { injectBodyTwinViewer } from '../src/utils/inject-body-twin.js';
 
 function loadSkill(skillName: string): string {
   const skillPath = path.join(
@@ -79,18 +81,35 @@ async function regenerateHtml(userPrompt?: string) {
     }
   }
 
-  // Load structured data (the only required file)
+  // Load structured data (required)
   console.log('Loading structured data...');
   const structuredDataContent = fs.readFileSync(path.join(storageDir, 'structured_data.json'), 'utf-8');
 
+  // Load organ insights (optional — enriches HTML with organ health section)
+  const organInsightsPath = path.join(storageDir, 'organ_insights.md');
+  let organInsightsContent = '';
+  if (fs.existsSync(organInsightsPath)) {
+    organInsightsContent = fs.readFileSync(organInsightsPath, 'utf-8');
+
+    // Persist body-twin.json from organ insights
+    try {
+      const bodyTwinData = transformOrganInsightsToBodyTwin(organInsightsContent);
+      fs.writeFileSync(path.join(storageDir, 'body-twin.json'), JSON.stringify(bodyTwinData, null, 2), 'utf-8');
+      console.log(`✅ Body twin data persisted: ${bodyTwinData.organs.length} organs`);
+    } catch (err) {
+      console.warn(`Body twin transform failed (non-critical): ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   console.log(`Loaded:
-  - structured_data.json: ${structuredDataContent.length} chars`);
+  - structured_data.json: ${structuredDataContent.length} chars
+  - organ_insights.md: ${organInsightsContent ? `${organInsightsContent.length} chars` : 'not found (skipping)'}`);
 
   // Load HTML builder skill
   const htmlSkill = loadSkill('html-builder');
   console.log(`Loaded html-builder skill: ${htmlSkill.length} chars`);
 
-  // Build the prompt - DATA-DRIVEN: only structured_data.json
+  // Build the prompt
   const prompt = userPrompt || '';
   const htmlPrompt = `${htmlSkill}
 
@@ -101,7 +120,12 @@ This JSON contains ALL data for rendering. Iterate through each field and render
 Only render sections for fields that have data. Do not invent sections not in this JSON.
 <structured_data>
 ${structuredDataContent}
-</structured_data>`;
+</structured_data>
+${organInsightsContent ? `
+### Organ-by-Organ Insights
+<organ_insights>
+${organInsightsContent}
+</organ_insights>` : ''}`;
 
   console.log(`\nGenerating HTML... (payload: ${Math.round(htmlPrompt.length / 1024)}KB)`);
   console.log(`Using model: ${REALM_CONFIG.models.html}`);
@@ -375,6 +399,11 @@ ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Structured D
 <structured_data>
 ${structuredDataContent}
 </structured_data>
+${organInsightsContent ? `
+### Organ-by-Organ Insights
+<organ_insights>
+${organInsightsContent}
+</organ_insights>` : ''}
 
 ## CRITICAL INSTRUCTIONS
 
@@ -431,11 +460,23 @@ ${structuredDataContent}
     console.log('\nPhase 8: HTML Regeneration - Skipped (all dimensions passed)');
   }
 
+  // Inject 3D body twin viewer
+  if (organInsightsContent) {
+    try {
+      const bodyTwinData = transformOrganInsightsToBodyTwin(organInsightsContent);
+      htmlContent = injectBodyTwinViewer(htmlContent, bodyTwinData);
+      fs.writeFileSync(htmlPath, htmlContent, 'utf-8');
+      console.log(`[BodyTwin] Injected 3D body twin viewer`);
+    } catch (err) {
+      console.warn(`[BodyTwin] Injection failed (non-critical): ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   console.log(`\n${'='.repeat(60)}`);
   console.log('✅ All phases complete!');
   console.log(`${'='.repeat(60)}`);
   console.log(`📁 HTML saved to: ${htmlPath}`);
-  console.log(`🌐 View at: http://localhost:5173/realms/${realmId}/index.html`);
+  console.log(`🌐 View HTML: http://localhost:3000/realms/${realmId}/index.html`);
 }
 
 // Run

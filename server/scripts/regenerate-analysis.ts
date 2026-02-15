@@ -19,12 +19,14 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { GeminiAdapter } from '../src/adapters/gemini/gemini.adapter.js';
-import { AgenticMedicalAnalyst } from '../src/services/agentic-medical-analyst.service.js';
-import { AgenticValidator } from '../src/services/agentic-validator.service.js';
-import { researchClaims, formatResearchAsMarkdown, type ResearchOutput } from '../src/services/research-agent.service.js';
+import { AgenticMedicalAnalyst, type AnalystEvent } from '../src/services/agentic-medical-analyst.service.js';
+import { AgenticValidator, type ValidatorEvent } from '../src/services/agentic-validator.service.js';
+import { researchClaims, formatResearchAsMarkdown, type ResearchOutput, type ResearchEvent } from '../src/services/research-agent.service.js';
 import { REALM_CONFIG } from '../src/config.js';
 import { extractSourceExcerpts } from '../src/utils/source-excerpts.js';
 import { deepMergeJsonPatch } from '../src/utils/json-patch-merge.js';
+import { transformOrganInsightsToBodyTwin } from '../src/services/body-twin-transformer.service.js';
+import { injectBodyTwinViewer } from '../src/utils/inject-body-twin.js';
 
 function loadSkill(skillName: string): string {
   const skillPath = path.join(
@@ -148,7 +150,7 @@ async function regenerateAnalysis(userPrompt?: string) {
 
   let result = await analysisGenerator.next();
   while (!result.done) {
-    const event = result.value;
+    const event = result.value as AnalystEvent;
     switch (event.type) {
       case 'log':
         console.log(`  ${event.data.message || ''}`);
@@ -192,7 +194,7 @@ async function regenerateAnalysis(userPrompt?: string) {
   let researchOutput: ResearchOutput = { researchedClaims: [], unsupportedClaims: [], additionalFindings: [] };
   let researchMarkdown = '';
 
-  const geminiConfig = gemini.getConfig();
+  const geminiConfig = await gemini.getConfig();
   if (geminiConfig) {
     console.log('Validating claims with external sources...');
     const researchGenerator = researchClaims(
@@ -203,7 +205,7 @@ async function regenerateAnalysis(userPrompt?: string) {
 
     let researchResult = await researchGenerator.next();
     while (!researchResult.done) {
-      const event = researchResult.value;
+      const event = researchResult.value as ResearchEvent;
       switch (event.type) {
         case 'claim_extracted':
         case 'searching':
@@ -314,7 +316,7 @@ ${researchMarkdown}
 
     let validationResult = await validationGenerator.next();
     while (!validationResult.done) {
-      const event = validationResult.value;
+      const event = validationResult.value as ValidatorEvent;
       switch (event.type) {
         case 'log':
           console.log(`  ${event.data.message || ''}`);
@@ -491,6 +493,40 @@ Output the JSON PATCH now (starting with \`{\`):`;
   console.log(`✅ Phase 5 complete: validation.md (${correctionCycle} correction cycles applied)`);
 
   // ========================================================================
+  // Phase 5b: Organ Insights + Body Twin
+  // ========================================================================
+  console.log('\n' + '='.repeat(60));
+  console.log('Phase 5b: Organ Insights + Body Twin');
+  console.log('='.repeat(60));
+
+  let organInsightsContent = '';
+  try {
+    const organInsightsSkill = loadSkill('organ-insights');
+    const organInsightsPrompt = `${organInsightsSkill}
+
+---
+
+### Structured Data (Validated Source of Truth)
+<structured_data>
+${structuredDataContent}
+</structured_data>
+
+${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}`;
+
+    organInsightsContent = await streamWithRetry(gemini, organInsightsPrompt, `${sessionId}-organ-insights`, REALM_CONFIG.models.doctor, 'OrganInsights');
+    organInsightsContent = stripThinkingText(organInsightsContent, '# Organ');
+    fs.writeFileSync(path.join(storageDir, 'organ_insights.md'), organInsightsContent, 'utf-8');
+    console.log(`✅ Organ insights complete: ${organInsightsContent.length} chars`);
+
+    // Body twin
+    const bodyTwinData = transformOrganInsightsToBodyTwin(organInsightsContent);
+    fs.writeFileSync(path.join(storageDir, 'body-twin.json'), JSON.stringify(bodyTwinData, null, 2), 'utf-8');
+    console.log(`✅ Body twin data: ${bodyTwinData.organs.length} organs`);
+  } catch (err) {
+    console.warn(`Organ insights failed (non-critical): ${err instanceof Error ? err.message : err}`);
+  }
+
+  // ========================================================================
   // Phase 6: HTML Generation
   // ========================================================================
   console.log('\n' + '='.repeat(60));
@@ -512,7 +548,12 @@ This JSON contains ALL data for rendering. Iterate through each field and render
 Only render sections for fields that have data. Do not invent sections not in this JSON.
 <structured_data>
 ${structuredDataContent}
-</structured_data>`;
+</structured_data>
+${organInsightsContent ? `
+### Organ-by-Organ Insights
+<organ_insights>
+${organInsightsContent}
+</organ_insights>` : ''}`;
 
   console.log(`Generating HTML... (payload: ${Math.round(htmlPrompt.length / 1024)}KB)`);
   let htmlContent = await streamWithRetry(gemini, htmlPrompt, `${sessionId}-html`, REALM_CONFIG.models.html, 'HTMLGeneration');
@@ -642,6 +683,11 @@ ${contentReviewResult.overall.feedback_for_regeneration}
 <structured_data>
 ${structuredDataContent}
 </structured_data>
+${organInsightsContent ? `
+### Organ-by-Organ Insights
+<organ_insights>
+${organInsightsContent}
+</organ_insights>` : ''}
 
 ## CRITICAL: Address EVERY issue. Include ALL specific values from the JSON. Output complete HTML now.`;
 
@@ -671,6 +717,18 @@ ${structuredDataContent}
     }
   } else if (contentReviewResult.overall.passed) {
     console.log('\nPhase 8: HTML Regeneration - Skipped (all dimensions passed)');
+  }
+
+  // Inject 3D body twin viewer
+  if (organInsightsContent) {
+    try {
+      const bodyTwinData = transformOrganInsightsToBodyTwin(organInsightsContent);
+      htmlContent = injectBodyTwinViewer(htmlContent, bodyTwinData);
+      fs.writeFileSync(htmlPath, htmlContent, 'utf-8');
+      console.log(`[BodyTwin] Injected 3D body twin viewer`);
+    } catch (err) {
+      console.warn(`[BodyTwin] Injection failed (non-critical): ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   console.log(`\n${'='.repeat(60)}`);

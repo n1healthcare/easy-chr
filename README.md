@@ -173,10 +173,10 @@ Key variables in `server/.env` (see `.env.example` for the full list):
 |----------|---------|---------|
 | `GEMINI_API_KEY` | Google Gemini API key (required) | — |
 | `GOOGLE_GEMINI_BASE_URL` | API endpoint (Google direct or LiteLLM proxy) | `https://generativelanguage.googleapis.com` |
-| `MARKDOWN_MODEL` | Phase 1 extraction model | `gemini-2.5-flash` |
-| `INTERMEDIATE_MODEL` | Analysis/synthesis model | `gemini-3-pro-preview` |
-| `HTML_MODEL` | HTML generation model | `gemini-3-flash-preview` |
-| `DOCTOR_MODEL` | Agentic analysis model (falls back to INTERMEDIATE_MODEL) | — |
+| `MARKDOWN_MODEL` | Deprecated override (ignored; defaults-only policy) | `gemini-2.5-flash` |
+| `INTERMEDIATE_MODEL` | Deprecated override (ignored; defaults-only policy) | `gemini-3-pro-preview` |
+| `HTML_MODEL` | Deprecated override (ignored; defaults-only policy) | `gemini-3-flash-preview` |
+| `DOCTOR_MODEL` | Deprecated override (ignored; defaults-only policy) | `gemini-3-pro-preview` |
 | `STORAGE_PROVIDER` | `local`, `s3`, or `gcs` | `local` |
 
 ## API

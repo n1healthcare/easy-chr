@@ -24,6 +24,8 @@ import {
   type BillingContext,
 } from '../utils/genai-factory.js';
 import { ChatCompressionService } from './chat-compression.service.js';
+import type { ObservabilityPort } from '../application/ports/observability.port.js';
+import { NoopObservabilityAdapter } from '../adapters/langfuse/noop-observability.adapter.js';
 
 // ============================================================================
 // Skill Loader
@@ -258,7 +260,7 @@ const ANALYST_TOOLS = [
  * Extract dates from text using multiple patterns
  * Returns dates in ISO format (YYYY-MM-DD, YYYY-MM, or YYYY)
  */
-function extractDatesFromText(text: string): Array<{ date: string; year: number; month?: number; day?: number; context: string }> {
+export function extractDatesFromText(text: string): Array<{ date: string; year: number; month?: number; day?: number; context: string }> {
   const dates: Array<{ date: string; year: number; month?: number; day?: number; context: string }> = [];
   const lines = text.split('\n');
 
@@ -334,7 +336,7 @@ function extractDatesFromText(text: string): Array<{ date: string; year: number;
 /**
  * Parse extracted content into sections with temporal awareness
  */
-function parseExtractedData(extractedContent: string): ParsedExtractedData {
+export function parseExtractedData(extractedContent: string): ParsedExtractedData {
   const sections: DocumentSection[] = [];
   const lines = extractedContent.split('\n');
 
@@ -481,7 +483,7 @@ const MIN_EXPECTED_SECTIONS = 3;
 // Tool Execution
 // ============================================================================
 
-class AnalystToolExecutor {
+export class AnalystToolExecutor {
   private parsedData: ParsedExtractedData;
   private currentAnalysis: Map<string, string> = new Map();
 
@@ -1059,11 +1061,22 @@ export class AgenticMedicalAnalyst {
   private genai: GoogleGenAI;
   private model: string;
   private compressionService: ChatCompressionService;
+  private readonly obs: ObservabilityPort;
+  private readonly traceId: string;
+  private readonly parentSpanId: string;
 
-  constructor(billingContext?: BillingContext) {
+  constructor(
+    billingContext?: BillingContext,
+    observability?: ObservabilityPort,
+    traceId?: string,
+    parentSpanId?: string,
+  ) {
     this.genai = createGoogleGenAI(billingContext);
     this.model = REALM_CONFIG.models.doctor;
     this.compressionService = new ChatCompressionService(this.genai, billingContext);
+    this.obs = observability ?? new NoopObservabilityAdapter();
+    this.traceId = traceId ?? '';
+    this.parentSpanId = parentSpanId ?? '';
     console.log(`[AgenticAnalyst] Initialized with model: ${this.model}`);
   }
 
@@ -1135,6 +1148,10 @@ export class AgenticMedicalAnalyst {
       }
 
       try {
+        // Observability: track each generateContent call
+        const genId = `gen-analyst-cycle-${iteration}`;
+        try { this.obs.startGeneration(genId, { name: `cycle-${iteration}`, traceId: this.traceId, parentSpanId: this.parentSpanId, model: this.model }); } catch { /* non-fatal */ }
+
         // Call the model with tools
         const response = await retryLLM(
           () => this.genai.models.generateContent({
@@ -1146,6 +1163,18 @@ export class AgenticMedicalAnalyst {
           }),
           { operationName: 'AgenticAnalyst.generateContent' }
         );
+
+        // Observability: record token usage from response
+        try {
+          const usage = (response as unknown as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata;
+          this.obs.endGeneration(genId, {
+            usage: usage ? {
+              promptTokens: usage.promptTokenCount,
+              completionTokens: usage.candidatesTokenCount,
+              totalTokens: usage.totalTokenCount,
+            } : undefined,
+          });
+        } catch { /* non-fatal */ }
 
         // Check for function calls
         // Access parts directly from candidates to get thoughtSignature (sibling to functionCall)
@@ -1302,6 +1331,9 @@ export class AgenticMedicalAnalyst {
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
+        // End the generation with error status
+        try { this.obs.endGeneration(`gen-analyst-cycle-${iteration}`, { level: 'ERROR', statusMessage: errorMessage }); } catch { /* non-fatal */ }
+
         yield {
           type: 'error',
           data: { message: `Error in iteration ${iteration}: ${errorMessage}` },
@@ -1345,21 +1377,24 @@ export class AgenticMedicalAnalyst {
 
   private buildSystemPrompt(patientContext?: string): string {
     // Load the comprehensive skill from file (includes task instructions and placeholders)
-    let prompt = loadMedicalAnalysisSkill();
+    const prompt = loadMedicalAnalysisSkill();
+    return applyPatientContext(prompt, patientContext);
+  }
+}
 
-    // Substitute the {{patient_question}} placeholder in SKILL.md
-    // This ensures patient context appears BEFORE "Begin Exploration" command
-    if (patientContext) {
-      // Remove the {{#if}} and {{/if}} markers, keep the content, substitute the variable
-      prompt = prompt
-        .replace(/\{\{#if patient_question\}\}/g, '')
-        .replace(/\{\{\/if\}\}/g, '')
-        .replace(/\{\{patient_question\}\}/g, patientContext);
-    } else {
-      // Remove the entire conditional block if no patient context
-      prompt = prompt.replace(/\{\{#if patient_question\}\}[\s\S]*?\{\{\/if\}\}/g, '');
-    }
-
-    return prompt;
+/**
+ * Apply patient context to a skill template.
+ * Exported for testing the template substitution logic independently.
+ */
+export function applyPatientContext(prompt: string, patientContext?: string): string {
+  if (patientContext) {
+    // Remove the {{#if}} and {{/if}} markers, keep the content, substitute the variable
+    return prompt
+      .replace(/\{\{#if patient_question\}\}/g, '')
+      .replace(/\{\{\/if\}\}/g, '')
+      .replace(/\{\{patient_question\}\}/g, patientContext);
+  } else {
+    // Remove the entire conditional block if no patient context
+    return prompt.replace(/\{\{#if patient_question\}\}[\s\S]*?\{\{\/if\}\}/g, '');
   }
 }

@@ -1,4 +1,5 @@
 import { LLMClientPort } from '../../application/ports/llm-client.port.js';
+import type { LLMStreamOptions } from '../../application/ports/llm-client.port.js';
 import { Config, ConfigParameters } from '../../../vendor/gemini-cli/packages/core/src/config/config.js';
 import { GeminiChat, StreamEventType } from '../../../vendor/gemini-cli/packages/core/src/core/geminiChat.js';
 import { DEFAULT_GEMINI_MODEL } from '../../../vendor/gemini-cli/packages/core/src/config/models.js';
@@ -7,31 +8,38 @@ import { AuthType } from '../../../vendor/gemini-cli/packages/core/src/core/cont
 import path from 'path';
 import fs from 'fs';
 import { retryLLM } from '../../common/index.js';
+import type { BillingContext } from '../../utils/billing.js';
+import { createBillingHeaders } from '../../utils/billing.js';
+import { getLogger } from '../../logger.js';
+import { REALM_CONFIG, getModelInventory } from '../../config.js';
 
 const DEFAULT_GEMINI_STREAM_TIMEOUT_MS = 120000;
+const logger = getLogger().child({ component: 'GeminiAdapter' });
 
 export class GeminiAdapter implements LLMClientPort {
-  private config: Config | null = null;
+  private configByBillingKey: Map<string, Config> = new Map();
+  private configInitPromises: Map<string, Promise<Config>> = new Map();
   private chatSessions: Map<string, GeminiChat> = new Map();
 
   /**
    * Get the underlying Config object for advanced agent operations.
-   * Must be called after initialize().
+   * Lazily initializes a billing-scoped config if needed.
    */
-  getConfig(): Config {
-    if (!this.config) {
-      throw new Error('GeminiAdapter not initialized. Call initialize() first.');
-    }
-    return this.config;
+  async getConfig(billingContext?: BillingContext): Promise<Config> {
+    const { config } = await this.getOrCreateConfig(billingContext);
+    return config;
   }
 
-  async initialize(): Promise<void> {
-    const model = process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
-    console.log(`Using Gemini Model: ${model}`);
+  private getBillingKey(billingContext?: BillingContext): string {
+    if (!billingContext?.userId) {
+      return 'default';
+    }
+    return `${billingContext.userId}:${billingContext.chrId || ''}`;
+  }
 
-    // Get the web search model from env, defaulting to MARKDOWN_MODEL or gemini-3-flash-preview
-    const webSearchModel = process.env.WEB_SEARCH_MODEL || process.env.MARKDOWN_MODEL || 'gemini-3-flash-preview';
-    console.log(`Using Web Search Model: ${webSearchModel}`);
+  private async createConfig(billingContext?: BillingContext): Promise<Config> {
+    const model = REALM_CONFIG.models.intermediate || DEFAULT_GEMINI_MODEL;
+    const webSearchModel = REALM_CONFIG.models.markdown || 'gemini-3-flash-preview';
 
     // Create custom model config that overrides web-search to use an available model
     // The default uses gemini-2.5-flash which may not be available on all LiteLLM proxies
@@ -49,54 +57,115 @@ export class GeminiAdapter implements LLMClientPort {
       overrides: DEFAULT_MODEL_CONFIGS.overrides,
     };
 
+    const customHeaders = billingContext?.userId
+      ? createBillingHeaders(billingContext)
+      : undefined;
     const configParams: ConfigParameters = {
       sessionId: 'default-session', // This is just for config init
       targetDir: process.cwd(),
       cwd: process.cwd(),
       debugMode: true,
-      model: model,
+      model,
       retryFetchErrors: true, // Enable retry on "fetch failed" network errors
       modelConfigServiceConfig,
+      customHeaders,
     };
 
-    this.config = new Config(configParams);
-    await this.config.initialize();
-    
+    const config = new Config(configParams);
+    await config.initialize();
+
     // Initialize authentication
-    await this.config.refreshAuth(AuthType.USE_GEMINI);
-    console.log('Gemini Adapter initialized successfully.');
+    await config.refreshAuth(AuthType.USE_GEMINI);
+    return config;
   }
 
-  async sendMessageStream(message: string, sessionId: string, filePaths?: string[], options?: { model?: string, tools?: any[] }): Promise<AsyncGenerator<string, void, unknown>> {
-    if (!this.config) {
-      throw new Error('GeminiAdapter not initialized');
+  private async getOrCreateConfig(
+    billingContext?: BillingContext,
+  ): Promise<{ config: Config; billingKey: string }> {
+    const billingKey = this.getBillingKey(billingContext);
+    const existingConfig = this.configByBillingKey.get(billingKey);
+    if (existingConfig) {
+      return { config: existingConfig, billingKey };
     }
+
+    const inFlight = this.configInitPromises.get(billingKey);
+    if (inFlight) {
+      const config = await inFlight;
+      return { config, billingKey };
+    }
+
+    const initPromise = this.createConfig(billingContext)
+      .then((config) => {
+        this.configByBillingKey.set(billingKey, config);
+        this.configInitPromises.delete(billingKey);
+        return config;
+      })
+      .catch((error) => {
+        this.configInitPromises.delete(billingKey);
+        throw error;
+      });
+
+    this.configInitPromises.set(billingKey, initPromise);
+    const config = await initPromise;
+    return { config, billingKey };
+  }
+
+  async initialize(): Promise<void> {
+    // Warm default (no billing context) config.
+    await this.getOrCreateConfig();
+
+    const model = REALM_CONFIG.models.intermediate || DEFAULT_GEMINI_MODEL;
+    const webSearchModel = REALM_CONFIG.models.markdown || 'gemini-3-flash-preview';
+    const modelInventory = getModelInventory();
+    if (Object.keys(modelInventory.ignoredEnvOverrides).length > 0) {
+      logger.warn(
+        { ignoredModelEnvOverrides: modelInventory.ignoredEnvOverrides },
+        'Ignoring deprecated model env overrides due to defaults-only model policy',
+      );
+    }
+    if (process.env.GEMINI_MODEL || process.env.WEB_SEARCH_MODEL) {
+      logger.warn(
+        {
+          ignoredGeminiModelOverrides: {
+            GEMINI_MODEL: process.env.GEMINI_MODEL ?? '',
+            WEB_SEARCH_MODEL: process.env.WEB_SEARCH_MODEL ?? '',
+          },
+        },
+        'Ignoring GEMINI_MODEL and WEB_SEARCH_MODEL env overrides due to defaults-only model policy',
+      );
+    }
+    logger.info({ model, webSearchModel }, 'Gemini Adapter initialized successfully');
+  }
+
+  async sendMessageStream(message: string, sessionId: string, filePaths?: string[], options?: LLMStreamOptions): Promise<AsyncGenerator<string, void, unknown>> {
+    const { config, billingKey } = await this.getOrCreateConfig(options?.billingContext);
+    const scopedSessionId = `${billingKey}:${sessionId}`;
 
     // If tools are provided, create a new chat session with tools (don't cache it)
     // Otherwise, use the cached session
     let chat: GeminiChat;
     if (options?.tools && options.tools.length > 0) {
       chat = new GeminiChat(
-        this.config,
+        config,
         'You are a helpful assistant.',
         options.tools,
         []  // History - fresh session for tool-based requests
       );
     } else {
-      chat = this.chatSessions.get(sessionId);
+      chat = this.chatSessions.get(scopedSessionId);
       if (!chat) {
         chat = new GeminiChat(
-          this.config,
+          config,
           'You are a helpful assistant.',
           [], // Tools
           []  // History
         );
-        this.chatSessions.set(sessionId, chat);
+        this.chatSessions.set(scopedSessionId, chat);
       }
     }
 
     const modelConfigKey = {
-      model: options?.model || this.config.getModel() || DEFAULT_GEMINI_MODEL
+      model: options?.model || config.getModel() || DEFAULT_GEMINI_MODEL
     };
 
     const controller = new AbortController();
@@ -146,14 +215,20 @@ export class GeminiAdapter implements LLMClientPort {
     // Per-chunk inactivity timeout: resets every time a chunk arrives.
     // Detects stalled streams without killing long-running active generations.
     let timeoutHandle = setTimeout(() => {
-      console.warn(`[GeminiAdapter] Stream stalled — no chunks received for ${streamTimeoutMs}ms; aborting.`);
+      logger.warn(
+        { streamTimeoutMs },
+        'Stream stalled — no chunks received; aborting Gemini stream',
+      );
       controller.abort();
     }, streamTimeoutMs);
 
     function resetTimeout() {
       clearTimeout(timeoutHandle);
       timeoutHandle = setTimeout(() => {
-        console.warn(`[GeminiAdapter] Stream stalled — no chunks received for ${streamTimeoutMs}ms; aborting.`);
+        logger.warn(
+          { streamTimeoutMs },
+          'Stream stalled — no chunks received; aborting Gemini stream',
+        );
         controller.abort();
       }, streamTimeoutMs);
     }

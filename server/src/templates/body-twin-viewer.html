@@ -1,0 +1,1988 @@
+<!-- 3D Body Twin Viewer — J.A.R.V.I.S. Holographic Edition -->
+<style>
+/* ── JARVIS Base & Keyframes ── */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --j-cyan: #1B6971;
+  --j-cyan-dim: rgba(27,105,113,0.1);
+  --j-cyan-glow: rgba(27,105,113,0.3);
+  --j-blue: #196067;
+  --j-blue-dim: rgba(25,96,103,0.08);
+  --j-dark: #B8D1D3;
+  --j-panel: rgba(27,105,113,0.08);
+  --j-panel-border: rgba(27,105,113,0.22);
+  --j-text: #0F3A3E;
+  --j-text-dim: rgba(15,58,62,0.55);
+  --j-accent: #196067;
+  --j-warning: #cc7700;
+  --j-critical: #cc2222;
+  --j-optimal: #00885a;
+  --j-font: 'Rajdhani', 'Segoe UI', sans-serif;
+  --j-font-display: 'Orbitron', monospace;
+}
+
+@keyframes bt-slide-down {
+  from { transform: translateY(-100%); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+
+@keyframes j-rotate { to { transform: rotate(360deg); } }
+@keyframes j-rotate-rev { to { transform: rotate(-360deg); } }
+@keyframes j-pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+@keyframes j-scan {
+  0% { top: -2px; }
+  100% { top: 100%; }
+}
+@keyframes j-flicker {
+  0%,100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.3; }
+  94% { opacity: 1; }
+  96% { opacity: 0.6; }
+  97% { opacity: 1; }
+}
+@keyframes j-border-glow {
+  0%,100% { box-shadow: 0 0 8px var(--j-cyan-glow), inset 0 0 4px rgba(27,105,113,0.08); }
+  50% { box-shadow: 0 0 18px var(--j-cyan-glow), inset 0 0 8px rgba(27,105,113,0.12); }
+}
+@keyframes j-data-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes j-glow-pulse {
+  0%,100% { text-shadow: 0 0 8px var(--j-cyan-glow); }
+  50% { text-shadow: 0 0 20px var(--j-cyan), 0 0 40px var(--j-cyan-glow); }
+}
+
+/* ── Landing Page ── */
+body:has(#bt-landing:not([style*="display: none"])) {
+  overflow: hidden;
+}
+#bt-landing {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #E8F0F1 0%, #96BABE 40%, #134B50 60%, #0B2C2F 100%);
+  font-family: var(--j-font);
+  animation: bt-landing-in 0.6s ease-out;
+}
+@keyframes bt-landing-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes bt-landing-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+#bt-landing.dismissing {
+  animation: bt-landing-out 0.5s ease-in forwards;
+  pointer-events: none;
+}
+#bt-landing-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 40px;
+  max-width: 960px;
+  width: 100%;
+  padding: 40px 24px;
+}
+#bt-landing-header {
+  text-align: center;
+}
+#bt-landing-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: rgba(27,105,113,0.15);
+  border: 1.5px solid rgba(27,105,113,0.3);
+  font-family: var(--j-font-display);
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--j-cyan);
+  letter-spacing: 0.05em;
+  margin-bottom: 16px;
+}
+#bt-landing-title {
+  font-family: var(--j-font-display);
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: #0F3A3E;
+  margin: 0 0 8px 0;
+  background: linear-gradient(90deg, #0F3A3E 0%, #1B6971 50%, #96BABE 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+#bt-landing-sub {
+  font-size: 0.95rem;
+  color: rgba(15,58,62,0.6);
+  margin: 0;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+#bt-landing-panes {
+  display: flex;
+  gap: 28px;
+  width: 100%;
+  justify-content: center;
+}
+.bt-landing-pane {
+  position: relative;
+  flex: 1;
+  max-width: 400px;
+  min-height: 320px;
+  border-radius: 24px;
+  padding: 40px 32px 32px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+  border: none;
+  transition: transform 0.35s cubic-bezier(0.22,1,0.36,1), box-shadow 0.35s ease;
+  font-family: var(--j-font);
+  overflow: hidden;
+}
+.bt-landing-pane:hover {
+  transform: translateY(-6px) scale(1.02);
+}
+.bt-landing-pane:active {
+  transform: translateY(-2px) scale(0.99);
+}
+
+/* Dark pane (Report Overview) */
+.bt-pane-dark {
+  background: rgba(11,44,47,0.7);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1.5px solid rgba(27,105,113,0.3);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.25), 0 0 30px rgba(27,105,113,0.08), inset 0 1px 0 rgba(255,255,255,0.06);
+  color: #B8D1D3;
+}
+.bt-pane-dark:hover {
+  box-shadow: 0 16px 60px rgba(0,0,0,0.35), 0 0 40px rgba(27,105,113,0.12), inset 0 1px 0 rgba(255,255,255,0.1);
+  border-color: rgba(27,105,113,0.45);
+}
+.bt-pane-dark .bt-pane-icon {
+  color: #49878D;
+}
+.bt-pane-dark .bt-pane-label {
+  color: #E8F0F1;
+}
+.bt-pane-dark .bt-pane-desc {
+  color: rgba(184,209,211,0.6);
+}
+.bt-pane-dark .bt-pane-tag {
+  background: rgba(27,105,113,0.25);
+  color: #49878D;
+  border: 1px solid rgba(27,105,113,0.35);
+}
+
+/* Light pane (3D Twin) */
+.bt-pane-light {
+  background: rgba(184,209,211,0.45);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1.5px solid rgba(27,105,113,0.2);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.06), 0 0 30px rgba(27,105,113,0.06), inset 0 1px 0 rgba(255,255,255,0.35);
+  color: #0F3A3E;
+}
+.bt-pane-light:hover {
+  box-shadow: 0 16px 60px rgba(0,0,0,0.1), 0 0 40px rgba(27,105,113,0.1), inset 0 1px 0 rgba(255,255,255,0.4);
+  border-color: rgba(27,105,113,0.35);
+}
+.bt-pane-light .bt-pane-icon {
+  color: var(--j-cyan);
+}
+.bt-pane-light .bt-pane-label {
+  color: #0F3A3E;
+}
+.bt-pane-light .bt-pane-desc {
+  color: rgba(15,58,62,0.55);
+}
+.bt-pane-light .bt-pane-tag {
+  background: rgba(11,44,47,0.85);
+  color: #E8F0F1;
+  border: 1px solid rgba(19,75,80,0.9);
+}
+
+/* Pane shared sub-elements */
+.bt-pane-icon {
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20px;
+  margin-bottom: 4px;
+}
+.bt-pane-dark .bt-pane-icon { background: rgba(27,105,113,0.15); }
+.bt-pane-light .bt-pane-icon { background: rgba(27,105,113,0.1); }
+.bt-pane-label {
+  font-family: var(--j-font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+.bt-pane-desc {
+  font-size: 0.88rem;
+  line-height: 1.5;
+  max-width: 280px;
+}
+.bt-pane-tag {
+  display: inline-block;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-family: var(--j-font-display);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  margin-top: auto;
+}
+
+/* Landing responsive */
+@media (max-width: 680px) {
+  #bt-landing-panes {
+    flex-direction: column;
+    align-items: center;
+  }
+  .bt-landing-pane {
+    max-width: 100%;
+    min-height: 220px;
+    padding: 28px 24px 24px;
+  }
+  #bt-landing-title { font-size: 1.2rem; }
+}
+
+/* ── Toggle Button (floating on report) ── */
+#bt-toggle-wrap {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+#bt-toggle-btn {
+  padding: 10px 20px;
+  border-radius: 12px;
+  border: 1px solid var(--j-cyan);
+  background: var(--j-panel);
+  backdrop-filter: blur(10px);
+  color: var(--j-cyan);
+  cursor: pointer;
+  box-shadow: 0 0 10px var(--j-cyan-glow);
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--j-font-display);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  animation: j-border-glow 3s ease-in-out infinite;
+}
+#bt-toggle-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 18px var(--j-cyan-glow);
+  border-color: var(--j-text);
+  color: var(--j-text);
+}
+#bt-toggle-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--j-cyan);
+  background: var(--j-cyan-dim);
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-family: var(--j-font-display);
+  border: 1px solid var(--j-panel-border);
+}
+
+/* ── JARVIS Notification ── */
+#bt-notify-backdrop {
+  position: absolute; inset: 0; z-index: 30;
+  background: rgba(150,186,190,0.4);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+#bt-notify-backdrop.visible { opacity: 1; pointer-events: auto; }
+#bt-notify {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%) scale(0.92);
+  z-index: 31;
+  width: 420px;
+  max-width: 90vw;
+  background: rgba(184,209,211,0.55);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1.5px solid rgba(27,105,113,0.25);
+  border-radius: 20px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.1), 0 0 30px rgba(27,105,113,0.08), inset 0 1px 0 rgba(27,105,113,0.15);
+  padding: 32px 28px 24px;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  pointer-events: none;
+}
+#bt-notify.visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  pointer-events: auto;
+}
+#bt-notify::before {
+  content: '';
+  position: absolute; top: 0; left: 16px; right: 16px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(27,105,113,0.3), transparent);
+  border-radius: 20px 20px 0 0;
+}
+#bt-notify::after {
+  content: '';
+  position: absolute; bottom: 0; left: 16px; right: 16px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(27,105,113,0.15), transparent);
+}
+#bt-notify-icon {
+  width: 44px; height: 44px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  border: 1px solid var(--j-cyan);
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(27,105,113,0.1);
+  box-shadow: 0 2px 12px rgba(27,105,113,0.15), 0 0 8px rgba(27,105,113,0.1);
+  color: var(--j-cyan);
+  font-family: var(--j-font-display);
+  font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.05em;
+}
+#bt-notify-title {
+  font-family: var(--j-font-display);
+  font-size: 0.85rem; font-weight: 700;
+  color: var(--j-text);
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
+#bt-notify-body {
+  font-size: 0.82rem;
+  color: var(--j-text);
+  line-height: 1.6;
+  margin-bottom: 22px;
+}
+#bt-notify-body strong { color: var(--j-cyan); font-weight: 600; }
+#bt-notify-dismiss {
+  background: rgba(27,105,113,0.12);
+  border: 1px solid rgba(27,105,113,0.25);
+  border-radius: 10px;
+  color: var(--j-cyan);
+  padding: 9px 32px;
+  font-family: var(--j-font-display);
+  font-size: 0.7rem; font-weight: 600;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+#bt-notify-dismiss:hover {
+  background: rgba(27,105,113,0.2);
+  border-color: rgba(27,105,113,0.4);
+  box-shadow: 0 2px 12px rgba(27,105,113,0.15);
+  color: var(--j-text);
+}
+
+/* ── Full-screen Overlay ── */
+#bt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background-color: #0a1e20;
+  font-family: var(--j-font);
+  color: #e0f0f2;
+  overflow: hidden;
+}
+
+/* ── ECG Heartbeat Line ── */
+#bt-ecg {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 140px;
+  transform: translateY(-50%);
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0.25;
+}
+
+/* ── Scanline + Grid Overlay ── */
+#bt-scanline-overlay {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background:
+    repeating-linear-gradient(0deg, transparent 0px, transparent 3px, rgba(27,105,113,0.12) 3px, rgba(27,105,113,0.12) 4px),
+    radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(15,58,62,0.22) 100%);
+}
+#bt-grid-overlay {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none; opacity: 0.25;
+  background-image:
+    linear-gradient(rgba(27,105,113,0.5) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(27,105,113,0.5) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+/* ── HUD corner decorations ── */
+
+/* ── Rotating Rings (behind the model) ── */
+#bt-hud-rings {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 0; pointer-events: none;
+  width: 650px; height: 650px;
+}
+.bt-ring {
+  position: absolute;
+  top: 50%; left: 50%;
+  border-radius: 50%;
+  opacity: 0.8;
+}
+.bt-ring-1 {
+  width: 400px; height: 400px; margin: -200px 0 0 -200px;
+  border: 3px dashed var(--j-cyan);
+  animation: j-rotate 45s linear infinite;
+  box-shadow: 0 0 30px rgba(27,105,113,0.3), inset 0 0 30px rgba(27,105,113,0.1);
+}
+.bt-ring-2 {
+  width: 490px; height: 490px; margin: -245px 0 0 -245px;
+  border: 2.5px solid var(--j-blue);
+  border-top-style: solid; border-right-style: dotted; border-bottom-style: solid; border-left-style: dotted;
+  animation: j-rotate-rev 60s linear infinite;
+  box-shadow: 0 0 35px rgba(25,96,103,0.25), inset 0 0 35px rgba(25,96,103,0.08);
+}
+.bt-ring-3 {
+  width: 570px; height: 570px; margin: -285px 0 0 -285px;
+  border: 2px solid rgba(27,105,113,0.5);
+  border-top-color: transparent;
+  border-left-color: transparent;
+  animation: j-rotate 90s linear infinite;
+  box-shadow: 0 0 40px rgba(27,105,113,0.2), inset 0 0 40px rgba(27,105,113,0.06);
+}
+/* Ring pip markers — small dots at cardinal points */
+.bt-ring-1::before, .bt-ring-2::before {
+  content: '';
+  position: absolute;
+  top: -5px; left: 50%; transform: translateX(-50%);
+  width: 8px; height: 8px;
+  background: var(--j-cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(27,105,113,0.6);
+}
+.bt-ring-1::after, .bt-ring-2::after {
+  content: '';
+  position: absolute;
+  bottom: -5px; left: 50%; transform: translateX(-50%);
+  width: 6px; height: 6px;
+  background: var(--j-blue);
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(25,96,103,0.5);
+}
+
+/* ── Back Button ── */
+#bt-back-btn {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  background: rgba(11,44,47,0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #5ec4cc;
+  border: 1px solid rgba(94,196,204,0.3);
+  border-radius: 12px;
+  box-shadow: 0 0 16px rgba(0,0,0,0.15);
+  padding: 8px 22px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: var(--j-font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+#bt-back-btn:hover {
+  background: rgba(11,44,47,0.7);
+  border-color: rgba(94,196,204,0.45);
+  box-shadow: 0 2px 12px rgba(94,196,204,0.15);
+  color: #e0f0f2;
+}
+
+#bt-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Shared Panel Styles (Glassmorphism) ── */
+.bt-jarvis-panel {
+  background: rgba(11,44,47,0.35);
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  border: 1px solid rgba(27,105,113,0.4);
+  border-radius: 16px;
+  box-shadow:
+    0 4px 30px rgba(0,0,0,0.2),
+    0 0 20px rgba(27,105,113,0.12),
+    inset 0 1px 0 rgba(27,105,113,0.15);
+  position: relative;
+  overflow: hidden;
+}
+.bt-panel-content.bt-jarvis-panel {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+/* Moving scan line */
+.bt-jarvis-panel::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  height: 1.5px;
+  background: linear-gradient(90deg, transparent, rgba(27,105,113,0.4), transparent);
+  animation: j-scan 8s linear infinite;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ── Panel Wrapper (draggable + collapsible container) ── */
+.bt-panel-wrapper {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+}
+#bt-wrap-health { right: 16px; top: 60px; bottom: 80px; width: 340px; }
+
+.bt-panel-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  background: rgba(11,44,47,0.5);
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  border: 1px solid rgba(27,105,113,0.4);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -2px 16px rgba(0,0,0,0.15), 0 0 12px rgba(27,105,113,0.08);
+  flex-shrink: 0;
+}
+.bt-panel-titlebar:active { cursor: grabbing; }
+.bt-panel-title {
+  font-family: var(--j-font-display);
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #5ec4cc;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px rgba(94,196,204,0.4);
+}
+.bt-panel-collapse-btn {
+  background: none; border: none;
+  color: rgba(150,186,190,0.6); cursor: pointer;
+  padding: 2px 4px; display: flex; align-items: center; justify-content: center;
+  transition: color 0.2s, transform 0.2s;
+  font-size: 0.8rem; line-height: 1;
+}
+.bt-panel-collapse-btn:hover { color: #5ec4cc; }
+
+/* Collapsed state */
+.bt-panel-wrapper.collapsed .bt-panel-content { display: none !important; }
+.bt-panel-wrapper.collapsed .bt-panel-titlebar {
+  border-radius: 16px;
+  border-bottom: 1.5px solid rgba(27,105,113,0.35);
+}
+.bt-panel-wrapper.collapsed .bt-panel-collapse-btn { transform: rotate(-90deg); }
+.bt-panel-wrapper.collapsed { bottom: auto !important; max-height: none !important; }
+
+/* Content area inside wrapper */
+.bt-panel-wrapper .bt-panel-content {
+  border-radius: 0 0 16px 16px;
+  flex: 1; min-height: 0;
+}
+
+/* Dragging state */
+.bt-panel-wrapper.dragging { opacity: 0.92; }
+.bt-panel-wrapper.dragging .bt-panel-titlebar { cursor: grabbing; }
+
+
+/* ── Health Panel (right) ── */
+#bt-health-panel {
+  padding: 24px;
+  overflow-y: auto;
+}
+#bt-health-panel h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+  font-family: var(--j-font-display);
+  color: #e0f0f2;
+  text-shadow: 0 0 12px rgba(94,196,204,0.4), 0 0 24px rgba(94,196,204,0.15);
+  letter-spacing: 0.05em;
+}
+#bt-health-panel h3 {
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin: 18px 0 10px;
+  color: #5ec4cc;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-family: var(--j-font-display);
+  border-bottom: 1px solid rgba(94,196,204,0.2);
+  padding-bottom: 6px;
+}
+.bt-close-btn {
+  position: absolute; top: 14px; right: 14px;
+  background: none; border: none; color: rgba(150,186,190,0.6); cursor: pointer; padding: 4px;
+}
+.bt-close-btn:hover { color: #5ec4cc; filter: drop-shadow(0 0 4px rgba(94,196,204,0.4)); }
+.bt-subtitle { color: rgba(150,186,190,0.7); font-size: 0.8rem; margin: 0 0 20px; letter-spacing: 0.04em; }
+
+/* Score cards */
+.bt-score-card {
+  margin-bottom: 20px; padding: 14px; border-radius: 12px;
+  background: rgba(27,105,113,0.15);
+  border: 1px solid rgba(94,196,204,0.2);
+  box-shadow: inset 0 1px 0 rgba(94,196,204,0.1);
+  animation: j-data-in 0.4s ease-out;
+}
+.bt-score-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.bt-score-label { color: rgba(150,186,190,0.7); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; font-family: var(--j-font-display); font-size: 0.65rem; }
+.bt-score-num {
+  font-size: 2rem; font-weight: 700;
+  font-family: var(--j-font-display);
+  text-shadow: 0 0 16px currentColor;
+}
+.bt-score-num-lg {
+  font-size: 1.6rem; font-weight: 700;
+  font-family: var(--j-font-display);
+  text-shadow: 0 0 12px currentColor;
+}
+.bt-bar-bg {
+  flex: 1; background: rgba(27,105,113,0.2); border-radius: 6px; height: 6px;
+  border: 1px solid rgba(94,196,204,0.15);
+}
+.bt-bar-bg-lg { height: 10px; }
+.bt-bar-fill {
+  height: 100%; border-radius: 6px; transition: width 0.4s;
+}
+.bt-bar-row { display: flex; align-items: center; gap: 8px; }
+.bt-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 6px;
+  font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; font-family: var(--j-font-display);
+  border: 1px solid rgba(94,196,204,0.15);
+  background: rgba(27,105,113,0.2);
+}
+.bt-summary { color: rgba(200,220,222,0.85); font-size: 0.82rem; margin-bottom: 20px; line-height: 1.6; }
+.bt-hint { color: rgba(150,186,190,0.5); font-size: 0.7rem; margin-top: 6px; letter-spacing: 0.04em; }
+.bt-center { text-align: center; }
+
+/* System rows in overview */
+.bt-sysrow {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; border-radius: 10px;
+  background: rgba(27,105,113,0.12);
+  border: 1px solid rgba(94,196,204,0.12);
+  margin-bottom: 4px;
+  transition: all 0.2s;
+  animation: j-data-in 0.3s ease-out;
+}
+.bt-sysrow:hover { background: rgba(27,105,113,0.25); border-color: rgba(94,196,204,0.25); }
+.bt-sysrow-name { font-size: 0.82rem; letter-spacing: 0.02em; color: rgba(200,220,222,0.85); }
+.bt-sysrow-right { display: flex; align-items: center; gap: 8px; }
+
+/* Organ list in overview */
+.bt-orgbtn {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 12px; border-radius: 10px;
+  background: rgba(27,105,113,0.12);
+  border: 1px solid rgba(94,196,204,0.12);
+  color: rgba(200,220,222,0.85); font-size: 0.82rem; cursor: pointer; text-align: left;
+  transition: all 0.2s; font-family: var(--j-font); margin-bottom: 3px;
+  letter-spacing: 0.02em;
+}
+.bt-orgbtn:hover {
+  background: rgba(27,105,113,0.25);
+  border-color: rgba(94,196,204,0.25);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.bt-orgbtn span:nth-child(2) { flex: 1; }
+.bt-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  box-shadow: 0 0 3px currentColor;
+}
+
+/* Mini connections */
+.bt-mini-conn {
+  font-size: 0.72rem; color: rgba(150,186,190,0.6);
+  display: flex; align-items: center; gap: 4px; margin-bottom: 3px;
+}
+
+/* Connection items in organ panel */
+.bt-conn-item {
+  padding: 10px; border-radius: 10px;
+  background: rgba(27,105,113,0.12);
+  border: 1px solid rgba(94,196,204,0.12);
+  border-left: 3px solid;
+  cursor: pointer; transition: all 0.2s; margin-bottom: 6px;
+}
+.bt-conn-item:hover { background: rgba(27,105,113,0.25); box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.bt-conn-hdr { font-size: 0.82rem; font-weight: 600; display: flex; align-items: center; gap: 4px; margin-bottom: 4px; color: rgba(200,220,222,0.85); }
+.bt-conn-desc { font-size: 0.72rem; color: rgba(150,186,190,0.6); margin: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* Metric cards */
+.bt-metric {
+  padding: 10px; border-radius: 10px;
+  background: rgba(27,105,113,0.12);
+  border: 1px solid rgba(94,196,204,0.12);
+  margin-bottom: 6px;
+  animation: j-data-in 0.3s ease-out;
+}
+.bt-metric-hdr { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.bt-metric-name { font-size: 0.82rem; font-weight: 600; color: rgba(200,220,222,0.85); }
+.bt-metric-val { font-size: 0.82rem; font-family: var(--j-font-display); color: #e0f0f2; }
+.bt-metric-ftr { display: flex; justify-content: space-between; font-size: 0.7rem; color: rgba(150,186,190,0.6); }
+.bt-metric-st { text-transform: uppercase; font-weight: 600; font-family: var(--j-font-display); font-size: 0.65rem; letter-spacing: 0.06em; }
+.bt-metric-st.normal { color: #22c55e; }
+.bt-metric-st.elevated, .bt-metric-st.high { color: #ef4444; }
+.bt-metric-st.low { color: #eab308; }
+
+/* Insights/recs */
+.bt-insight { display: flex; align-items: flex-start; gap: 8px; font-size: 0.82rem; color: rgba(200,220,222,0.85); margin-bottom: 6px; }
+.bt-insight .bullet { color: #5ec4cc; margin-top: 2px; }
+.bt-rec {
+  display: flex; align-items: flex-start; gap: 8px; font-size: 0.82rem; color: rgba(200,220,222,0.85);
+  padding: 8px; border-radius: 10px;
+  background: rgba(27,105,113,0.12);
+  border: 1px solid rgba(94,196,204,0.12);
+  margin-bottom: 6px;
+}
+.bt-rec .check { color: #22c55e; margin-top: 2px; }
+
+/* Connection spotlight button (overview) */
+.bt-conn-spotlight {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  padding: 8px 10px; border-radius: 10px;
+  background: rgba(27,105,113,0.12);
+  border: 1px solid rgba(94,196,204,0.12);
+  border-left: 3px solid;
+  color: rgba(200,220,222,0.85); font-size: 0.78rem; cursor: pointer; text-align: left;
+  transition: all 0.2s; font-family: var(--j-font); margin-bottom: 4px;
+}
+.bt-conn-spotlight:hover {
+  background: rgba(27,105,113,0.25);
+  border-color: rgba(94,196,204,0.25);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* Data-only organ tag */
+.bt-data-only {
+  display: inline-block;
+  font-size: 0.55rem; font-weight: 700;
+  font-family: var(--j-font-display);
+  letter-spacing: 0.08em;
+  padding: 1px 5px; border-radius: 3px;
+  background: rgba(27,105,113,0.1);
+  color: var(--j-text-dim);
+  border: 1px solid rgba(27,105,113,0.15);
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+/* Connection panel viz */
+.bt-conn-viz {
+  margin-bottom: 20px; padding: 16px; border-radius: 12px;
+  background: rgba(27,105,113,0.15);
+  border: 1px solid rgba(94,196,204,0.2);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.bt-conn-org { text-align: center; }
+.bt-conn-avatar {
+  width: 48px; height: 48px; border-radius: 50%; margin: 0 auto 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1rem; font-weight: 700;
+  font-family: var(--j-font-display);
+  border: 1px solid currentColor;
+  box-shadow: 0 0 8px rgba(0,0,0,0.2);
+}
+.bt-conn-orgname { font-size: 0.78rem; font-weight: 600; margin: 0 0 2px; color: rgba(200,220,222,0.85); }
+.bt-conn-orgscore { font-size: 0.68rem; color: rgba(150,186,190,0.6); margin: 0; font-family: var(--j-font-display); }
+.bt-conn-arrow { display: flex; flex-direction: column; align-items: center; padding: 0 8px; }
+.bt-conn-strength-val { font-size: 0.68rem; color: rgba(150,186,190,0.6); margin-top: 4px; font-family: var(--j-font-display); }
+.bt-strength-hdr { display: flex; justify-content: space-between; margin-bottom: 8px; color: rgba(200,220,222,0.85); }
+.bt-description {
+  font-size: 0.82rem; color: rgba(200,220,222,0.85); line-height: 1.6;
+  padding: 12px; border-radius: 10px;
+  background: rgba(27,105,113,0.12);
+  border: 1px solid rgba(94,196,204,0.12);
+  border-left: 3px solid; margin: 0;
+}
+.bt-finding-item {
+  font-size: 0.82rem; color: rgba(200,220,222,0.85);
+  padding: 8px; border-radius: 10px;
+  background: rgba(27,105,113,0.12);
+  display: flex; align-items: flex-start; gap: 8px; margin-bottom: 4px;
+}
+.bt-finding-text { color: rgba(150,186,190,0.6); }
+.bt-type-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 6px;
+  font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+  margin-bottom: 8px; letter-spacing: 0.08em;
+  font-family: var(--j-font-display);
+  border: 1px solid rgba(94,196,204,0.15);
+  background: rgba(27,105,113,0.2);
+}
+.bt-type-dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 3px currentColor; }
+
+/* ── Left Icon Toolbar ── */
+#bt-left-toolbar {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bt-toolbar-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 8px;
+  border-radius: 12px;
+  background: rgba(11,44,47,0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(94,196,204,0.2);
+  color: rgba(150,186,190,0.7);
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 56px;
+}
+.bt-toolbar-btn span {
+  font-size: 0.52rem;
+  font-family: var(--j-font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.bt-toolbar-btn:hover {
+  background: rgba(11,44,47,0.7);
+  border-color: rgba(94,196,204,0.35);
+  color: #5ec4cc;
+}
+.bt-toolbar-btn.active {
+  background: rgba(27,105,113,0.35);
+  border-color: rgba(94,196,204,0.5);
+  color: #5ec4cc;
+  box-shadow: 0 0 12px rgba(94,196,204,0.15);
+}
+
+/* ── Left Togglable Panels ── */
+.bt-left-panel {
+  position: absolute;
+  left: 82px;
+  top: 60px;
+  bottom: 80px;
+  width: 260px;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  background: rgba(11,44,47,0.4);
+  backdrop-filter: blur(16px) saturate(1.3);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  border: 1px solid rgba(94,196,204,0.25);
+  border-radius: 16px;
+  box-shadow: 0 4px 30px rgba(0,0,0,0.2), 0 0 20px rgba(27,105,113,0.1);
+  animation: j-data-in 0.2s ease-out;
+}
+.bt-left-panel-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(94,196,204,0.15);
+  flex-shrink: 0;
+}
+.bt-left-panel-title {
+  font-family: var(--j-font-display);
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #5ec4cc;
+  letter-spacing: 0.15em;
+  text-shadow: 0 0 8px rgba(94,196,204,0.4);
+}
+.bt-left-panel-close {
+  background: none; border: none;
+  color: rgba(150,186,190,0.6); cursor: pointer;
+  padding: 2px; display: flex; align-items: center;
+  transition: color 0.2s;
+}
+.bt-left-panel-close:hover { color: #5ec4cc; }
+.bt-left-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px;
+}
+
+/* ── Zoom Controls ── */
+#bt-zoom-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 10;
+}
+.bt-zoom-btn {
+  color: #5ec4cc; background: rgba(11,44,47,0.4); border: 1px solid rgba(94,196,204,0.2);
+  font-size: 1rem; font-weight: 700;
+  width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.15s;
+  font-family: var(--j-font-display);
+  border-radius: 8px;
+}
+.bt-zoom-btn:hover {
+  color: #e0f0f2; background: rgba(27,105,113,0.3);
+  border-color: rgba(94,196,204,0.35);
+}
+#bt-zoom-slider {
+  width: 120px;
+  accent-color: #5ec4cc;
+}
+#bt-zoom-label {
+  color: #5ec4cc; font-size: 0.7rem; width: 40px;
+  font-family: var(--j-font-display);
+}
+
+/* ── Loading Overlay ── */
+#bt-loading {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  background: rgba(184,209,211,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); z-index: 15;
+  font-size: 0.9rem; color: var(--j-cyan);
+  font-family: var(--j-font-display);
+  letter-spacing: 0.15em;
+  text-shadow: 0 0 20px rgba(27,105,113,0.5);
+  animation: j-flicker 5s infinite;
+}
+#bt-loading::after {
+  content: '';
+  margin-top: 20px;
+  width: 50px; height: 50px;
+  border: 3px solid transparent;
+  border-top-color: var(--j-cyan);
+  border-right-color: rgba(27,105,113,0.4);
+  border-radius: 50%;
+  animation: j-rotate 1s linear infinite;
+  box-shadow: 0 0 20px rgba(27,105,113,0.3), inset 0 0 20px rgba(27,105,113,0.1);
+}
+
+/* ── Status timestamp ── */
+#bt-status-bar {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 10;
+  font-size: 0.62rem;
+  color: rgba(94,196,204,0.5);
+  font-family: var(--j-font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  #bt-wrap-health {
+    position: fixed; right: 0; left: 0; top: auto; bottom: 0; width: 100%; height: 50vh;
+  }
+  #bt-wrap-health .bt-panel-titlebar { border-radius: 0; }
+  #bt-wrap-health .bt-panel-content { border-radius: 0; }
+  .bt-panel-titlebar { cursor: default; }
+  #bt-left-toolbar {
+    left: auto; right: 8px; top: 60px; transform: none;
+    flex-direction: row;
+  }
+  .bt-toolbar-btn { width: auto; flex-direction: row; padding: 6px 10px; }
+  .bt-left-panel {
+    left: 8px; right: 8px; top: auto; bottom: 52vh; width: auto;
+    max-height: 40vh;
+  }
+  #bt-hud-rings { width: 300px; height: 300px; }
+  .bt-ring-1 { width: 200px; height: 200px; margin: -100px 0 0 -100px; }
+  .bt-ring-2 { width: 240px; height: 240px; margin: -120px 0 0 -120px; }
+  .bt-ring-3 { width: 280px; height: 280px; margin: -140px 0 0 -140px; }
+}
+</style>
+
+<!-- ── Landing Page (shown first) ── -->
+<div id="bt-landing" style="position:fixed;inset:0;z-index:10001;background:linear-gradient(135deg,#E8F0F1 0%,#96BABE 40%,#134B50 60%,#0B2C2F 100%)">
+  <div id="bt-landing-inner">
+    <div id="bt-landing-header">
+      <div id="bt-landing-logo">N1</div>
+      <h1 id="bt-landing-title">HEALTH REALM</h1>
+      <p id="bt-landing-sub">Select a viewing mode to explore your health data</p>
+    </div>
+    <div id="bt-landing-panes">
+      <button class="bt-landing-pane bt-pane-dark" id="bt-pane-report">
+        <div class="bt-pane-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        </div>
+        <div class="bt-pane-label">Report Overview</div>
+        <div class="bt-pane-desc">Interactive clinical report with charts, findings, and recommendations</div>
+        <div class="bt-pane-tag">HTML REPORT</div>
+      </button>
+      <button class="bt-landing-pane bt-pane-light" id="bt-pane-3d">
+        <div class="bt-pane-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </div>
+        <div class="bt-pane-label">3D Body Twin</div>
+        <div class="bt-pane-desc">Interactive 3D organ model with health overlays and system connections</div>
+        <div class="bt-pane-tag">BETA</div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Toggle button (top-right of report, hidden initially) -->
+<div id="bt-toggle-wrap" style="display:none">
+  <button id="bt-toggle-btn" title="View 3D Body">3D View</button>
+  <span id="bt-toggle-label">BETA</span>
+</div>
+
+<!-- Full-screen overlay (hidden by default) -->
+<div id="bt-overlay" style="display:none">
+  <!-- Visual layers -->
+  <div id="bt-grid-overlay"></div>
+  <div id="bt-scanline-overlay"></div>
+  <div id="bt-hud-rings">
+    <div class="bt-ring bt-ring-1"></div>
+    <div class="bt-ring bt-ring-2"></div>
+    <div class="bt-ring bt-ring-3"></div>
+  </div>
+
+  <div id="bt-notify-backdrop"></div>
+  <div id="bt-notify">
+    <div id="bt-notify-icon">3D</div>
+    <div id="bt-notify-title">BODY TWIN INTERFACE</div>
+    <div id="bt-notify-body">
+      This <strong>3D holographic viewer</strong> is currently in beta. Features may change and data should be reviewed with your healthcare provider.
+    </div>
+    <button id="bt-notify-dismiss">CONTINUE</button>
+  </div>
+  <button id="bt-back-btn">&#9664; RETURN TO REPORT</button>
+  <div id="bt-loading">INITIALIZING HOLOGRAPHIC INTERFACE</div>
+  <canvas id="bt-ecg"></canvas>
+  <canvas id="bt-canvas"></canvas>
+
+  <!-- Left icon toolbar -->
+  <div id="bt-left-toolbar">
+    <button class="bt-toolbar-btn" id="bt-tb-organs" title="Organs">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      <span>Organs</span>
+    </button>
+    <button class="bt-toolbar-btn" id="bt-tb-connections" title="Connections">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="3"/><circle cx="19" cy="18" r="3"/><path d="M7 8.5l10 7"/></svg>
+      <span>Links</span>
+    </button>
+  </div>
+
+  <!-- Left togglable panels -->
+  <div class="bt-left-panel" id="bt-left-organs" style="display:none">
+    <div class="bt-left-panel-hdr">
+      <span class="bt-left-panel-title">ORGANS</span>
+      <button class="bt-left-panel-close" id="bt-close-organs"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div class="bt-left-panel-body" id="bt-organs-list"></div>
+  </div>
+  <div class="bt-left-panel" id="bt-left-connections" style="display:none">
+    <div class="bt-left-panel-hdr">
+      <span class="bt-left-panel-title">CONNECTIONS</span>
+      <button class="bt-left-panel-close" id="bt-close-connections"><svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <div class="bt-left-panel-body" id="bt-connections-list"></div>
+  </div>
+
+  <!-- Right health panel -->
+  <div class="bt-panel-wrapper" id="bt-wrap-health">
+    <div class="bt-panel-titlebar"><span class="bt-panel-title">HEALTH OVERVIEW</span><button class="bt-panel-collapse-btn" title="Collapse">&#9662;</button></div>
+    <div id="bt-health-panel" class="bt-jarvis-panel bt-panel-content"></div>
+  </div>
+  <div id="bt-zoom-controls" class="bt-jarvis-panel">
+    <button class="bt-zoom-btn" id="bt-zoom-out">&minus;</button>
+    <input type="range" id="bt-zoom-slider" min="0.5" max="12" step="0.1" value="4">
+    <button class="bt-zoom-btn" id="bt-zoom-in">+</button>
+    <span id="bt-zoom-label">4.0x</span>
+  </div>
+  <div id="bt-status-bar">N1 MEDICAL SYSTEMS &bull; BODY TWIN v0.9</div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ── Inlined data ──
+const DATA = "__BODY_TWIN_DATA__";
+
+// ── Display name mapping ──
+const DISPLAY = {
+  Heart:'Heart',Liver:'Liver',Lungs:'Lungs',Stomach:'Stomach',
+  'Large intestine':'Large Intestine','Small intestine':'Small Intestine',
+  Kidney:'Kidneys',Breast:'Breast',Pancreas:'Pancreas',Spleen:'Spleen',
+  Thyroid:'Thyroid','Adrenal Gland':'Adrenal Glands','Heart Arteries':'Heart Arteries',
+  Esophagus:'Esophagus',Gallbladder:'Gallbladder','Bile Duct':'Bile Duct',
+  Bronchioles:'Bronchioles',Larynx:'Larynx',Ovary:'Ovaries',Thymus:'Thymus',
+  'Fallopian Tube':'Fallopian Tube',Ureter:'Ureter','Urinary Blader':'Bladder','Urinary_Blader':'Bladder',
+  brain:'Brain',testes:'Testes','bone-marrow':'Bone Marrow',
+  'lymph-nodes':'Lymph Nodes',bones:'Bones',joints:'Joints',skin:'Skin',
+};
+function dn(id){ return DISPLAY[id] || id; }
+
+// ── Health color helpers (JARVIS palette) ──
+const HEALTH_COLORS = { optimal:'#00885a', attention:'#1B6971', concern:'#cc7700', critical:'#cc2222' };
+function statusColor(s){ return HEALTH_COLORS[s] || '#49878D'; }
+const CONN_INFO = {
+  affects:  { label:'AFFECTS',    color:'#cc7700', desc:'Changes in one organ impact the other' },
+  correlates:{ label:'CORRELATES', color:'#7c3aed', desc:'These organs show related patterns' },
+  causes:   { label:'CAUSES',     color:'#cc2222', desc:'Direct causal relationship' },
+};
+
+// ── State ──
+let selectedOrgan = null;
+let hoveredOrgan = null;
+let selectedConnection = null;
+let spotlightOrgans = null; // array of organ IDs to spotlight, or null
+const meshMap = new Map();
+const originalColors = new Map();
+
+// Build set of mesh names with findings
+const meshesWithFindings = new Set();
+for (const o of DATA.organs) {
+  if (o.insights.length > 0 || o.metrics.length > 0) {
+    meshesWithFindings.add(o.id);
+    meshesWithFindings.add(o.id.replace(/ /g, '_'));
+    if (o.meshName) { meshesWithFindings.add(o.meshName); meshesWithFindings.add(o.meshName.replace(/ /g, '_')); }
+  }
+}
+
+// ── DOM refs ──
+const landing = document.getElementById('bt-landing');
+const overlay = document.getElementById('bt-overlay');
+const toggleWrap = document.getElementById('bt-toggle-wrap');
+const toggleBtn = document.getElementById('bt-toggle-btn');
+const backBtn = document.getElementById('bt-back-btn');
+const canvas = document.getElementById('bt-canvas');
+const loadingEl = document.getElementById('bt-loading');
+const zoomSlider = document.getElementById('bt-zoom-slider');
+const zoomLabel = document.getElementById('bt-zoom-label');
+
+// ── JARVIS notification ──
+const notifyBackdrop = document.getElementById('bt-notify-backdrop');
+const notifyPanel = document.getElementById('bt-notify');
+const NOTIFY_KEY = 'n1-notify-dismissed-v2';
+function showNotify() {
+  try { if (sessionStorage.getItem(NOTIFY_KEY)) return; } catch {}
+  requestAnimationFrame(() => { notifyBackdrop.classList.add('visible'); notifyPanel.classList.add('visible'); });
+}
+function dismissNotify() {
+  notifyBackdrop.classList.remove('visible');
+  notifyPanel.classList.remove('visible');
+  try { sessionStorage.setItem(NOTIFY_KEY, '1'); } catch {}
+}
+document.getElementById('bt-notify-dismiss').addEventListener('click', dismissNotify);
+notifyBackdrop.addEventListener('click', dismissNotify);
+
+// ── Landing page handlers ──
+function removeBlocker() {
+  const blocker = document.getElementById('bt-head-blocker');
+  if (blocker) blocker.remove();
+}
+function dismissLanding(cb) {
+  removeBlocker();
+  landing.classList.add('dismissing');
+  setTimeout(() => { landing.style.display = 'none'; if (cb) cb(); }, 500);
+}
+// Safety net: remove blocker after 5s even if JS interaction fails
+setTimeout(removeBlocker, 5000);
+document.getElementById('bt-pane-report').addEventListener('click', () => {
+  dismissLanding(() => { toggleWrap.style.display = 'flex'; });
+});
+document.getElementById('bt-pane-3d').addEventListener('click', () => {
+  overlay.style.display = 'block';
+  showNotify();
+  if (!sceneReady) initScene();
+  dismissLanding(() => { toggleWrap.style.display = 'flex'; });
+});
+
+// ── Show / Hide ──
+toggleBtn.addEventListener('click', () => { overlay.style.display = 'block'; showNotify(); if (!sceneReady) initScene(); });
+backBtn.addEventListener('click', () => { overlay.style.display = 'none'; });
+
+// ── Three.js setup ──
+let renderer, scene, camera, controls, raycaster, pointer;
+let organGroup;
+let sceneReady = false;
+
+
+function initScene() {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xB8D1D3);
+
+  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 100);
+  camera.position.set(0, 0, 1);
+
+  // Lights — bright, neutral for light theme
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+  scene.add(ambientLight);
+  const dl1 = new THREE.DirectionalLight(0xffffff, 0.9);
+  dl1.position.set(10, 10, 5);
+  scene.add(dl1);
+  const dl2 = new THREE.DirectionalLight(0xB8D1D3, 0.4);
+  dl2.position.set(-5, 5, -5);
+  scene.add(dl2);
+  // Subtle fill from below
+  const dl3 = new THREE.DirectionalLight(0x96BABE, 0.35);
+  dl3.position.set(0, -5, 3);
+  scene.add(dl3);
+
+  controls = new OrbitControls(camera, canvas);
+  controls.enablePan = true;
+  controls.minDistance = 0.5;
+  controls.maxDistance = 12;
+  controls.target.set(0, 0, 0);
+
+  raycaster = new THREE.Raycaster();
+  pointer = new THREE.Vector2();
+
+  organGroup = new THREE.Group();
+  scene.add(organGroup);
+
+  // Load models
+  const loader = new GLTFLoader();
+  let loaded = 0;
+  const onLoad = () => { loaded++; if (loaded >= 1) { loadingEl.style.display = 'none'; sceneReady = true; } };
+
+  loader.load('__ORGAN_MODEL_URL__', (gltf) => {
+    const model = gltf.scene;
+    model.position.set(0, -1.2, 0);
+    model.traverse((child) => {
+      if (child.isMesh && child.material) {
+        const key = child.name || (child.parent && child.parent.name) || '';
+        if (key) {
+          meshMap.set(key, child);
+          const alt = key.includes('_') ? key.replace(/_/g, ' ') : key.replace(/ /g, '_');
+          if (alt !== key) meshMap.set(alt, child);
+        }
+        child.material = child.material.clone();
+        child.material.transparent = true;
+        if (child.material.color) { originalColors.set(key, child.material.color.clone()); const alt = key.includes('_') ? key.replace(/_/g, ' ') : key.replace(/ /g, '_'); if (alt !== key) originalColors.set(alt, child.material.color.clone()); }
+      }
+    });
+    organGroup.add(model);
+    updateMeshColors();
+    onLoad();
+  }, undefined, (err) => { console.error('Failed to load organ model:', err); onLoad(); });
+
+
+  // Events
+  canvas.addEventListener('pointermove', onPointerMove);
+  canvas.addEventListener('click', onClick);
+  window.addEventListener('resize', onResize);
+
+  // Zoom controls
+  zoomSlider.addEventListener('input', () => {
+    const d = parseFloat(zoomSlider.value);
+    const dir = camera.position.clone().normalize();
+    camera.position.copy(dir.multiplyScalar(d));
+    zoomLabel.textContent = d.toFixed(1) + 'x';
+  });
+  document.getElementById('bt-zoom-out').addEventListener('click', () => {
+    const d = Math.min(12, parseFloat(zoomSlider.value) + 0.5);
+    zoomSlider.value = d;
+    zoomSlider.dispatchEvent(new Event('input'));
+  });
+  document.getElementById('bt-zoom-in').addEventListener('click', () => {
+    const d = Math.max(0.5, parseFloat(zoomSlider.value) - 0.5);
+    zoomSlider.value = d;
+    zoomSlider.dispatchEvent(new Event('input'));
+  });
+
+  animate();
+  renderHealthPanel();
+  initPanelControls();
+  initPanelDrag();
+  initLeftToolbar();
+  initECG();
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  if (!sceneReady) { renderer.render(scene, camera); return; }
+
+  updateCameraAnimation();
+
+  const dist = camera.position.length();
+  if (Math.abs(dist - parseFloat(zoomSlider.value)) > 0.15) {
+    zoomSlider.value = dist;
+    zoomLabel.textContent = dist.toFixed(1) + 'x';
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+// ── ECG Heartbeat Line ──
+function initECG() {
+  const c = document.getElementById('bt-ecg');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  let w, h, x = 0;
+  const speed = 2.2;
+  const trail = [];
+
+  // ECG waveform: one heartbeat cycle as y-offsets (0 = center, -1 = top, 1 = bottom)
+  // Realistic PQRST waveform shape
+  const beat = [];
+  // Flat baseline
+  for (let i = 0; i < 30; i++) beat.push(0);
+  // P wave (small bump)
+  for (let i = 0; i < 12; i++) beat.push(-Math.sin(i / 12 * Math.PI) * 0.12);
+  // PR segment (flat)
+  for (let i = 0; i < 6; i++) beat.push(0);
+  // Q dip
+  for (let i = 0; i < 4; i++) beat.push(Math.sin(i / 4 * Math.PI) * 0.1);
+  // R spike (tall sharp peak)
+  for (let i = 0; i < 6; i++) beat.push(-Math.sin(i / 6 * Math.PI) * 0.85);
+  // S dip
+  for (let i = 0; i < 5; i++) beat.push(Math.sin(i / 5 * Math.PI) * 0.25);
+  // ST segment (flat)
+  for (let i = 0; i < 8; i++) beat.push(0);
+  // T wave (rounded bump)
+  for (let i = 0; i < 16; i++) beat.push(-Math.sin(i / 16 * Math.PI) * 0.2);
+  // Flat baseline
+  for (let i = 0; i < 20; i++) beat.push(0);
+
+  const beatLen = beat.length;
+  let beatPos = 0;
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = c.getBoundingClientRect();
+    w = rect.width; h = rect.height;
+    c.width = w * dpr; c.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    trail.length = 0;
+    x = 0;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  function tick() {
+    requestAnimationFrame(tick);
+    if (!w) return;
+
+    const cy = h * 0.5;
+    const amp = h * 0.4;
+
+    // Advance
+    for (let i = 0; i < speed; i++) {
+      const yOff = beat[Math.floor(beatPos) % beatLen];
+      trail.push({ x: x, y: cy + yOff * amp });
+      beatPos += 0.8;
+      x += 1;
+    }
+
+    // Wrap
+    if (x > w + 10) {
+      x = 0;
+      trail.length = 0;
+    }
+
+    // Draw
+    ctx.clearRect(0, 0, w, h);
+
+    if (trail.length < 2) return;
+
+    // Glow layer
+    ctx.save();
+    ctx.strokeStyle = 'rgba(27,105,113,0.5)';
+    ctx.lineWidth = 4;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.filter = 'blur(4px)';
+    ctx.beginPath();
+    ctx.moveTo(trail[0].x, trail[0].y);
+    for (let i = 1; i < trail.length; i++) ctx.lineTo(trail[i].x, trail[i].y);
+    ctx.stroke();
+    ctx.restore();
+
+    // Main line
+    ctx.strokeStyle = 'rgba(27,105,113,0.9)';
+    ctx.lineWidth = 1.8;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(trail[0].x, trail[0].y);
+    for (let i = 1; i < trail.length; i++) ctx.lineTo(trail[i].x, trail[i].y);
+    ctx.stroke();
+
+    // Bright dot at the leading edge
+    const last = trail[trail.length - 1];
+    ctx.beginPath();
+    ctx.arc(last.x, last.y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(27,105,113,1)';
+    ctx.fill();
+  }
+  tick();
+}
+
+function onResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// ── Raycasting ──
+function findName(obj) {
+  let cur = obj;
+  while (cur) { if (cur.name) return cur.name; cur = cur.parent; }
+  return '';
+}
+
+function onPointerMove(e) {
+  if (!sceneReady) return;
+  pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+  pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(organGroup.children, true);
+  if (hits.length > 0) {
+    const name = findName(hits[0].object);
+    if (name && name !== hoveredOrgan) { hoveredOrgan = name; canvas.style.cursor = 'pointer'; updateMeshColors(); }
+  } else if (hoveredOrgan) {
+    hoveredOrgan = null;
+    canvas.style.cursor = 'auto';
+    updateMeshColors();
+  }
+}
+
+function onClick(e) {
+  if (!sceneReady) return;
+  pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+  pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(organGroup.children, true);
+  if (hits.length > 0) {
+    const name = findName(hits[0].object);
+    if (name) { selectedOrgan = name; selectedConnection = null; spotlightOrgans = null; updateMeshColors(); focusOnOrgan(name); renderHealthPanel(); return; }
+  }
+  selectedOrgan = null;
+  selectedConnection = null;
+  spotlightOrgans = null;
+  updateMeshColors();
+   resetCamera();
+  renderHealthPanel();
+}
+
+// ── Mesh coloring (JARVIS: cyan selected, teal hover) ──
+function updateMeshColors() {
+  const isSpotlight = spotlightOrgans && spotlightOrgans.length > 0;
+  const isFocused = selectedOrgan || isSpotlight;
+
+  meshMap.forEach((mesh, name) => {
+    const mat = mesh.material;
+    if (!mat) return;
+    const hasFindings = meshesWithFindings.has(name);
+    const orig = originalColors.get(name);
+    const inSpotlight = isSpotlight && spotlightOrgans.includes(name);
+
+    if (name === selectedOrgan) {
+      if (mat.emissive) { mat.emissive.setHex(0x1B6971); mat.emissiveIntensity = 0.5; }
+      if (orig) mat.color.copy(orig);
+      mat.opacity = 1; mat.depthWrite = true;
+    } else if (inSpotlight) {
+      // Spotlight: highlight these organs
+      if (mat.emissive) { mat.emissive.setHex(0x1B6971); mat.emissiveIntensity = 0.4; }
+      if (orig) mat.color.copy(orig);
+      mat.opacity = 1; mat.depthWrite = true;
+    } else if (name === hoveredOrgan) {
+      if (mat.emissive) { mat.emissive.setHex(0x196067); mat.emissiveIntensity = 0.3; }
+      if (orig) mat.color.copy(orig);
+      mat.opacity = isFocused ? 0.5 : 1;
+      mat.depthWrite = !isFocused;
+    } else if (hasFindings) {
+      if (mat.emissive) { mat.emissive.setHex(0x000000); mat.emissiveIntensity = 0; }
+      if (orig) mat.color.copy(orig);
+      mat.opacity = isFocused ? 0.15 : 1;
+      mat.depthWrite = !isFocused;
+    } else {
+      if (mat.emissive) { mat.emissive.setHex(0x000000); mat.emissiveIntensity = 0; }
+      mat.color.set(0x96BABE);
+      mat.opacity = isFocused ? 0.05 : 0.4;
+      mat.depthWrite = false;
+    }
+  });
+}
+
+
+// ── Camera Focus on Organ ──
+const defaultCamPos = new THREE.Vector3(0, 0, 1);
+const defaultTarget = new THREE.Vector3(0, 0, 0);
+let camAnimating = false;
+let camFrom = {}, camTo = {};
+let camT = 1;
+
+function focusOnOrgan(meshName) {
+  const mesh = meshMap.get(meshName);
+  if (!mesh) { resetCamera(); return; }
+
+  // Compute world bounding box
+  const box = new THREE.Box3().setFromObject(mesh);
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  box.getCenter(center);
+  box.getSize(size);
+
+  // Camera distance based on organ size
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const fov = camera.fov * (Math.PI / 180);
+  let dist = (maxDim / Math.sin(fov / 2)) * 0.7;
+  dist = Math.max(0.8, Math.min(dist, 3));
+
+  // Position camera in front of the organ (slight offset for better angle)
+  const camTarget = center.clone();
+  const camPos = center.clone().add(new THREE.Vector3(dist * 0.3, dist * 0.15, dist));
+
+  startCameraAnimation(camPos, camTarget);
+}
+
+function focusOnTwoOrgans(nameA, nameB) {
+  const meshA = meshMap.get(nameA);
+  const meshB = meshMap.get(nameB);
+  if (!meshA && !meshB) { resetCamera(); return; }
+  if (!meshA) { focusOnOrgan(nameB); return; }
+  if (!meshB) { focusOnOrgan(nameA); return; }
+
+  // Combined bounding box of both organs
+  const box = new THREE.Box3().setFromObject(meshA).union(new THREE.Box3().setFromObject(meshB));
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  box.getCenter(center);
+  box.getSize(size);
+
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const fov = camera.fov * (Math.PI / 180);
+  let dist = (maxDim / Math.sin(fov / 2)) * 0.8;
+  dist = Math.max(1.2, Math.min(dist, 4.5));
+
+  const camTarget = center.clone();
+  const camPos = center.clone().add(new THREE.Vector3(dist * 0.25, dist * 0.15, dist));
+  startCameraAnimation(camPos, camTarget);
+}
+
+function resetCamera() {
+  startCameraAnimation(defaultCamPos.clone(), defaultTarget.clone());
+}
+
+function startCameraAnimation(toPos, toTarget) {
+  camFrom = {
+    pos: camera.position.clone(),
+    target: controls.target.clone()
+  };
+  camTo = { pos: toPos, target: toTarget };
+  camT = 0;
+  camAnimating = true;
+}
+
+function updateCameraAnimation() {
+  if (!camAnimating) return;
+  camT += 0.035;
+  if (camT >= 1) { camT = 1; camAnimating = false; }
+
+  // Smooth easing (ease-in-out cubic)
+  const t = camT < 0.5 ? 4 * camT * camT * camT : 1 - Math.pow(-2 * camT + 2, 3) / 2;
+
+  camera.position.lerpVectors(camFrom.pos, camTo.pos, t);
+  controls.target.lerpVectors(camFrom.target, camTo.target, t);
+}
+
+// ── Health Panel ──
+function renderHealthPanel() {
+  const el = document.getElementById('bt-health-panel');
+  if (selectedConnection) { renderConnectionPanel(el); updateWrapperTitle('bt-wrap-health', 'CONNECTION'); return; }
+  if (selectedOrgan) {
+    renderOrganPanel(el);
+    const foundOrgan = findOrganBySelection(selectedOrgan);
+    const title = foundOrgan ? dn(foundOrgan.id).toUpperCase() : dn(selectedOrgan).toUpperCase();
+    updateWrapperTitle('bt-wrap-health', title);
+    return;
+  }
+  renderOverviewPanel(el);
+  updateWrapperTitle('bt-wrap-health', 'HEALTH OVERVIEW');
+}
+function updateWrapperTitle(id, t) {
+  const el = document.getElementById(id);
+  if (el) { const s = el.querySelector('.bt-panel-title'); if (s) s.textContent = t; }
+}
+
+function scoreLabel(score) {
+  if (score >= 80) return 'Good';
+  if (score >= 60) return 'Fair';
+  if (score >= 40) return 'Needs Attention';
+  return 'Critical';
+}
+
+function renderOverviewPanel(el) {
+  const d = DATA;
+  const sc = statusColor(d.meta.overallStatus);
+  const sl = scoreLabel(d.meta.overallHealthScore);
+  let h = `<h2>HEALTH OVERVIEW</h2>
+    <div class="bt-score-card">
+      <div class="bt-score-row"><span class="bt-score-label">Overall Score</span><span class="bt-score-num-lg" style="color:${sc}">${d.meta.overallHealthScore}</span></div>
+      <div class="bt-bar-row"><div class="bt-bar-bg bt-bar-bg-lg"><div class="bt-bar-fill" style="width:${d.meta.overallHealthScore}%;background:${sc}"></div></div>
+      <span class="bt-badge" style="background:${sc}18;color:${sc}">${sl}</span></div>
+    </div>
+    <p class="bt-summary">${esc(d.meta.summary)}</p>
+    <h3>Body Systems</h3>`;
+  for (const sys of d.systems) {
+    const c = statusColor(sys.status);
+    const sysLabel = scoreLabel(sys.score);
+    h += `<div class="bt-sysrow" data-sysid="${sys.id}"><span class="bt-sysrow-name">${esc(sys.name)}</span><div class="bt-sysrow-right"><span class="bt-badge" style="background:${c}18;color:${c};font-size:0.6rem">${sysLabel}</span><span class="bt-score-label" style="font-size:0.75rem">${sys.score}</span><span class="bt-dot" style="background:${c};color:${c}"></span></div></div>`;
+  }
+  h += `<p class="bt-hint bt-center">Use the menu on the left to browse organs and connections</p>`;
+  el.innerHTML = h;
+}
+
+// ── Left Panel: Organs List ──
+function renderOrgansPanel() {
+  const el = document.getElementById('bt-organs-list');
+  if (!el) return;
+  let h = '';
+  for (const organ of DATA.organs) {
+    const hasNoMesh = !organ.meshName;
+    h += `<button class="bt-orgbtn" data-organ="${organ.id}"><span class="bt-dot" style="background:${organ.health.color};color:${organ.health.color}"></span><span>${dn(organ.id)}${hasNoMesh ? ' <span class="bt-data-only">DATA</span>' : ''}</span><span class="bt-badge" style="background:${organ.health.color}18;color:${organ.health.color}">${organ.health.status}</span></button>`;
+  }
+  el.innerHTML = h;
+  el.querySelectorAll('.bt-orgbtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedOrgan = btn.dataset.organ;
+      selectedConnection = null;
+      spotlightOrgans = null;
+      updateMeshColors();
+           // Focus camera on mesh if organ has one
+      const organ = findOrganBySelection(btn.dataset.organ);
+      if (organ && organ.meshName) focusOnOrgan(organ.meshName);
+      renderHealthPanel();
+    });
+  });
+}
+
+// ── Left Panel: Connections List ──
+function renderConnectionsPanel() {
+  const el = document.getElementById('bt-connections-list');
+  if (!el) return;
+  const d = DATA;
+  if (!d.connections.length) {
+    el.innerHTML = '<p class="bt-hint bt-center">No cross-system connections detected</p>';
+    return;
+  }
+  let h = `<p class="bt-hint">${d.connections.length} relationship${d.connections.length !== 1 ? 's' : ''} detected &mdash; click to spotlight</p>`;
+  for (const conn of d.connections) {
+    const ci = CONN_INFO[conn.type] || CONN_INFO.affects;
+    h += `<button class="bt-conn-spotlight" data-from="${conn.fromOrganId}" data-to="${conn.toOrganId}" style="border-left-color:${ci.color}"><span style="color:${ci.color}">&#9670;</span><span>${dn(conn.fromOrganId)} &rarr; ${dn(conn.toOrganId)}</span></button>`;
+  }
+  el.innerHTML = h;
+  el.querySelectorAll('.bt-conn-spotlight').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const from = btn.dataset.from;
+      const to = btn.dataset.to;
+      selectedOrgan = null;
+      selectedConnection = from + '-' + to;
+      spotlightOrgans = [from, to];
+      updateMeshColors();
+           const orgA = findOrganBySelection(from);
+      const orgB = findOrganBySelection(to);
+      focusOnTwoOrgans(orgA?.meshName || from, orgB?.meshName || to);
+      renderHealthPanel();
+    });
+  });
+}
+
+// ── Left Toolbar Toggle Logic ──
+let activeLeftPanel = null;
+function toggleLeftPanel(panelId) {
+  const organsPanel = document.getElementById('bt-left-organs');
+  const connectionsPanel = document.getElementById('bt-left-connections');
+  const organsBtn = document.getElementById('bt-tb-organs');
+  const connectionsBtn = document.getElementById('bt-tb-connections');
+
+  if (activeLeftPanel === panelId) {
+    // Close the active panel
+    if (panelId === 'organs') { organsPanel.style.display = 'none'; organsBtn.classList.remove('active'); }
+    if (panelId === 'connections') { connectionsPanel.style.display = 'none'; connectionsBtn.classList.remove('active'); }
+    activeLeftPanel = null;
+    return;
+  }
+
+  // Close any open panel
+  organsPanel.style.display = 'none'; organsBtn.classList.remove('active');
+  connectionsPanel.style.display = 'none'; connectionsBtn.classList.remove('active');
+
+  // Open the requested panel
+  if (panelId === 'organs') {
+    organsPanel.style.display = 'flex';
+    organsBtn.classList.add('active');
+    renderOrgansPanel();
+  } else if (panelId === 'connections') {
+    connectionsPanel.style.display = 'flex';
+    connectionsBtn.classList.add('active');
+    renderConnectionsPanel();
+  }
+  activeLeftPanel = panelId;
+}
+
+function initLeftToolbar() {
+  document.getElementById('bt-tb-organs').addEventListener('click', () => toggleLeftPanel('organs'));
+  document.getElementById('bt-tb-connections').addEventListener('click', () => toggleLeftPanel('connections'));
+  document.getElementById('bt-close-organs').addEventListener('click', () => toggleLeftPanel('organs'));
+  document.getElementById('bt-close-connections').addEventListener('click', () => toggleLeftPanel('connections'));
+}
+
+function findOrganBySelection(sel) {
+  const norm = sel.replace(/_/g, ' ');
+  return DATA.organs.find(o => o.id === sel || o.meshName === sel || o.id === norm || o.meshName === norm);
+}
+
+function renderOrganPanel(el) {
+  const organ = findOrganBySelection(selectedOrgan);
+  if (!organ) { renderOverviewPanel(el); return; }
+  const sys = DATA.systems.find(s => s.id === organ.systemId);
+  const related = DATA.connections.filter(c => c.fromOrganId === organ.id || c.toOrganId === organ.id);
+
+  let h = `<button class="bt-close-btn" id="bt-panel-close"><svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    <h2>${dn(organ.id).toUpperCase()}</h2>
+    <p class="bt-subtitle">${sys ? esc(sys.name) : 'Unknown System'}</p>
+    <div class="bt-score-card">
+      <div class="bt-score-row"><span class="bt-score-label">Health Score</span><span class="bt-score-num" style="color:${organ.health.color}">${organ.health.score}</span></div>
+      <div class="bt-bar-row"><div class="bt-bar-bg"><div class="bt-bar-fill" style="width:${organ.health.score}%;background:${organ.health.color};color:${organ.health.color}"></div></div>
+      <span class="bt-badge" style="background:${organ.health.color}18;color:${organ.health.color}">${organ.health.status}</span></div>
+    </div>`;
+
+  if (related.length) {
+    h += `<h3>Connections</h3>`;
+    for (const conn of related) {
+      const isFrom = conn.fromOrganId === organ.id;
+      const otherId = isFrom ? conn.toOrganId : conn.fromOrganId;
+      const ci = CONN_INFO[conn.type] || CONN_INFO.affects;
+      h += `<div class="bt-conn-item" style="border-left-color:${ci.color}" data-conn="${conn.fromOrganId}-${conn.toOrganId}">
+        <div class="bt-conn-hdr">${isFrom
+          ? `<span style="color:${ci.color}">${ci.label}</span><span> &rarr; </span><span>${dn(otherId)}</span>`
+          : `<span>${dn(otherId)}</span><span> &rarr; </span><span style="color:${ci.color}">this organ</span>`
+        }</div>
+        <p class="bt-conn-desc">${esc(conn.description)}</p>
+      </div>`;
+    }
+  }
+
+  if (organ.metrics.length) {
+    h += `<h3>Key Metrics</h3>`;
+    for (const m of organ.metrics) {
+      h += `<div class="bt-metric"><div class="bt-metric-hdr"><span class="bt-metric-name">${esc(m.name)}</span><span class="bt-metric-val">${m.value} ${m.unit}</span></div>
+        <div class="bt-metric-ftr"><span>Ref: ${m.referenceRange.low}-${m.referenceRange.high}</span><span class="bt-metric-st ${m.status}">${m.status}</span></div></div>`;
+    }
+  }
+
+  if (organ.insights.length) {
+    h += `<h3>Insights</h3>`;
+    for (const ins of organ.insights) h += `<div class="bt-insight"><span class="bullet">&#9670;</span><span>${esc(ins)}</span></div>`;
+  }
+
+  if (organ.recommendations.length) {
+    h += `<h3>Recommendations</h3>`;
+    for (const rec of organ.recommendations) h += `<div class="bt-rec"><span class="check">&#10003;</span><span>${esc(rec)}</span></div>`;
+  }
+
+  el.innerHTML = h;
+  const closeBtn = document.getElementById('bt-panel-close');
+  if (closeBtn) closeBtn.addEventListener('click', () => { selectedOrgan = null; selectedConnection = null; spotlightOrgans = null; updateMeshColors(); resetCamera(); renderHealthPanel(); });
+  el.querySelectorAll('.bt-conn-item').forEach(item => {
+    item.addEventListener('click', () => {
+      selectedConnection = item.dataset.conn;
+      const [from, to] = item.dataset.conn.split('-');
+      spotlightOrgans = [from, to];
+      updateMeshColors();      const orgA = findOrganBySelection(from);
+      const orgB = findOrganBySelection(to);
+      focusOnTwoOrgans(orgA?.meshName || from, orgB?.meshName || to);
+      renderHealthPanel();
+    });
+  });
+}
+
+function renderConnectionPanel(el) {
+  const [fromId, toId] = selectedConnection.split('-');
+  const conn = DATA.connections.find(c => c.fromOrganId === fromId && c.toOrganId === toId);
+  if (!conn) { selectedConnection = null; renderHealthPanel(); return; }
+  const fromOrg = DATA.organs.find(o => o.id === conn.fromOrganId);
+  const toOrg = DATA.organs.find(o => o.id === conn.toOrganId);
+  const ci = CONN_INFO[conn.type] || CONN_INFO.affects;
+
+  let h = `<button class="bt-close-btn" id="bt-panel-close"><svg width="22" height="22" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    <div class="bt-type-badge" style="background:${ci.color}18;color:${ci.color}"><span class="bt-type-dot" style="background:${ci.color}"></span>${ci.label}</div>
+    <h2>CROSS-SYSTEM LINK</h2>
+    <div class="bt-conn-viz">
+      <div class="bt-conn-org"><div class="bt-conn-avatar" style="background:${fromOrg?.health.color || '#6a8a8e'}30;color:${fromOrg?.health.color || '#6a8a8e'}">${dn(conn.fromOrganId)[0]}</div><p class="bt-conn-orgname">${dn(conn.fromOrganId)}</p><p class="bt-conn-orgscore">${fromOrg?.health.score ?? '?'}</p></div>
+      <div class="bt-conn-arrow"><svg width="28" height="28" style="color:${ci.color};filter:drop-shadow(0 0 4px ${ci.color})" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg><span class="bt-conn-strength-val">${Math.round(conn.strength * 100)}%</span></div>
+      <div class="bt-conn-org"><div class="bt-conn-avatar" style="background:${toOrg?.health.color || '#6a8a8e'}30;color:${toOrg?.health.color || '#6a8a8e'}">${dn(conn.toOrganId)[0]}</div><p class="bt-conn-orgname">${dn(conn.toOrganId)}</p><p class="bt-conn-orgscore">${toOrg?.health.score ?? '?'}</p></div>
+    </div>
+    <div class="bt-strength-hdr"><span class="bt-score-label">Link Strength</span><span style="color:${ci.color};font-weight:700;font-family:var(--j-font-display);text-shadow:0 0 6px ${ci.color}">${Math.round(conn.strength * 100)}%</span></div>
+    <div class="bt-bar-bg"><div class="bt-bar-fill" style="width:${conn.strength * 100}%;background:${ci.color};color:${ci.color}"></div></div>
+    <p class="bt-hint">${esc(ci.desc)}</p>
+    <h3>Clinical Relationship</h3>
+    <p class="bt-description" style="border-color:${ci.color}">${esc(conn.description)}</p>
+    <h3>Related Findings</h3>`;
+
+  const findings = [];
+  if (fromOrg) fromOrg.insights.slice(0, 2).forEach(i => findings.push({ org: fromOrg, text: i }));
+  if (toOrg) toOrg.insights.slice(0, 2).forEach(i => findings.push({ org: toOrg, text: i }));
+  for (const f of findings) {
+    h += `<div class="bt-finding-item"><span style="color:${f.org.health.color}">${dn(f.org.id)}:</span><span class="bt-finding-text">${esc(f.text)}</span></div>`;
+  }
+
+  el.innerHTML = h;
+  const closeBtn = document.getElementById('bt-panel-close');
+  if (closeBtn) closeBtn.addEventListener('click', () => { selectedOrgan = null; selectedConnection = null; spotlightOrgans = null; updateMeshColors(); resetCamera(); renderHealthPanel(); });
+}
+
+// ── Panel Controls (collapse + drag) ──
+let panelZ = 10;
+
+function initPanelControls() {
+  document.querySelectorAll('.bt-panel-wrapper').forEach(w => {
+    const btn = w.querySelector('.bt-panel-collapse-btn');
+    if (btn) btn.addEventListener('click', (e) => { e.stopPropagation(); w.classList.toggle('collapsed'); });
+    w.addEventListener('mousedown', () => bringToFront(w));
+  });
+}
+
+function bringToFront(w) {
+  document.querySelectorAll('.bt-panel-wrapper').forEach(p => p.style.zIndex = '');
+  w.style.zIndex = ++panelZ;
+}
+
+function initPanelDrag() {
+  if (window.innerWidth <= 768) return;
+  document.querySelectorAll('.bt-panel-wrapper').forEach(w => {
+    const bar = w.querySelector('.bt-panel-titlebar');
+    if (!bar) return;
+    let pending = false, dragging = false, sx, sy, sl, st;
+
+    bar.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.bt-panel-collapse-btn')) return;
+      pending = true;
+      dragging = false;
+      bringToFront(w);
+      const rect = w.getBoundingClientRect();
+      const oRect = overlay.getBoundingClientRect();
+      sl = rect.left - oRect.left;
+      st = rect.top - oRect.top;
+      sx = e.clientX; sy = e.clientY;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!pending && !dragging) return;
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (pending && !dragging) {
+        if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+        dragging = true; pending = false;
+        w.classList.add('dragging');
+        w.style.height = w.offsetHeight + 'px';
+        w.style.left = sl + 'px'; w.style.top = st + 'px';
+        w.style.right = 'auto'; w.style.bottom = 'auto';
+      }
+      if (!dragging) return;
+      let nl = sl + dx;
+      let nt = st + dy;
+      const oRect = overlay.getBoundingClientRect();
+      nl = Math.max(-w.offsetWidth + 60, Math.min(oRect.width - 60, nl));
+      nt = Math.max(0, Math.min(oRect.height - 40, nt));
+      w.style.left = nl + 'px'; w.style.top = nt + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      pending = false;
+      if (!dragging) return;
+      dragging = false;
+      w.classList.remove('dragging');
+    });
+  });
+
+  window.addEventListener('resize', () => {
+    if (window.innerWidth <= 768) {
+      document.querySelectorAll('.bt-panel-wrapper').forEach(w => {
+        w.style.left = ''; w.style.top = ''; w.style.right = ''; w.style.bottom = ''; w.style.zIndex = '';
+      });
+    }
+  });
+}
+
+
+
+// ── Utility ──
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+</script>

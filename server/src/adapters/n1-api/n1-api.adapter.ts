@@ -1,4 +1,5 @@
 import { PDFFetcherPort, PDFRecord } from '../../application/ports/pdf-fetcher.port.js';
+import { getLogger } from '../../logger.js';
 
 interface PaginatedResponse {
   status: string;
@@ -15,6 +16,7 @@ interface PaginatedResponse {
 export class N1ApiAdapter implements PDFFetcherPort {
   private baseUrl: string;
   private apiKey: string;
+  private logger = getLogger().child({ component: 'N1ApiAdapter' });
 
   constructor(baseUrl: string, apiKey: string) {
     if (!baseUrl) {
@@ -85,7 +87,7 @@ export class N1ApiAdapter implements PDFFetcherPort {
     let page = 1;
     const pageSize = 100;
 
-    console.log(`[N1ApiAdapter] Fetching PDFs for user: ${userId}`);
+    this.logger.info({ userId }, 'Fetching PDFs for user');
 
     // Fetch and download page by page to avoid URL expiration
     while (true) {
@@ -109,12 +111,18 @@ export class N1ApiAdapter implements PDFFetcherPort {
         throw new Error(`Invalid API response format: expected 'data' array`);
       }
 
-      console.log(`[N1ApiAdapter] Found ${responseData.data.length} records on page ${page}`);
+      this.logger.info(
+        { page, recordsOnPage: responseData.data.length },
+        'Fetched records page',
+      );
 
       // Download each completed PDF immediately while URLs are fresh
       for (const record of responseData.data) {
         if (record.status !== 'COMPLETED') {
-          console.log(`[N1ApiAdapter] Skipping ${record.id} (status: ${record.status})`);
+          this.logger.debug(
+            { recordId: record.id, status: record.status },
+            'Skipping non-completed record',
+          );
           continue;
         }
 
@@ -133,23 +141,30 @@ export class N1ApiAdapter implements PDFFetcherPort {
             recordId: record.id,
           });
 
-          console.log(`[N1ApiAdapter] Downloaded: ${fileName} (${(buffer.length / 1024).toFixed(2)} KB)`);
+          this.logger.info(
+            {
+              recordId: record.id,
+              fileName,
+              sizeKb: Number((buffer.length / 1024).toFixed(2)),
+            },
+            'Downloaded PDF successfully',
+          );
         } catch (error) {
-          console.error(`[N1ApiAdapter] Error downloading ${record.id}:`, error);
+          this.logger.error({ err: error, recordId: record.id }, 'Error downloading PDF');
           // Continue with other PDFs even if one fails
         }
       }
 
       // Check if we've reached the last page
       if (page >= responseData.total_pages) {
-        console.log(`[N1ApiAdapter] Processed all ${responseData.total_pages} page(s)`);
+        this.logger.info({ totalPages: responseData.total_pages }, 'Processed all record pages');
         break;
       }
 
       page++;
     }
 
-    console.log(`[N1ApiAdapter] Successfully fetched ${pdfs.length} PDFs`);
+    this.logger.info({ totalPdfs: pdfs.length }, 'Completed PDF fetch for user');
     return pdfs;
   }
 }
