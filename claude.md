@@ -37,10 +37,10 @@ The core workflow uses a **9-phase agentic medical analysis pipeline** orchestra
 | Phase | Name | Output | Description |
 |-------|------|--------|-------------|
 | 1 | Document Extraction | `extracted.md` | Pre-extracted markdown from N1 API (fast path) or PDFs → Vision OCR (fallback), combined into one file |
-| 2 | Agentic Medical Analysis | `analysis.md` | 25-cycle iterative exploration with tools (list_documents, search_data, update_analysis) |
+| 2 | Agentic Medical Analysis | `analysis.md` | 35-cycle iterative exploration with tools (list_documents, search_data, get_date_range, extract_timeline_events, get_value_history, update_analysis) |
 | 3 | Cross-System Analysis | `cross_systems.md` | Identifies bidirectional relationships between body systems |
 | 4 | Research | `research.json` | Claim extraction + web search validation |
-| 5 | Data Structuring | `structured_data.json` | **SOURCE OF TRUTH** - 25+ semantic fields for HTML rendering |
+| 5 | Agentic Data Structuring | `structured_data.json` | **SOURCE OF TRUTH** - Agentic loop builds 25+ semantic fields section-by-section. analysis.md + research.json in context; full extracted.md accessible via tools (search_source, get_value_history, get_date_range) |
 | 6 | Validation | `validation.md` | Completeness check with 1 correction cycle |
 | 7 | HTML Generation | `index.html` | Data-driven rendering with Plotly visualizations |
 | 8 | Content Review | `content_review.json` | 4-dimensional QA (question addressed, fidelity, completeness, design) |
@@ -63,6 +63,8 @@ Uploaded Files → extracted.md → analysis.md → cross_systems.md
 - `server/src/adapters/n1-api/n1-api.adapter.ts` - N1 API integration (markdown + PDF fetching)
 - `server/src/application/ports/markdown-fetcher.port.ts` - Port interface for markdown/PDF fetching
 - `server/src/services/agentic-medical-analyst.service.ts` - Phase 2 agent with tool executor
+- `server/src/services/agentic-data-structurer.service.ts` - Phase 5 agent with tool executor (StructurerToolExecutor + AgenticDataStructurer)
+- `server/src/services/agentic-validator.service.ts` - Phase 6 agent with tool executor
 - `server/src/services/research-agent.service.ts` - Phase 4 research
 - `server/src/services/pdf-extraction.service.ts` - Phase 1 PDF OCR
 - `.gemini/skills/*/SKILL.md` - All agent prompts (dynamically loaded)
@@ -213,9 +215,31 @@ USER_ID=ad405f4e-8089-4e23-8b9c-03c8f2648d16 CHR_ID=test ENVIRONMENT=development
 
 ### Weaknesses & Known Issues
 
-**1. Payload Size Management**
-- `extracted.md` can reach 1.6MB - risks token limit issues
-- Raw extraction excluded from Phase 5 to stay under 300KB, meaning Data Structurer sees analyst's interpretation only
+**1. Data Truncation Throughout the Pipeline (Partially Fixed)**
+
+All truncations in this pipeline share the same origin: they were added **before the chat compression service existed**, as pragmatic workarounds for Gemini API token limit errors and timeouts on large single-shot LLM calls. Now that compression handles conversation history growth, most of these are no longer necessary — but not all have been removed.
+
+**Complete truncation audit** (as of 2026-02-19):
+
+| Location | What's truncated | Cap | Phase | LLM Input? | Status |
+|----------|-----------------|-----|-------|------------|--------|
+| `agentic-doctor.ts:808` | Full `extracted.md` → only lab-dense subset | **50KB** | 5 (Structurer) | ✅ YES — critical | ✅ Resolved — Phase 5 is now agentic (2026-02-19) |
+| `source-excerpts.ts:157` | Source excerpts for correction loop | **100KB** | 6 (Validator correction) | ✅ YES | ⚠️ May be raisable |
+| `agentic-validator.ts` | Unique values returned by tool | **20 items** | 6 (Validator) | ✅ YES | 🔧 Should be removed |
+| `agentic-validator.ts` | Search match results per query | **5 results** | 6 (Validator) | ✅ YES | 🔧 Should be removed |
+| `agentic-validator.ts` | Events per year in timeline check | **10 events** | 6 (Validator) | ✅ YES | 🔧 Should be removed |
+| `agentic-validator.ts` | JSON keys shown in tool results | **15 keys** | 6 (Validator) | ✅ YES | 🔧 Should be removed |
+| `agentic-analyst.ts` | `search_data` matches per section | **removed** | 2 (Analyst) | ✅ (was YES) | ✅ Fixed 2026-02-19 |
+| `agentic-analyst.ts` | `search_data` total sections | **removed** | 2 (Analyst) | ✅ (was YES) | ✅ Fixed 2026-02-19 |
+| `agentic-analyst.ts` | `extract_timeline_events` per year | **removed** | 2 (Analyst) | ✅ (was YES) | ✅ Fixed 2026-02-19 |
+| Streaming logs | Tool args, thinking text, event messages | 100–500 chars | All | ❌ NO | ✅ Fine — display only |
+| Date snippets | Context around extracted dates | 80–100 chars | 2, 6 | ❌ NO | ✅ Fine — internal only |
+
+**Phase 5 (Structurer) 50KB cap — RESOLVED (2026-02-19):**
+Phase 5 is now an agentic loop (`AgenticDataStructurer`) with the same tool-based approach as Phase 2. `analysis.md` and `research.json` are passed directly in context (manageable size); the full `extracted.md` is accessed via tools (`search_source`, `get_value_history`, `get_date_range`). The `extractLabSections(50_000)` call has been removed. Chat compression handles history growth across iterations.
+
+**Why validator tool caps exist:**
+The agentic validator was built after compression, but its tool result caps were added by analogy with earlier patterns and never cleaned up. Since compression handles history growth, these caps can be safely removed.
 
 **2. Loss of Precision Through Pipeline**
 - Each transformation (Raw → Analysis → JSON → HTML) risks information loss
@@ -228,11 +252,10 @@ USER_ID=ad405f4e-8089-4e23-8b9c-03c8f2648d16 CHR_ID=test ENVIRONMENT=development
 
 **4. Timeline Sparseness**
 - Despite 18 years of data, timeline arrays often sparse (3 entries from 2024-2025)
-- **Root cause**: Analyst is designed for clinical interpretation, not exhaustive extraction:
-  - Has 20 cycles to explore 100+ potential sections
-  - Prioritizes "significant abnormal values" over historical normal values
-  - Timeline built incidentally during analysis, not systematically
-  - Skill says "Medical History Timeline - very important!" but completion criteria focuses on "significant abnormal values"
+- **Root causes** (three compounding factors):
+  1. **Analyst prioritizes abnormal values**: Has 35 cycles for 100+ potential sections, must choose what to explore. Historical normal values get skipped.
+  2. **Analyst search results were capped** (fixed 2026-02-19): `search_data` was returning at most 15 sections × 10 matches. Even if the analyst searched for a marker across 18 years, it only saw a fraction of results. Now removed.
+  3. **Structurer is blind to raw data**: Phase 5 only sees a 50KB lab-dense subset of `extracted.md` plus the analyst's interpretation. Anything the analyst didn't write about never reaches `structured_data.json`.
 - **Missing architectural piece**: No dedicated Data Inventory Phase that extracts ALL values/dates before analysis
 
 ### Logic Issues
@@ -279,6 +302,8 @@ USER_ID=ad405f4e-8089-4e23-8b9c-03c8f2648d16 CHR_ID=test ENVIRONMENT=development
 - Result: Data that analyst didn't explore never reaches structured_data.json
 
 ### Recommendations
+
+0. **Remove validator tool result caps**: `agentic-validator.service.ts` still has pre-compression slice caps on tool results (20 unique values, 5 search results, 10 events/year, 15 JSON keys). These were added before compression existed. Since compression now handles history growth, remove them the same way analyst caps were removed (2026-02-19).
 
 1. **Make Validator Agentic**: Give validator the same tool-based approach as the analyst:
    - `list_all_values()` - inventory all numeric values from source
@@ -440,6 +465,133 @@ All tools implemented in `server/src/services/agentic-medical-analyst.service.ts
 
 ---
 
+## Pipeline Audit — Known Concerns (2026-02-19)
+
+Full end-to-end review of `agentic-doctor.use-case.ts` and all phase services. Concerns are categorized by severity.
+
+### 🔴 High — Could break functionality
+
+**H1 · Shared intermediate file paths across concurrent sessions**
+- `LegacyPaths.extracted`, `LegacyPaths.analysis`, `LegacyPaths.structuredData`, `LegacyPaths.validation` etc. are global paths, NOT scoped to the session UUID.
+- The session UUID (`realmId`) only scopes the final output: `LegacyPaths.realm(realmId)`.
+- If two pipeline runs overlap, they write `extracted.md`, `analysis.md`, `structured_data.json` to the same files and silently corrupt each other's state.
+- Currently safe only because the app handles one request at a time in practice — a latent concurrency bug.
+- **Fix**: Scope all intermediate paths to `realmId` or add a request queue / mutex.
+
+**H2 · Missing SKILL.md falls back silently to a 1-line generic prompt**
+- `loadSkill()` catches file-not-found and returns a fallback string like `'You are a medical analyst...'`.
+- The agentic phases still get their tools registered but have no workflow guidance, no required-sections list, no completion criteria.
+- The agent would call tools randomly, likely never call `complete_analysis`, and hit `maxIterations` — surfacing only as very short or empty output, not as an obvious error.
+- **Fix**: Log a loud warning (or throw) if a SKILL.md for an agentic phase is missing. Distinguish between "skill not found" and "skill loaded with fallback".
+
+---
+
+### 🟡 Medium — Quality or correctness issues
+
+**M1 · Phase 2 failure yields `extracted.md` URL instead of an error event**
+- On analysis failure (line ~714): `yield { type: 'result', url: LegacyPaths.extracted }`.
+- The client receives a "result" URL pointing to a markdown file it can't render — a broken UX.
+- All other fatal phase failures correctly yield `{ type: 'error', content: '...' }` and return.
+- **Fix**: Replace with `yield { type: 'error', content: 'Medical analysis failed: ...' }`.
+
+**M2 · Max-iteration fallback doesn't check required sections**
+- If the analyst exhausts 35 iterations without calling `complete_analysis`, it returns whatever it accumulated.
+- The orchestrator only checks `analysisContent.trim().length === 0`.
+- An analyst that timed out after only writing an "Executive Summary" proceeds to Phase 3 with a truncated analysis — no warning.
+- **Fix**: After consuming the analyst generator, check that `analysisContent` contains the key required section headers before proceeding.
+
+**M3 · Claim extraction via rigid regex — silent skip on format variation**
+- Research agent parses LLM output via: `/**Claim**: .../` and `/**Search**: .../` regex.
+- If the model formats slightly differently (colon placement, bullet numbering, different bold markers), `claims.length === 0` and research is silently skipped with no error event.
+- Already documented under Weaknesses but worth tracking as an active bug.
+- **Fix**: Make claim extraction more flexible, or switch to structured output (JSON schema) for the claim-extraction LLM call.
+
+**M4 · Content review uses raw `sendMessageStream` — no retry**
+- HTML generation uses `streamWithRetry(maxRetries=3)`. Content review (line ~1441) uses raw `sendMessageStream` with no retry wrapper.
+- On transient failure the pipeline catches it and defaults to `passed: true` — silently skipping the entire review.
+- **Fix**: Wrap in `streamWithRetry` the same way HTML generation is wrapped. Or at minimum log a visible warning when falling back to `passed: true`.
+
+**M5 · Content review prompt payload is 400–700KB — highest timeout risk in the pipeline**
+- The review prompt includes both `structuredDataContent` (~100–200KB) and `htmlContent` (~200–500KB) in a single call.
+- Runs on `doctor` model (1M context), so it won't hard-fail, but at 100K–175K tokens it's the most expensive and latency-sensitive single call in the pipeline.
+- **Fix short-term**: Pass only `structuredDataContent` + a condensed HTML summary (section headers + key values) rather than the full HTML.
+- **Fix long-term**: Make content review agentic with targeted checks rather than a full-document comparison.
+
+**M6 · Validation correction stream has no retry**
+- The correction call at line ~1066 uses `this.llmClient.sendMessageStream` directly — no `streamWithRetry` wrapper.
+- The adapter-level retry comment (line 37) acknowledges retry is at the adapter, but mid-stream drops may not be caught at that layer.
+- **Fix**: Wrap in `streamWithRetry` consistent with HTML generation.
+
+---
+
+### 🟢 Low — Design notes and minor issues
+
+**L1 · `REALM_CONFIG.agenticLoop.maxIterations` and `enableWebSearch` are unused**
+- Both config values exist in `config.ts` and can be set via env vars but are never read during the pipeline.
+- All agentic phases hardcode their iteration limits (35 / 25 / 15).
+- Developers setting `MAX_AGENTIC_ITERATIONS` or `ENABLE_WEB_SEARCH=false` would get no effect.
+- **Fix**: Either wire them up or remove them from config and the `.env.example`.
+
+**L2 · No claim count cap — research is fully serial**
+- Each claim is researched one at a time with 250ms throttle between requests.
+- No limit on how many claims are extracted — a verbose analyst could produce 15–20 claims.
+- **Fix**: Cap extracted claims at ~10 (configurable). Consider parallelising up to `webSearch.maxConcurrent` (currently 3).
+
+**L3 · HTML regeneration uses raw `sendMessageStream` — no retry**
+- Same as M4 but lower severity (the fallback is "keep original HTML" which is valid).
+- **Fix**: Wrap in `streamWithRetry` for consistency.
+
+**L4 · Validation correction prompt omits `researchMarkdown`**
+- The initial structurer received `analysisContent + researchMarkdown` as primary sources.
+- The correction prompt includes `analysisContent` and source excerpts but not `researchMarkdown`.
+- If the validator flags a citation or confidence level that the structurer originally resolved via research, the correction step has less context than the original.
+- **Fix**: Include `researchMarkdown` in the correction prompt.
+
+**L5 · New `AgenticValidator` instance per correction cycle — no exploration memory**
+- Each correction cycle creates a fresh `AgenticValidator` with empty conversation history.
+- `allPreviouslyRaisedIssues` is passed in so the validator skips re-raising known issues, but it has no memory of which documents it already explored — may re-explore the same sections before getting to new ones.
+- Low impact for 1–3 cycles; would matter more if `MAX_CORRECTION_CYCLES` were raised.
+
+**L6 · `transformOrganInsightsToBodyTwin` called twice**
+- Called at line ~1237 (to save `body-twin.json`) and again at line ~1682 (to inject into HTML).
+- Pure computation, no correctness risk — just redundant work.
+- **Fix**: Cache the result in a local variable between the two call sites.
+
+**L7 · JSON repair fallback loses root cause**
+- When `structured_data.json` fails to parse and the `lastBrace` repair also fails, `structuredDataContent` becomes `'{}'`.
+- The subsequent empty-object check aborts the pipeline with "failed to extract any data" — correct outcome but misleading message. The real cause (JSON truncation/formatting) is lost in logs.
+- **Fix**: Log the specific parse error and char count before setting the fallback.
+
+**L8 · Research uses a different LLM client pattern than all other phases**
+- Phases 2, 4, 5 use `createGoogleGenAI(billingContext)` → billing headers threaded through.
+- Phase 3 research uses `this.llmClient.getConfig()` → vendor `Config` object → `geminiClient.generateContent()`. Different code path, billing attribution may not flow correctly.
+- **Fix**: Migrate research agent to use `createGoogleGenAI(billingContext)` consistent with other phases, or verify that the vendor config path carries the same billing headers.
+
+---
+
+### Quick Reference
+
+| ID | Phase | Severity | One-liner |
+|----|-------|----------|-----------|
+| H1 | All | 🔴 High | Shared intermediate paths — concurrent sessions corrupt each other |
+| H2 | All | 🔴 High | Missing SKILL.md silently falls back to 1-line generic prompt |
+| M1 | Phase 2 | 🟡 Medium | Analysis failure yields `extracted.md` URL instead of error event |
+| M2 | Phase 2 | 🟡 Medium | Max-iteration fallback has no required-section check |
+| M3 | Phase 3 | 🟡 Medium | Regex claim extraction silently skips if LLM format varies |
+| M4 | Phase 7 | 🟡 Medium | Content review has no retry — silently passes on failure |
+| M5 | Phase 7 | 🟡 Medium | Content review payload 400–700KB — highest timeout risk |
+| M6 | Phase 5 | 🟡 Medium | Validation correction stream has no retry |
+| L1 | Config | 🟢 Low | `agenticLoop.maxIterations` + `enableWebSearch` config never used |
+| L2 | Phase 3 | 🟢 Low | No claim count cap, serial execution |
+| L3 | Phase 9 | 🟢 Low | HTML regeneration has no retry |
+| L4 | Phase 5 | 🟢 Low | Correction prompt omits `researchMarkdown` |
+| L5 | Phase 5 | 🟢 Low | New validator instance per correction cycle — no exploration memory |
+| L6 | Phase 6 | 🟢 Low | `transformOrganInsightsToBodyTwin` called twice |
+| L7 | Phase 4 | 🟢 Low | JSON repair fallback loses root cause in error log |
+| L8 | Phase 3 | 🟢 Low | Research uses different LLM client pattern — billing attribution gap |
+
+---
+
 ## Current State & TODOs
 
 ### ✅ Working
@@ -455,31 +607,173 @@ All tools implemented in `server/src/services/agentic-medical-analyst.service.ts
 
 ### 📋 Future Roadmap
 
-**P0: Tool Enhancements** (fixes timeline sparseness):
-- [x] Add `get_date_range()` tool to analyst - temporal awareness ✅
-- [x] Add `extract_timeline_events()` tool - systematic event extraction ✅
-- [x] Add `list_documents_by_year()` tool - temporal distribution ✅
-- [x] Add `get_value_history(marker)` tool - track markers across time ✅
+---
+
+#### 🧹 Track 1: Remove Remaining Truncations (Quick Wins)
+
+All items below are pre-compression workarounds that are now safe to remove. Compression handles history growth.
+
+**Validator tool result caps** (`server/src/services/agentic-validator.service.ts`):
+- [x] Line 629: `[...new Set(keyValues)].slice(0, 20)` — unique values list in `summarize_document` tool. ✅
+- [x] Line 635: `.slice(0, 5)` — date list in `summarize_document` tool. ✅
+- [x] Lines 907, 910: `sourceMatches.slice(0, 5)` / `jsonMatches.slice(0, 5)` — match results in `check_value_in_json` tool. ✅
+- [x] Line 919: `.slice(0, 5)` — filtered matches in source search. ✅
+- [x] Line 929: `results.slice(0, 10)` — search results in `search_source` tool. ✅
+- [x] Line 974: `byYear[y].slice(0, 10)` — events per year in timeline events tool. ✅
+- [x] Lines 1067, 1099, 1206 — intentionally kept: `getJsonSectionSummary` is a preview tool by design (helps validator navigate before diving in). These are not data loss. ✅ (kept intentionally)
+
+**Previously completed** (2026-02-19):
+- [x] `agentic-medical-analyst.ts` — `search_data` matches per section (was 10) ✅
+- [x] `agentic-medical-analyst.ts` — `search_data` total sections (was 15) ✅
+- [x] `agentic-medical-analyst.ts` — `extract_timeline_events` events per year (was 20) ✅
+
+---
+
+#### ✅ Track 2: Make Data Structurer Agentic (Phase 5) — COMPLETE (2026-02-19)
+
+**Problem solved**: Phase 5 was a single-shot LLM call that only saw a 50KB lab-dense subset of `extracted.md`. Structurer was blind to older records, narrative sections, and full date ranges.
+
+**What was built**:
+- [x] Created `server/src/services/agentic-data-structurer.service.ts` — `StructurerToolExecutor` + `AgenticDataStructurer` ✅
+- [x] Tools: `search_source`, `get_value_history`, `get_date_range`, `list_source_documents`, `update_json_section`, `get_json_draft`, `complete_structuring` ✅
+- [x] `analysis.md` + `research.json` passed directly in context (primary sources, manageable size) ✅
+- [x] Full `extracted.md` accessible via tools — no more 50KB cap ✅
+- [x] Added `'structurer'` phase to `chat-compression.service.ts` with dedicated compression prompt ✅
+- [x] Replaced single-shot `streamWithRetry` + `extractLabSections(50_000)` call in `agentic-doctor.use-case.ts` with agentic generator loop ✅
+- [x] Updated `data-structurer/SKILL.md` with agentic workflow, tool table, source priority ordering ✅
+- [x] External state: `currentJson` Map lives outside conversation history — never lost during compression ✅
+
+---
+
+#### 🧠 Track 3: Organ Insights Truncation (3D Body Twin)
+
+**Problem**: The body-twin pipeline has its own data loss points separate from the main medical pipeline.
+
+**In `body-twin-transformer.service.ts`**:
+- [ ] Line 414: `o.insights[0] || ''` — only the **first** insight is used as the `implication` for a system finding. If an organ has 3 insights, 2 are dropped. Fix: concatenate all insights or pick the most relevant one.
+- [ ] Line 425: `findings.slice(0, 5)` — system findings capped at 5 per body system. If a system has 10 abnormal metrics, 5 are silently dropped. Evaluate: is 5 a UI constraint (too many to show?) or an arbitrary cap? If UI, make it configurable; if arbitrary, remove.
+- [ ] Line 468: `o.insights[0] || ''` — same issue: only first insight used for system summary text.
+
+**In `body-twin-viewer.html`**:
+- [ ] Lines 1895–1896: `.slice(0, 2)` — connection spotlight shows only 2 insights per organ. This is a UI constraint (limited panel space), but worth revisiting if the panel is expanded. Document as intentional if kept.
+
+**Design question**: The `findings.slice(0, 5)` may be intentional for the 3D viewer panel (too many findings clutters the UI). Decide whether this is a data cap (should show all) or a display cap (show 5 but store all). If display-only, move the cap to the rendering layer and store full findings in `body-twin.json`.
+
+---
+
+#### 🔧 Track 4: Previously Completed Tool Enhancements
+
+- [x] Add `get_date_range()` tool to analyst ✅
+- [x] Add `extract_timeline_events()` tool ✅
+- [x] Add `list_documents_by_year()` tool ✅
+- [x] Add `get_value_history(marker)` tool ✅
 - [x] Create `AgenticValidator` service with tool-based access ✅
-- [x] Add `compare_date_ranges()` validator tool - bidirectional timeline check ✅
+- [x] Add `compare_date_ranges()` validator tool ✅
 - [x] Add `find_missing_timeline_years()` validator tool ✅
 - [x] Add `check_value_in_json()` validator tool ✅
 - [x] Update medical-analysis SKILL.md with new tools and timeline requirements ✅
-- [x] Update validator SKILL.md for agentic workflow (system prompt enhanced in AgenticValidator) ✅
-- [x] Integrate AgenticValidator into agentic-doctor.use-case.ts (Phase 6) ✅
+- [x] Integrate AgenticValidator into Phase 6 ✅
 
-**P1: Coverage Tools**:
-- [ ] Add `list_unique_markers()` tool - show all markers found
-- [x] Add `check_value_in_json()` validator tool - verify capture ✅ (done in P0)
-- [ ] Add `find_values_missing_from_json()` validator tool - bidirectional completeness
+---
 
-**P2: Other Pipeline Improvements**:
-- [ ] Move research phase before/parallel with analysis
+#### 📦 Track 5: Other Pipeline Improvements
+
+- [ ] Add `list_unique_markers()` tool to analyst — show all lab markers found in source
+- [ ] Add `find_values_missing_from_json()` validator tool — bidirectional completeness diff
+- [ ] Move research phase before/parallel with analysis so claims inform the analysis
 - [ ] Make patient question mandatory input
 - [ ] Confidence score propagation through pipeline
-- [ ] Propagate validation corrections to analysis.md and cross_systems.md
+- [ ] Propagate validation corrections upstream to `analysis.md` and `cross_systems.md`
 
-**Infrastructure**:
+---
+
+#### 🔒 Track 6: Tool Schema Validation (Correctness Gap)
+
+**Problem**: There is no compile-time or startup-time contract between tool *declarations* (the `ANALYST_TOOLS` / `VALIDATOR_TOOLS` / `STRUCTURER_TOOLS` schema arrays) and their *implementations* (the `switch` dispatch in each `ToolExecutor.execute()`). The two are linked only by string matching — a typo or missing case silently degrades behavior.
+
+**How tools work today**:
+- Each service file declares a module-level `const *_TOOLS` array of plain objects (`{ name, description, parameters }`)
+- These are passed to every `generateContent()` call via `config: { tools: [{ functionDeclarations: *_TOOLS }] }`
+- Gemini reads the schemas and decides what to call based on the SKILL.md system prompt + conversation history
+- When Gemini returns `functionCall` parts, the loop dispatches via `toolExecutor.execute(toolName, args)` → `switch(toolName)`
+- One iteration can produce **multiple parallel tool calls** (Gemini batches related lookups); dependent calls happen sequentially across iterations
+
+**Current validation gaps**:
+
+| Risk | Current state | Symptom if hit |
+|------|--------------|----------------|
+| Schema `name` ≠ switch `case` (typo) | Undetected | Returns `"Unknown tool: ..."` — Gemini degrades silently |
+| New tool added to schema, forgotten in switch | Undetected | Same as above |
+| Tool description wrong → Gemini misuses tool | Undetected | Wrong tool called, wrong data returned |
+| `args.marker as string` is actually `undefined` | TypeScript cast hides it | Tool returns empty/wrong result |
+| Schema `name` ≠ `case` across phases (copy-paste drift) | Undetected | Silent degradation in that phase only |
+
+**Only current guards**:
+1. `default: return \`Unknown tool: ${toolName}\`` — Gemini sees the error and may retry differently
+2. Completion gates (`complete_analysis`, `complete_structuring`, `complete_validation`) require required sections to be filled before signalling done — catches behavioral failures but not structural ones
+3. Log watching: every tool call is yielded as a `tool_call` event with name + args + result (truncated to 500 chars)
+
+**Recommended fix — Typed Tool Registry**:
+
+Replace the parallel `const TOOLS = [...]` + `switch` pattern with a single registry where schema and implementation are co-located:
+
+```typescript
+// Each entry: schema + executor in one place — impossible to declare without implementing
+type ToolName = 'list_documents' | 'read_document' | 'search_data' | ...;
+
+const TOOL_REGISTRY: Record<ToolName, {
+  schema: { name: ToolName; description: string; parameters: object };
+  execute: (executor: AnalystToolExecutor, args: Record<string, unknown>) => string;
+}> = {
+  'list_documents': {
+    schema: { name: 'list_documents', description: '...', parameters: {...} },
+    execute: (ex) => ex.listDocuments(),
+  },
+  'search_data': {
+    schema: { name: 'search_data', description: '...', parameters: {...} },
+    execute: (ex, args) => ex.searchData(args.query as string),
+  },
+};
+
+// Derived — no divergence possible:
+const ANALYST_TOOLS = Object.values(TOOL_REGISTRY).map(t => t.schema);
+// Dispatch:
+const handler = TOOL_REGISTRY[toolName as ToolName];
+return handler ? handler.execute(executor, args) : `Unknown tool: ${toolName}`;
+```
+
+TypeScript will error at compile time if a `ToolName` value has no registry entry.
+
+**Simpler short-term alternative** — startup assertion:
+
+```typescript
+function assertToolSchemasCovered(
+  tools: Array<{ name: string }>,
+  knownCases: string[],
+  phase: string,
+) {
+  const caseSet = new Set(knownCases);
+  for (const tool of tools) {
+    if (!caseSet.has(tool.name)) {
+      throw new Error(`[${phase}] Tool "${tool.name}" declared in schema but missing from switch`);
+    }
+  }
+}
+// Called once at module load time, before any pipeline runs
+```
+
+**Files to change**:
+- `server/src/services/agentic-medical-analyst.service.ts` — `ANALYST_TOOLS` + `AnalystToolExecutor.execute()`
+- `server/src/services/agentic-data-structurer.service.ts` — `STRUCTURER_TOOLS` + `StructurerToolExecutor.execute()`
+- `server/src/services/agentic-validator.service.ts` — `VALIDATOR_TOOLS` + `ValidatorToolExecutor.execute()`
+
+- [ ] Add startup assertion (`assertToolSchemasCovered`) to each service as a quick safety net
+- [ ] Migrate to typed tool registry pattern for compile-time correctness (bigger refactor, do after assertion is in place)
+
+---
+
+#### 🏢 Infrastructure
+
 - [ ] Database instead of file storage
 - [ ] User authentication
 - [ ] Cloud storage integration (S3/GCS)
@@ -502,6 +796,8 @@ All tools implemented in `server/src/services/agentic-medical-analyst.service.ts
 5. **Async/await** - Prefer over callbacks and raw Promises
 6. **Error handling** - Use try/catch in Use Cases, propagate to HTTP layer
 7. **Logging** - Use console.log in development (TODO: proper logger in production)
+8. **Agentic tool naming** - When adding a tool to any `*_TOOLS` schema array, you MUST also add a matching `case` to that service's `ToolExecutor.execute()` switch. There is currently no compile-time enforcement — a mismatch silently returns `"Unknown tool: ..."` and degrades the agent. See Track 6 for the planned fix.
+9. **No new slice caps** - Do NOT add `.slice(0, N)` to tool result strings. Chat compression handles history growth. If a tool result is genuinely large, trust compression — don't truncate data.
 
 ## Need Help?
 

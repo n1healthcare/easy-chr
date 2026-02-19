@@ -103,7 +103,7 @@ For each organ with relevant data, produce a section in this format:
    - **Stable** — all relevant markers in normal range
    - **Optimal** — markers in optimal sub-ranges
 7. **Cross-reference `systemsHealth`** — align organ status with the corresponding body system score where applicable
-8. **Include findings from `criticalFindings[]`, `allFindings[]`, `trends[]`, `diagnoses[]`, `patterns[]`** — pull from all relevant sections
+8. **Include findings from `criticalFindings[]`, `trends[]`, `diagnoses[]`, `patterns[]`** — pull from all relevant sections
 9. **Write for an informed patient** — clinical but accessible language, explain what markers mean for the organ
 10. **Sex-specific organs** — use "Ovary" and "Fallopian Tube" for female patients, "Testes" for male patients. Never use "Gonads".
 

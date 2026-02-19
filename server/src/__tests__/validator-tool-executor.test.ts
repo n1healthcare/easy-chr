@@ -26,9 +26,6 @@ const SAMPLE_JSON = JSON.stringify({
     { marker: 'WBC', value: 5.2, unit: 'K/uL', status: 'high', referenceRange: { min: 4.0, max: 10.0 } },
     { marker: 'Glucose', value: 105, unit: 'mg/dL', status: 'high', referenceRange: { min: 70, max: 100 } },
   ],
-  allFindings: [
-    { marker: 'Hemoglobin', value: 14.2, unit: 'g/dL', status: 'normal', referenceRange: { min: 12.0, max: 16.0 } },
-  ],
   timeline: [
     { date: '2024-03-15', event: 'CBC Report' },
   ],
