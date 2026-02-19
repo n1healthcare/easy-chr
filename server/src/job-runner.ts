@@ -32,11 +32,12 @@ import { setupOtel } from './otel.js';
 try { setupOtel(); } catch { /* OTEL is optional — never crash */ }
 
 import dotenv from 'dotenv';
-import { getLogger, createChildLogger, installConsoleBridge, type AppLogger } from './logger.js';
+import { initLogger, getLogger, createChildLogger, installConsoleBridge, type AppLogger } from './logger.js';
 
 // Load environment variables from .env file (if present)
 dotenv.config();
 
+await initLogger();
 const rootLogger = getLogger();
 installConsoleBridge(rootLogger);
 
@@ -75,7 +76,7 @@ if (process.env.USER_ID) {
 import { GeminiAdapter } from './adapters/gemini/gemini.adapter.js';
 import { N1ApiAdapter } from './adapters/n1-api/n1-api.adapter.js';
 import { AgenticDoctorUseCase } from './application/use-cases/agentic-doctor.use-case.js';
-import { FetchAndProcessPDFsUseCase } from './application/use-cases/fetch-and-process-pdfs.use-case.js';
+import { FetchAndProcessContentUseCase } from './application/use-cases/fetch-and-process-content.use-case.js';
 import { RetryableError, ValidationError } from './common/exceptions.js';
 import { withRetry } from './common/retry.js';
 import { REALM_CONFIG, getModelInventory } from './config.js';
@@ -739,7 +740,7 @@ async function runJob() {
     await notifyProgress(config, 'fetching_records');
     logger.info('[3/5] Fetching pre-extracted markdowns from N1 API...');
     const n1ApiAdapter = new N1ApiAdapter(config.n1ApiBaseUrl, config.n1ApiKey);
-    const fetchAndProcessUseCase = new FetchAndProcessPDFsUseCase(n1ApiAdapter, agenticDoctorUseCase);
+    const fetchAndProcessUseCase = new FetchAndProcessContentUseCase(n1ApiAdapter, agenticDoctorUseCase);
 
     // Step 4: Process markdowns through pipeline
     await notifyProgress(config, 'analyzing');

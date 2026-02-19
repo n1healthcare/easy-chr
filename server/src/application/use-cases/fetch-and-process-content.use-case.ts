@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-export class FetchAndProcessPDFsUseCase {
+export class FetchAndProcessContentUseCase {
   constructor(
     private readonly markdownFetcher: MarkdownFetcherPort,
     private readonly agenticDoctor: AgenticDoctorUseCase

@@ -15,16 +15,20 @@ let _rootLogger: PinoLogger | null = null;
 let _pinoAvailable = false;
 let _consoleBridgeInstalled = false;
 
+let _initAttempted = false;
+
 /**
- * Initialize the root logger. Call once at startup.
+ * Initialize the root logger. Call once at startup (before any logging).
+ * Must be called with `await` since pino is loaded via dynamic import (ESM).
  * Safe to call multiple times (idempotent).
  */
-function initLogger(): PinoLogger | null {
+export async function initLogger(): Promise<PinoLogger | null> {
   if (_rootLogger) return _rootLogger;
+  if (_initAttempted) return null;
+  _initAttempted = true;
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pino = require('pino');
+    const pino = await import('pino');
 
     const isDev = (process.env.NODE_ENV ?? 'development') === 'development';
     const level = process.env.LOG_LEVEL ?? 'info';
@@ -82,7 +86,8 @@ function initLogger(): PinoLogger | null {
       }
     }
 
-    _rootLogger = pino.default ? pino.default(options) : pino(options);
+    const pinoFn = pino.default ?? pino;
+    _rootLogger = (pinoFn as (opts: Record<string, unknown>) => PinoLogger)(options);
     _pinoAvailable = true;
     return _rootLogger;
   } catch (err) {
@@ -140,15 +145,13 @@ export type AppLogger = typeof consoleFallback;
 /**
  * Get the root logger. Always returns a usable logger object.
  *
+ * Call `await initLogger()` once at startup before using this.
+ * If initLogger() hasn't been called yet, returns the console fallback.
+ *
  * DEFENSIVE: Never returns null. Falls back to console-based logger.
  */
 export function getLogger(): AppLogger {
-  try {
-    const pinoLogger = initLogger();
-    if (pinoLogger) return pinoLogger as unknown as AppLogger;
-  } catch {
-    // Fall through to console fallback
-  }
+  if (_rootLogger) return _rootLogger as unknown as AppLogger;
   return consoleFallback;
 }
 
