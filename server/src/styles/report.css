@@ -1,5 +1,5 @@
 /*
- * N1 Care Report — Centralized Design System
+ * n1.care CHR Report — Centralized Design System
  *
  * SINGLE SOURCE OF TRUTH for all generated HTML report styling.
  * This CSS is injected programmatically into LLM-generated HTML.
@@ -18,40 +18,45 @@
    ============================================================================ */
 :root {
   /* Primary accent — teal, aligned with N1 brand */
-  --accent-primary: #0F766E;
-  --accent-primary-dark: #115E59;
-  --accent-light: #99F6E4;
-  --accent-bg: #F0FDFA;
+  --accent-primary: #0d7377;
+  --accent-primary-dark: #0B6165;
+  --accent-light: #B3DEDE;
+  --accent-bg: #E6F4F4;
 
   /* Semantic: success */
-  --success: #10B981;
-  --success-dark: #059669;
-  --success-bg: #D1FAE5;
+  --success: #22C55E;
+  --success-dark: #16A34A;
+  --success-bg: #F0FDF4;
 
   /* Semantic: warning */
-  --warning: #F59E0B;
-  --warning-dark: #D97706;
-  --warning-bg: #FEF3C7;
+  --warning: #F97316;
+  --warning-dark: #EA580C;
+  --warning-bg: #FFF7ED;
 
   /* Semantic: danger */
   --danger: #EF4444;
   --danger-dark: #DC2626;
-  --danger-bg: #FEE2E2;
+  --danger-bg: #FEF2F2;
 
   /* Semantic: info */
   --info: #3B82F6;
   --info-dark: #2563EB;
-  --info-bg: #DBEAFE;
+  --info-bg: #EFF6FF;
 
   /* Neutrals */
-  --text-main: #1E293B;
-  --text-muted: #64748B;
+  --text-main: #0F172A;
+  --text-muted: #475569;
   --bg-card: #FFFFFF;
   --bg-section: #F8FAFC;
+  --border: #E2E8F0;
+  --border-light: #F1F5F9;
+
+  /* Typography */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
   /* Spacing */
   --section-gap: 48px;
-  --content-max-width: 1020px;
+  --content-max-width: 1080px;
 
   /* Aliases used by some components */
   --primary-color: var(--accent-primary);
@@ -69,7 +74,7 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
   color: var(--text-main);
   line-height: 1.7;
   margin: 0;
@@ -81,7 +86,7 @@ body {
 }
 
 h1, h2, h3, h4 {
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
   font-weight: 700;
   margin-top: 0;
   letter-spacing: -0.01em;
@@ -104,7 +109,7 @@ a:hover { text-decoration: underline; }
 .report-header {
   padding: 1.5rem 0;
   margin-bottom: var(--section-gap);
-  border-bottom: 2px solid #196067;
+  border-bottom: 2px solid var(--accent-primary-dark);
 }
 .header-brand {
   display: flex;
@@ -114,10 +119,14 @@ a:hover { text-decoration: underline; }
 .header-brand h1 {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #196067;
+  color: var(--accent-primary-dark);
   margin: 0;
 }
-.n1-logo { flex-shrink: 0; }
+.header-logo {
+  height: 34px;
+  width: auto;
+  flex-shrink: 0;
+}
 
 /* ============================================================================
    Executive Summary
@@ -250,7 +259,7 @@ a:hover { text-decoration: underline; }
   top: 0;
   bottom: 0;
   width: 2px;
-  background: #CBD5E1;
+  background: #E2E8F0;
 }
 .timeline-item {
   position: relative;
@@ -346,9 +355,9 @@ a:hover { text-decoration: underline; }
   font-weight: 600;
   margin-top: 12px;
 }
-.confidence-badge.high, .confidence-high { background: #D1FAE5; color: #047857; }
-.confidence-badge.medium, .confidence-medium { background: #FEF3C7; color: #B45309; }
-.confidence-badge.low, .confidence-low { background: #FEE2E2; color: #B91C1C; }
+.confidence-badge.high, .confidence-high { background: #F0FDF4; color: #16A34A; }
+.confidence-badge.medium, .confidence-medium { background: #FFF7ED; color: #EA580C; }
+.confidence-badge.low, .confidence-low { background: #FEF2F2; color: #DC2626; }
 
 /* ============================================================================
    Action Plan
@@ -658,11 +667,11 @@ a:hover { text-decoration: underline; }
   background: #FFFBEB;
   border-radius: 8px;
   padding: 16px;
-  border-left: 3px solid #F59E0B;
+  border-left: 3px solid #F97316;
 }
 .keystone-priority {
   display: inline-block;
-  background: #F59E0B;
+  background: #F97316;
   color: white;
   padding: 2px 8px;
   border-radius: 4px;

@@ -26,20 +26,20 @@ Called from `agentic-doctor.use-case.ts` in Phase 6 (HTML generation) and Phase 
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| `--accent-primary` | `#0F766E` | Primary teal accent (N1 brand) |
-| `--accent-primary-dark` | `#115E59` | Headings, links, hover states |
-| `--accent-light` | `#99F6E4` | Borders, subtle accents |
-| `--accent-bg` | `#F0FDFA` | Light teal backgrounds |
-| `--success` | `#10B981` | Positive findings, with-intervention |
-| `--success-bg` | `#D1FAE5` | Success backgrounds |
-| `--warning` | `#F59E0B` | Warnings, top priority, data gaps |
-| `--warning-bg` | `#FEF3C7` | Warning backgrounds |
+| `--accent-primary` | `#0d7377` | Primary teal accent (n1.care brand) |
+| `--accent-primary-dark` | `#0B6165` | Headings, links, hover states |
+| `--accent-light` | `#B3DEDE` | Borders, subtle accents |
+| `--accent-bg` | `#E6F4F4` | Light teal backgrounds |
+| `--success` | `#22C55E` | Positive findings, with-intervention |
+| `--success-bg` | `#F0FDF4` | Success backgrounds |
+| `--warning` | `#F97316` | Warnings, top priority, data gaps |
+| `--warning-bg` | `#FFF7ED` | Warning backgrounds |
 | `--danger` | `#EF4444` | Critical findings, without-intervention |
-| `--danger-bg` | `#FEE2E2` | Danger backgrounds |
+| `--danger-bg` | `#FEF2F2` | Danger backgrounds |
 | `--info` | `#3B82F6` | Informational, mild severity |
-| `--info-bg` | `#DBEAFE` | Info backgrounds |
-| `--text-main` | `#1E293B` | Primary text |
-| `--text-muted` | `#64748B` | Secondary/description text |
+| `--info-bg` | `#EFF6FF` | Info backgrounds |
+| `--text-main` | `#0F172A` | Primary text |
+| `--text-muted` | `#475569` | Secondary/description text |
 | `--bg-card` | `#FFFFFF` | Card backgrounds |
 | `--bg-section` | `#F8FAFC` | Page/section backgrounds |
 
@@ -66,7 +66,7 @@ Google Fonts loaded via `@import` in the CSS file.
 | Card border-radius | `8px-10px` |
 | Small element radius | `4px-6px` |
 | Badge radius | `4px` |
-| Content max-width | `860px` (via `--content-max-width`) |
+| Content max-width | `1080px` (via `--content-max-width`) |
 | Card gap | `12px-16px` |
 
 ### Borders (Document-oriented)
@@ -81,8 +81,8 @@ Cards use `border: 1px solid #E2E8F0` instead of shadows. Colored left borders (
 ```html
 <div class="report-header">
   <div class="header-brand">
-    <svg class="n1-logo">...</svg>
-    <h1>N1 Care Report</h1>
+    <img class="header-logo" src=".../n1-care-white.svg" alt="n1.care logo">
+    <h1>n1.care CHR Report</h1>
   </div>
 </div>
 ```

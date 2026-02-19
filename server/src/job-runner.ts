@@ -106,6 +106,7 @@ const IS_DEVELOPMENT = ENVIRONMENT === 'development';
 const SKIP_UPLOADS = IS_DEVELOPMENT;
 const SKIP_PROGRESS_TRACKING = IS_DEVELOPMENT;
 const MIN_STORAGE_EXISTS_RETRIES = 3;
+const BLINDSPOT_BRAND_COLOR = '#0D7377';
 
 // ============================================================================
 // Blindspot Feedback Widget (staging only)
@@ -128,7 +129,7 @@ function injectBlindspotWidget(html: string): string {
           try {
             Blindspot.init({
               siteId: 'f3739d9a-fbb0-403c-a1f2-52fcc0203a23',
-              color: '#1B6971',
+              color: '${BLINDSPOT_BRAND_COLOR}',
               text: 'Report issue'
             });
           } catch (e) {
