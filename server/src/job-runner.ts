@@ -32,11 +32,12 @@ import { setupOtel } from './otel.js';
 try { setupOtel(); } catch { /* OTEL is optional — never crash */ }
 
 import dotenv from 'dotenv';
-import { getLogger, createChildLogger, installConsoleBridge, type AppLogger } from './logger.js';
+import { initLogger, getLogger, createChildLogger, installConsoleBridge, type AppLogger } from './logger.js';
 
 // Load environment variables from .env file (if present)
 dotenv.config();
 
+await initLogger();
 const rootLogger = getLogger();
 installConsoleBridge(rootLogger);
 
@@ -75,7 +76,7 @@ if (process.env.USER_ID) {
 import { GeminiAdapter } from './adapters/gemini/gemini.adapter.js';
 import { N1ApiAdapter } from './adapters/n1-api/n1-api.adapter.js';
 import { AgenticDoctorUseCase } from './application/use-cases/agentic-doctor.use-case.js';
-import { FetchAndProcessPDFsUseCase } from './application/use-cases/fetch-and-process-pdfs.use-case.js';
+import { FetchAndProcessContentUseCase } from './application/use-cases/fetch-and-process-content.use-case.js';
 import { RetryableError, ValidationError } from './common/exceptions.js';
 import { withRetry } from './common/retry.js';
 import { REALM_CONFIG, getModelInventory } from './config.js';
@@ -220,7 +221,7 @@ const OPERATION_BY_STEP: Record<keyof typeof PROGRESS_MAP, string> = {
 //   Content Review            86       89       ~1 min
 //   HTML Regeneration         89       92       ~1 min (conditional)
 const PHASE_PROGRESS_MAP: Record<string, ProgressUpdate> = {
-  'Document Extraction':    { stage: 'Preparing',  progress: 22,  message: 'Extracting content from your documents...' },
+  'Document Extraction':    { stage: 'Preparing',  progress: 22,  message: 'Loading pre-extracted documents...' },
   'Medical Analysis':       { stage: 'Analyzing',  progress: 25,  message: 'Performing medical analysis...' },
   'Research':               { stage: 'Analyzing',  progress: 55,  message: 'Researching and validating claims...' },
   'Data Structuring':       { stage: 'Writing',    progress: 63,  message: 'Structuring data for visualization...' },
@@ -735,15 +736,15 @@ async function runJob() {
     await agenticDoctorUseCase.initialize();
     logger.info('Agentic Doctor ready');
 
-    // Step 3: Initialize N1 API adapter and fetch PDFs
+    // Step 3: Initialize N1 API adapter and fetch markdowns
     await notifyProgress(config, 'fetching_records');
-    logger.info('[3/5] Fetching PDFs from N1 API...');
+    logger.info('[3/5] Fetching pre-extracted markdowns from N1 API...');
     const n1ApiAdapter = new N1ApiAdapter(config.n1ApiBaseUrl, config.n1ApiKey);
-    const fetchAndProcessUseCase = new FetchAndProcessPDFsUseCase(n1ApiAdapter, agenticDoctorUseCase);
+    const fetchAndProcessUseCase = new FetchAndProcessContentUseCase(n1ApiAdapter, agenticDoctorUseCase);
 
-    // Step 4: Process PDFs through pipeline
+    // Step 4: Process markdowns through pipeline
     await notifyProgress(config, 'analyzing');
-    logger.info('[4/5] Processing PDFs through multi-agent pipeline...');
+    logger.info('[4/5] Processing markdowns through multi-agent pipeline...');
     const generator = fetchAndProcessUseCase.execute(config.userId, config.prompt);
 
     // Track current phase for sub-phase progress interpolation

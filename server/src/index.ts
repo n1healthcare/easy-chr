@@ -6,11 +6,12 @@ import dotenv from 'dotenv';
 import { createServer } from './adapters/http/server.js';
 import { createStorageAdapterFromEnv } from './adapters/storage/storage.factory.js';
 import { createObservabilityAdapter } from './adapters/langfuse/observability.factory.js';
-import { getLogger, installConsoleBridge } from './logger.js';
+import { initLogger, getLogger, installConsoleBridge } from './logger.js';
 import { getModelInventory } from './config.js';
 
 dotenv.config();
 
+await initLogger();
 const logger = getLogger();
 installConsoleBridge(logger);
 

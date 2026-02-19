@@ -285,21 +285,18 @@ export class AgenticDoctorUseCase {
     // No initialization needed for now
   }
 
-  async *execute(
-    prompt: string,
-    uploadedFilePaths: string[],
-  ): AsyncGenerator<RealmGenerationEvent, void, unknown> {
+  // ============================================================================
+  // Session & Observability Helpers
+  // ============================================================================
+
+  private initSession(
+    metadata: Record<string, unknown>,
+    tags: string[] = ['easy-chr'],
+  ): { sessionId: string; traceId: string; startSpan: (phase: string) => void; endSpan: (phase: string, meta?: Record<string, unknown>) => void } {
     const sessionId = uuidv4();
-
-    // Ensure storage directory exists
-    await this.storage.ensureDir('');
-
-    console.log(`[AgenticDoctor] Session ${sessionId}: Processing ${uploadedFilePaths.length} files...`);
-    console.log(`[AgenticDoctor] User prompt: ${prompt ? `(${prompt.length} chars)` : '(empty)'}`);
-
-    // --- Observability: create trace for entire pipeline run ---
     const chrIdShort = this.billingContext?.chrId?.substring(0, SHORT_ID_LENGTH) ?? sessionId.substring(0, SHORT_ID_LENGTH);
     const dateStr = new Date().toISOString().slice(0, 10);
+
     let traceId = '';
     try {
       traceId = this.obs.createTrace({
@@ -308,14 +305,13 @@ export class AgenticDoctorUseCase {
         sessionId,
         metadata: {
           chrId: this.billingContext?.chrId,
-          fileCount: uploadedFilePaths.length,
-          promptLength: prompt?.length ?? 0,
+          promptLength: metadata.promptLength ?? 0,
+          ...metadata,
         },
-        tags: ['easy-chr'],
+        tags,
       });
     } catch { /* observability never blocks pipeline */ }
 
-    // Helper: safely start/end spans
     const startSpan = (phase: string) => {
       try { this.obs.startSpan(phase, { name: phase, traceId }); } catch { /* non-fatal */ }
     };
@@ -323,69 +319,66 @@ export class AgenticDoctorUseCase {
       try { this.obs.endSpan(phase, meta); } catch { /* non-fatal */ }
     };
 
-    // ========================================================================
-    // Phase 1: Document Extraction
-    // PDFs: Vision OCR → Markdown
-    // Other files: Direct text extraction
-    // ========================================================================
-    startSpan(PipelinePhase.DocumentExtraction);
-    yield { type: 'step', name: 'Document Extraction', status: 'running' };
-    yield { type: 'log', message: `Processing ${uploadedFilePaths.length} document(s)...` };
+    return { sessionId, traceId, startSpan, endSpan };
+  }
 
-    // Separate PDFs from other files
-    const pdfFiles: string[] = [];
-    const otherFiles: string[] = [];
+  // ============================================================================
+  // Phase 1 Helpers: Document Extraction
+  // ============================================================================
 
-    for (const filePath of uploadedFilePaths) {
-      const ext = path.extname(filePath).toLowerCase();
-      if (ext === '.pdf') {
-        pdfFiles.push(filePath);
+  /**
+   * Run Vision OCR on PDF files and return the extracted content.
+   * Yields log events during processing.
+   */
+  private async *extractPDFsViaOCR(
+    pdfFiles: string[],
+  ): AsyncGenerator<RealmGenerationEvent, string, unknown> {
+    let ocrContent = '';
+
+    yield { type: 'log', message: `Extracting ${pdfFiles.length} PDF(s) using Gemini Vision...` };
+
+    const pdfExtractor = new PDFExtractionService(this.storage, this.billingContext);
+
+    try {
+      for await (const event of pdfExtractor.extractPDFs(pdfFiles)) {
+        if (event.type === 'log' || event.type === 'progress') {
+          yield { type: 'log', message: event.data.message || '' };
+        } else if (event.type === 'page_complete') {
+          const pageMessage = event.data.message
+            || `Page ${event.data.pageNumber}/${event.data.totalPages} processed`;
+          yield { type: 'log', message: `[${event.data.fileName}] ${pageMessage}` };
+        } else if (event.type === 'error') {
+          const errorDetails = event.data.error ? ` (${event.data.error})` : '';
+          yield { type: 'log', message: `Warning: ${event.data.message}${errorDetails}` };
+        }
+      }
+
+      if (await this.storage.exists(LegacyPaths.extracted)) {
+        ocrContent = await this.storage.readFileAsString(LegacyPaths.extracted);
+        console.log(`[AgenticDoctor] PDF extraction complete: ${ocrContent.length} chars`);
+        yield { type: 'log', message: `PDF extraction complete (${pdfFiles.length} files)` };
       } else {
-        otherFiles.push(filePath);
+        yield { type: 'log', message: 'Warning: PDF extraction produced no output' };
       }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[AgenticDoctor] PDF extraction failed:', errorMessage);
+      yield { type: 'log', message: `PDF extraction failed: ${errorMessage}` };
     }
 
-    let allExtractedContent = '';
+    return ocrContent;
+  }
 
-    // Process PDFs using Vision OCR
-    if (pdfFiles.length > 0) {
-      yield { type: 'log', message: `Extracting ${pdfFiles.length} PDF(s) using Gemini Vision...` };
+  /**
+   * Extract text content from non-PDF files. Yields log events and returns
+   * accumulated text with `## [fileName]` headers.
+   */
+  private async *extractNonPdfFiles(
+    filePaths: string[],
+  ): AsyncGenerator<RealmGenerationEvent, string, unknown> {
+    let content = '';
 
-      const pdfExtractor = new PDFExtractionService(this.storage, this.billingContext);
-
-      try {
-        for await (const event of pdfExtractor.extractPDFs(pdfFiles)) {
-          if (event.type === 'log' || event.type === 'progress') {
-            yield { type: 'log', message: event.data.message || '' };
-          } else if (event.type === 'page_complete') {
-            const pageMessage = event.data.message
-              || `Page ${event.data.pageNumber}/${event.data.totalPages} processed`;
-            yield {
-              type: 'log',
-              message: `[${event.data.fileName}] ${pageMessage}`
-            };
-          } else if (event.type === 'error') {
-            const errorDetails = event.data.error ? ` (${event.data.error})` : '';
-            yield { type: 'log', message: `Warning: ${event.data.message}${errorDetails}` };
-          }
-        }
-
-        if (await this.storage.exists(LegacyPaths.extracted)) {
-          allExtractedContent = await this.storage.readFileAsString(LegacyPaths.extracted);
-          console.log(`[AgenticDoctor] PDF extraction complete: ${allExtractedContent.length} chars`);
-          yield { type: 'log', message: `PDF extraction complete (${pdfFiles.length} files)` };
-        } else {
-          yield { type: 'log', message: 'Warning: PDF extraction produced no output' };
-        }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error('[AgenticDoctor] PDF extraction failed:', errorMessage);
-        yield { type: 'log', message: `PDF extraction failed: ${errorMessage}` };
-      }
-    }
-
-    // Process non-PDF files (append to extracted content)
-    for (const filePath of otherFiles) {
+    for (const filePath of filePaths) {
       try {
         const fileName = path.basename(filePath);
         const ext = path.extname(filePath).toLowerCase();
@@ -410,13 +403,85 @@ export class AgenticDoctorUseCase {
           continue;
         }
 
-        // Append to extracted content
-        allExtractedContent += `\n\n## [${fileName}]\n\n${textContent}`;
+        content += `\n\n## [${fileName}]\n\n${textContent}`;
         yield { type: 'log', message: `Processed: ${fileName}` };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         yield { type: 'log', message: `Warning: Could not process ${path.basename(filePath)}: ${errorMessage}` };
       }
+    }
+
+    return content;
+  }
+
+  /**
+   * Drain an async generator that yields RealmGenerationEvents and returns a string.
+   * Re-yields all events and returns the final string value.
+   * Using `yield*` with this method preserves correct types for both yields and the return.
+   */
+  private async *drainGenerator(
+    gen: AsyncGenerator<RealmGenerationEvent, string, unknown>,
+  ): AsyncGenerator<RealmGenerationEvent, string, unknown> {
+    let r = await gen.next();
+    while (!r.done) {
+      yield r.value as RealmGenerationEvent;
+      r = await gen.next();
+    }
+    return r.value;
+  }
+
+  /**
+   * Classify file paths into PDFs and non-PDFs.
+   */
+  private classifyFiles(filePaths: string[]): { pdfFiles: string[]; otherFiles: string[] } {
+    const pdfFiles: string[] = [];
+    const otherFiles: string[] = [];
+
+    for (const filePath of filePaths) {
+      if (path.extname(filePath).toLowerCase() === '.pdf') {
+        pdfFiles.push(filePath);
+      } else {
+        otherFiles.push(filePath);
+      }
+    }
+
+    return { pdfFiles, otherFiles };
+  }
+
+  // ============================================================================
+  // Public Entry Points
+  // ============================================================================
+
+  async *execute(
+    prompt: string,
+    uploadedFilePaths: string[],
+  ): AsyncGenerator<RealmGenerationEvent, void, unknown> {
+    await this.storage.ensureDir('');
+
+    const { sessionId, traceId, startSpan, endSpan } = this.initSession(
+      { fileCount: uploadedFilePaths.length, promptLength: prompt?.length ?? 0 },
+    );
+
+    console.log(`[AgenticDoctor] Session ${sessionId}: Processing ${uploadedFilePaths.length} files...`);
+    console.log(`[AgenticDoctor] User prompt: ${prompt ? `(${prompt.length} chars)` : '(empty)'}`);
+
+    // Phase 1: Document Extraction
+    startSpan(PipelinePhase.DocumentExtraction);
+    yield { type: 'step', name: 'Document Extraction', status: 'running' };
+    yield { type: 'log', message: `Processing ${uploadedFilePaths.length} document(s)...` };
+
+    const { pdfFiles, otherFiles } = this.classifyFiles(uploadedFilePaths);
+
+    let allExtractedContent = '';
+
+    // Process PDFs using Vision OCR
+    if (pdfFiles.length > 0) {
+      allExtractedContent = yield* this.drainGenerator(this.extractPDFsViaOCR(pdfFiles));
+    }
+
+    // Process non-PDF files
+    if (otherFiles.length > 0) {
+      allExtractedContent += yield* this.drainGenerator(this.extractNonPdfFiles(otherFiles));
     }
 
     // Save final extracted.md
@@ -434,6 +499,126 @@ export class AgenticDoctorUseCase {
     console.log(`[AgenticDoctor] Total extracted content: ${allExtractedContent.length} chars`);
     yield { type: 'log', message: `Extraction complete. Output: ${LegacyPaths.extracted}` };
 
+    yield* this.runPipelineFromPhase2(sessionId, traceId, prompt, allExtractedContent, startSpan, endSpan);
+  }
+
+  /**
+   * Execute the pipeline starting from Phase 2, using pre-extracted content.
+   * Skips Phase 1 (Document Extraction) entirely.
+   * Used by the job-runner when markdown is pre-fetched from the N1 API.
+   */
+  async *executeWithExtractedContent(
+    prompt: string,
+    extractedContent: string,
+  ): AsyncGenerator<RealmGenerationEvent, void, unknown> {
+    await this.storage.ensureDir('');
+
+    const { sessionId, traceId, startSpan, endSpan } = this.initSession(
+      { preExtracted: true, contentLength: extractedContent.length, promptLength: prompt?.length ?? 0 },
+      ['easy-chr', 'pre-extracted'],
+    );
+
+    console.log(`[AgenticDoctor] Session ${sessionId}: Processing pre-extracted content (${extractedContent.length} chars)...`);
+    console.log(`[AgenticDoctor] User prompt: ${prompt ? `(${prompt.length} chars)` : '(empty)'}`);
+
+    // Phase 1: skipped — save pre-extracted content as extracted.md
+    startSpan(PipelinePhase.DocumentExtraction);
+    yield { type: 'step', name: 'Document Extraction', status: 'running' };
+    yield { type: 'log', message: 'Using pre-extracted markdown from N1 API (skipping OCR)...' };
+
+    await this.storage.writeFile(LegacyPaths.extracted, extractedContent);
+
+    endSpan(PipelinePhase.DocumentExtraction, { chars: extractedContent.length, preExtracted: true });
+    yield { type: 'step', name: 'Document Extraction', status: 'completed' };
+
+    if (!extractedContent || extractedContent.trim().length === 0) {
+      yield { type: 'log', message: 'Error: Pre-extracted content is empty.' };
+      yield { type: 'step', name: 'Document Extraction', status: 'failed' };
+      return;
+    }
+
+    console.log(`[AgenticDoctor] Pre-extracted content: ${extractedContent.length} chars`);
+    yield { type: 'log', message: `Pre-extracted content loaded: ${extractedContent.length} chars. Output: ${LegacyPaths.extracted}` };
+
+    yield* this.runPipelineFromPhase2(sessionId, traceId, prompt, extractedContent, startSpan, endSpan);
+  }
+
+  /**
+   * Execute the pipeline with a mix of pre-extracted markdown and additional
+   * files that need Phase 1 (Vision OCR).
+   *
+   * Used when some records have pre-extracted markdown from the N1 API but
+   * older records (pre-parser-router) only have PDFs.
+   */
+  async *executeWithMixedSources(
+    prompt: string,
+    preExtractedContent: string,
+    additionalFilePaths: string[],
+  ): AsyncGenerator<RealmGenerationEvent, void, unknown> {
+    await this.storage.ensureDir('');
+
+    const { sessionId, traceId, startSpan, endSpan } = this.initSession(
+      { mixedSources: true, preExtractedLength: preExtractedContent.length, ocrFileCount: additionalFilePaths.length, promptLength: prompt?.length ?? 0 },
+      ['easy-chr', 'mixed-sources'],
+    );
+
+    console.log(`[AgenticDoctor] Session ${sessionId}: Mixed sources - ${preExtractedContent.length} chars pre-extracted + ${additionalFilePaths.length} files for OCR`);
+    console.log(`[AgenticDoctor] User prompt: ${prompt ? `(${prompt.length} chars)` : '(empty)'}`);
+
+    // Phase 1: Run OCR on additional files, combine with pre-extracted content
+    startSpan(PipelinePhase.DocumentExtraction);
+    yield { type: 'step', name: 'Document Extraction', status: 'running' };
+    yield { type: 'log', message: `Processing ${additionalFilePaths.length} file(s) via OCR + ${preExtractedContent.length} chars pre-extracted...` };
+
+    let allExtractedContent = preExtractedContent;
+    const { pdfFiles, otherFiles } = this.classifyFiles(additionalFilePaths);
+
+    // Process PDFs using Vision OCR
+    if (pdfFiles.length > 0) {
+      const ocrContent = yield* this.drainGenerator(this.extractPDFsViaOCR(pdfFiles));
+      if (ocrContent) {
+        allExtractedContent += '\n\n---\n\n' + ocrContent;
+      }
+    }
+
+    // Process non-PDF files
+    if (otherFiles.length > 0) {
+      allExtractedContent += yield* this.drainGenerator(this.extractNonPdfFiles(otherFiles));
+    }
+
+    // Save combined extracted.md
+    await this.storage.writeFile(LegacyPaths.extracted, allExtractedContent);
+
+    endSpan(PipelinePhase.DocumentExtraction, { chars: allExtractedContent.length, mixedSources: true });
+    yield { type: 'step', name: 'Document Extraction', status: 'completed' };
+
+    if (!allExtractedContent || allExtractedContent.trim().length === 0) {
+      yield { type: 'log', message: 'Error: No content could be extracted from documents.' };
+      yield { type: 'step', name: 'Document Extraction', status: 'failed' };
+      return;
+    }
+
+    console.log(`[AgenticDoctor] Total combined content: ${allExtractedContent.length} chars`);
+    yield { type: 'log', message: `Extraction complete (mixed sources). Output: ${LegacyPaths.extracted}` };
+
+    yield* this.runPipelineFromPhase2(sessionId, traceId, prompt, allExtractedContent, startSpan, endSpan);
+  }
+
+  // ============================================================================
+  // Phases 2-9
+  // ============================================================================
+
+  /**
+   * Phases 2-9 of the pipeline. Shared by all entry points.
+   */
+  private async *runPipelineFromPhase2(
+    sessionId: string,
+    traceId: string,
+    prompt: string,
+    allExtractedContent: string,
+    startSpan: (phase: string) => void,
+    endSpan: (phase: string, meta?: Record<string, unknown>) => void,
+  ): AsyncGenerator<RealmGenerationEvent, void, unknown> {
     // ========================================================================
     // Phase 2: Agentic Medical Analysis
     // Uses iterative tool-based exploration instead of single-pass analysis

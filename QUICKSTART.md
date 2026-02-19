@@ -75,6 +75,20 @@ npm run dev
 - Check that you have quota remaining on your Gemini API key
 - Ensure the model names in `.env` are correct
 
+## Running the Job Runner (Production Pipeline Locally)
+
+To test the full N1 pipeline (markdown fetch → PDF fallback → analysis → report) without deploying:
+
+```bash
+cd server
+USER_ID=ad405f4e-8089-4e23-8b9c-03c8f2648d16 CHR_ID=test ENVIRONMENT=development npx tsx src/job-runner.ts
+```
+
+- `ENVIRONMENT=development` skips S3 uploads and progress tracking
+- `CHR_ID` can be any string — it's a label, not a record ID
+- `USER_ID` must be a real user with records in the N1 API
+- Requires `N1_API_BASE_URL` and `N1_API_KEY` in your `server/.env`
+
 ## Next Steps
 
 - Read the full [README.md](README.md) for detailed documentation and architecture details
