@@ -119,7 +119,7 @@ export class N1ApiAdapter implements PDFFetcherPort, MarkdownFetcherPort {
 
       // Download each completed PDF immediately while URLs are fresh
       for (const record of responseData.data) {
-        if (record.status !== 'COMPLETED') {
+        if (record.status.toUpperCase() !== 'COMPLETED') {
           this.logger.debug(
             { recordId: record.id, status: record.status },
             'Skipping non-completed record',
@@ -259,7 +259,7 @@ export class N1ApiAdapter implements PDFFetcherPort, MarkdownFetcherPort {
       );
 
       for (const record of responseData.data) {
-        if (record.status !== 'COMPLETED') {
+        if (record.status.toUpperCase() !== 'COMPLETED') {
           this.logger.debug(
             { recordId: record.id, status: record.status },
             'Skipping non-completed record',
