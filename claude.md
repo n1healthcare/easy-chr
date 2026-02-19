@@ -1,6 +1,6 @@
 # Claude Context: N1 Personal Realm Generator
 
-> **Last Updated**: 2026-02-06
+> **Last Updated**: 2026-02-19
 > **Purpose**: This file helps Claude Code (and new developers) quickly understand the project. Keep it updated as development progresses.
 
 ## What This Project Does
@@ -36,7 +36,7 @@ The core workflow uses a **9-phase agentic medical analysis pipeline** orchestra
 
 | Phase | Name | Output | Description |
 |-------|------|--------|-------------|
-| 1 | Document Extraction | `extracted.md` | PDFs → Vision OCR, other files → direct text extraction |
+| 1 | Document Extraction | `extracted.md` | Pre-extracted markdown from N1 API (fast path) or PDFs → Vision OCR (fallback), combined into one file |
 | 2 | Agentic Medical Analysis | `analysis.md` | 25-cycle iterative exploration with tools (list_documents, search_data, update_analysis) |
 | 3 | Cross-System Analysis | `cross_systems.md` | Identifies bidirectional relationships between body systems |
 | 4 | Research | `research.json` | Claim extraction + web search validation |
@@ -58,7 +58,10 @@ Uploaded Files → extracted.md → analysis.md → cross_systems.md
 ```
 
 **Key Files**:
-- `server/src/application/use-cases/agentic-doctor.use-case.ts` - Main orchestrator
+- `server/src/application/use-cases/agentic-doctor.use-case.ts` - Main orchestrator (three entry points: `execute`, `executeWithExtractedContent`, `executeWithMixedSources`)
+- `server/src/application/use-cases/fetch-and-process-pdfs.use-case.ts` - Job-runner orchestrator (markdown fetch → PDF fallback → pipeline)
+- `server/src/adapters/n1-api/n1-api.adapter.ts` - N1 API integration (markdown + PDF fetching)
+- `server/src/application/ports/markdown-fetcher.port.ts` - Port interface for markdown/PDF fetching
 - `server/src/services/agentic-medical-analyst.service.ts` - Phase 2 agent with tool executor
 - `server/src/services/research-agent.service.ts` - Phase 4 research
 - `server/src/services/pdf-extraction.service.ts` - Phase 1 PDF OCR
@@ -81,7 +84,17 @@ Uploaded Files → extracted.md → analysis.md → cross_systems.md
 - Events: `{ type: 'thought', content: '...' }` and `{ type: 'result', realmUrl: '...' }`
 - Allows real-time "thinking" display before final result
 
-### 4. File Storage
+### 4. Per-Record Markdown Fallback to PDF + Vision OCR
+- Records uploaded after parser-router PR #94 have pre-extracted markdown available via `/records/{record_id}/markdown`
+- Older records will 404 on that endpoint — these fall back to PDF download + Gemini Vision OCR
+- `MarkdownFetcherPort.fetchMarkdownsForUser()` returns `{ markdowns, failedRecordIds }`
+- `FetchAndProcessPDFsUseCase` routes to one of three paths:
+  - **All markdown** → `executeWithExtractedContent()` (fast path, no OCR)
+  - **Mixed** → `executeWithMixedSources()` (OCR only the fallback PDFs, combine with markdown)
+  - **PDF fallback fails** → proceeds with whatever markdowns were fetched (degraded but not fatal)
+- All paths produce a single combined `extracted.md` for Phases 2-9
+
+### 5. File Storage
 - **Development**: Local filesystem (`server/storage/`)
 - **Production TODO**: Migrate to cloud storage (S3, GCS)
 - Structure: `storage/uploads/<uuid>/` and `storage/realms/<uuid>/index.html`
@@ -109,6 +122,20 @@ cd server && npm run dev
 # Terminal 2: Client with hot reload
 cd client && npm run dev
 ```
+
+### Running the Job Runner Locally
+
+The job runner is the production entry point (K8s job mode). To test locally:
+
+```bash
+cd server
+USER_ID=ad405f4e-8089-4e23-8b9c-03c8f2648d16 CHR_ID=test ENVIRONMENT=development npx tsx src/job-runner.ts
+```
+
+- `ENVIRONMENT=development` skips S3 uploads and progress tracking
+- `CHR_ID` can be any string (just a label for logs)
+- `USER_ID` must be a real user ID with records in the N1 API
+- Requires `N1_API_BASE_URL` and `N1_API_KEY` in `server/.env`
 
 ### Making Changes
 

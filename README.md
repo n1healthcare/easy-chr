@@ -20,8 +20,10 @@ Uploaded Files
      ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Phase 1: Document Extraction                                        │
-│ PDFs → Gemini Vision OCR → Markdown                                │
+│ Per-record: try pre-extracted markdown from N1 API first            │
+│ Fallback: PDF → Gemini Vision OCR → Markdown (old records)          │
 │ Other files → direct text extraction                                │
+│ All sources combined into one file                                  │
 │ Output: extracted.md                                                │
 └──────────────────────────────┬──────────────────────────────────────┘
                                │
@@ -213,6 +215,22 @@ Serve a generated Realm by its unique ID.
 - **Visualizations**: Plotly.js (gauges, trends, radar charts in generated HTML)
 - **Storage**: Local filesystem (dev), S3 (prod), GCS (legacy)
 - **Streaming**: Server-Sent Events (SSE)
+
+## Running the Job Runner Locally
+
+The job runner is the production entry point (ephemeral K8s job mode). To test the full pipeline locally without S3:
+
+```bash
+cd server
+USER_ID=ad405f4e-8089-4e23-8b9c-03c8f2648d16 CHR_ID=test ENVIRONMENT=development npx tsx src/job-runner.ts
+```
+
+- `ENVIRONMENT=development` — skips S3 uploads and progress API calls
+- `CHR_ID` — any string (report label for logs, not a record ID)
+- `USER_ID` — a real user ID with records in the N1 API
+- Requires `N1_API_BASE_URL` and `N1_API_KEY` in `server/.env`
+
+The pipeline will fetch markdown for each record, fall back to PDF + Vision OCR for records without markdown, and output the generated realm to local `storage/`.
 
 ## Development Notes
 
