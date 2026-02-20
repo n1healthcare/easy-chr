@@ -31,7 +31,8 @@ Uploaded Files
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Phase 2: Agentic Medical Analysis                                   │
 │ Iterative tool-based exploration (up to 35 cycles)                  │
-│ Tools: list_documents, read_document, search_data, update_analysis  │
+│ Tools: list_documents, read_document, search_data, get_date_range,  │
+│        extract_timeline_events, get_value_history, update_analysis  │
 │ Agent forms hypotheses, seeks evidence, builds comprehensive report │
 │ Includes cross-system relationship analysis                         │
 │ Output: analysis.md                                                 │
@@ -47,9 +48,12 @@ Uploaded Files
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│ Phase 4: Data Structuring (SOURCE OF TRUTH)                         │
-│ Extracts chart-ready JSON with 25+ semantic fields                  │
-│ Inputs: analysis.md + research.json + source lab data excerpt       │
+│ Phase 4: Agentic Data Structuring (SOURCE OF TRUTH)                 │
+│ Builds chart-ready JSON with 25+ semantic fields section-by-section │
+│ Primary inputs: analysis.md + research.json (in context)            │
+│ Tool access to full extracted.md for cross-checking values          │
+│ Tools: search_source, get_value_history, get_date_range,            │
+│        update_json_section, complete_structuring                    │
 │ Output: structured_data.json                                        │
 └──────────────────────────────┬──────────────────────────────────────┘
                                │
@@ -118,10 +122,11 @@ server/
   │   ├── domain/              Core types and entities
   │   ├── services/            Pipeline services:
   │   │   ├── agentic-medical-analyst    Phase 2 agent with tool executor
+  │   │   ├── agentic-data-structurer    Phase 4 agent with tool executor (NEW)
   │   │   ├── agentic-validator          Phase 5 agent with tool executor
   │   │   ├── research-agent             Phase 3 claim extraction + web search
   │   │   ├── pdf-extraction             Phase 1 Vision OCR
-  │   │   ├── chat-compression           History compression for agentic loops
+  │   │   ├── chat-compression           History compression for all agentic loops
   │   │   └── web-search                 Search API integration
   │   ├── utils/               Billing, JSON patch merge, source excerpts
   │   └── config.ts            REALM_CONFIG (models, retry, throttle, compression)

@@ -518,6 +518,7 @@ export class ValidatorToolExecutor {
   private parsedData: ParsedExtractedData;
   private structuredJson: Record<string, unknown>;
   private issues: ValidationIssue[] = [];
+  private verifiedMarkers: Set<string> = new Set();
 
   constructor(extractedContent: string, structuredJsonContent: string) {
     this.parsedData = parseExtractedData(extractedContent);
@@ -625,14 +626,13 @@ export class ValidatorToolExecutor {
       }
     }
 
-    // Dedupe and limit
-    const uniqueValues = [...new Set(keyValues)].slice(0, 20);
+    // Dedupe
+    const uniqueValues = [...new Set(keyValues)];
 
     // Extract dates mentioned
     const dates = this.parsedData.timelineEvents
       .filter(e => sections.some(s => s.name === e.document))
-      .map(e => e.date)
-      .slice(0, 5);
+      .map(e => e.date);
 
     return `# Document Summary: ${documentName}
 
@@ -701,7 +701,7 @@ ${uniqueValues.length > 0 ? uniqueValues.map(v => `- ${v}`).join('\n') : 'No num
   }
 
   /**
-   * Extract structured value details from JSON sections (allFindings, criticalFindings, trends).
+   * Extract structured value details from JSON sections (criticalFindings, trends).
    */
   private extractJsonValueDetails(marker: string): {
     value: string; unit: string;
@@ -709,7 +709,7 @@ ${uniqueValues.length > 0 ? uniqueValues.map(v => `- ${v}`).join('\n') : 'No num
     location: string;
   } | null {
     const markerLower = marker.toLowerCase();
-    const sections = ['criticalFindings', 'allFindings', 'trends'] as const;
+    const sections = ['criticalFindings', 'trends'] as const;
 
     for (const section of sections) {
       const arr = this.structuredJson[section];
@@ -806,6 +806,7 @@ ${uniqueValues.length > 0 ? uniqueValues.map(v => `- ${v}`).join('\n') : 'No num
     let status: string;
     if (inSource && inJson) {
       status = '✅ VERIFIED - Value exists in both source and JSON';
+      this.verifiedMarkers.add(marker);
     } else if (inSource && !inJson) {
       status = '⚠️ MISSING FROM JSON - Value in source but NOT in JSON (potential data loss)';
     } else if (!inSource && inJson) {
@@ -904,10 +905,10 @@ ${uniqueValues.length > 0 ? uniqueValues.map(v => `- ${v}`).join('\n') : 'No num
 **Status:** ${status}
 
 ## Source Data (${sourceMatches.length} matches)
-${sourceMatches.slice(0, 5).map(m => `- ${m}`).join('\n') || 'No matches found'}
+${sourceMatches.map(m => `- ${m}`).join('\n') || 'No matches found'}
 
 ## JSON Data (${jsonMatches.length} matches)
-${jsonMatches.slice(0, 5).map(m => `- ${m}`).join('\n') || 'No matches found'}${accuracySection}`;
+${jsonMatches.map(m => `- ${m}`).join('\n') || 'No matches found'}${accuracySection}`;
   }
 
   private searchData(query: string): string {
@@ -916,7 +917,7 @@ ${jsonMatches.slice(0, 5).map(m => `- ${m}`).join('\n') || 'No matches found'}${
 
     for (const section of this.parsedData.sections) {
       const lines = section.content.split('\n');
-      const matches = lines.filter(l => l.toLowerCase().includes(queryLower)).slice(0, 5);
+      const matches = lines.filter(l => l.toLowerCase().includes(queryLower));
       if (matches.length > 0) {
         results.push({ section: section.name, matches });
       }
@@ -926,7 +927,7 @@ ${jsonMatches.slice(0, 5).map(m => `- ${m}`).join('\n') || 'No matches found'}${
       return `No matches found for "${query}"`;
     }
 
-    return `# Search Results for "${query}"\n\n${results.slice(0, 10).map(r =>
+    return `# Search Results for "${query}"\n\n${results.map(r =>
       `### ${r.section}\n${r.matches.join('\n')}`
     ).join('\n\n')}`;
   }
@@ -971,8 +972,7 @@ ${jsonMatches.slice(0, 5).map(m => `- ${m}`).join('\n') || 'No matches found'}${
 
     const years = Object.keys(byYear).map(Number).sort((a, b) => a - b);
     return `# Source Timeline Events\n\n${years.map(y => {
-      const yearEvents = byYear[y].slice(0, 10);
-      return `## ${y} (${byYear[y].length} events)\n${yearEvents.map(e =>
+      return `## ${y} (${byYear[y].length} events)\n${byYear[y].map(e =>
         `- ${e.date}: ${e.snippet.substring(0, 60)}...`
       ).join('\n')}`;
     }).join('\n\n')}`;
@@ -1282,6 +1282,10 @@ ${issueList}`;
   getIssues(): ValidationIssue[] {
     return this.issues;
   }
+
+  getVerifiedMarkers(): string[] {
+    return [...this.verifiedMarkers];
+  }
 }
 
 // ============================================================================
@@ -1319,8 +1323,9 @@ export class AgenticValidator {
     structuredJsonContent: string,
     patientContext?: string,
     maxIterations: number = 15,
-    previouslyRaisedIssues: Array<{ category: string; severity: string; description: string }> = []
-  ): AsyncGenerator<ValidatorEvent, { status: string; issues: ValidationIssue[]; summary: string }, unknown> {
+    previouslyRaisedIssues: Array<{ category: string; severity: string; description: string }> = [],
+    previouslyVerifiedOK: string[] = []
+  ): AsyncGenerator<ValidatorEvent, { status: string; issues: ValidationIssue[]; summary: string; verifiedMarkers: string[] }, unknown> {
     const toolExecutor = new ValidatorToolExecutor(extractedContent, structuredJsonContent);
 
     yield {
@@ -1328,7 +1333,7 @@ export class AgenticValidator {
       data: { message: 'Starting agentic validation...' },
     };
 
-    const systemPrompt = this.buildSystemPrompt(patientContext, previouslyRaisedIssues);
+    const systemPrompt = this.buildSystemPrompt(patientContext, previouslyRaisedIssues, previouslyVerifiedOK);
 
     let conversationHistory: Array<{
       role: string;
@@ -1568,10 +1573,11 @@ export class AgenticValidator {
       status: finalStatus,
       issues,
       summary: finalSummary || `Validation completed with ${issues.length} issues`,
+      verifiedMarkers: toolExecutor.getVerifiedMarkers(),
     };
   }
 
-  private buildSystemPrompt(patientContext?: string, previouslyRaisedIssues: Array<{ category: string; severity: string; description: string }> = []): string {
+  private buildSystemPrompt(patientContext?: string, previouslyRaisedIssues: Array<{ category: string; severity: string; description: string }> = [], previouslyVerifiedOK: string[] = []): string {
     let prompt = loadValidatorSkill();
 
     // Add agentic instructions with verification-focused workflow
@@ -1636,6 +1642,13 @@ The following issues were already raised in previous validation cycles and corre
 Do NOT report these issues again. Focus ONLY on finding NEW issues not already covered below.
 
 ${previouslyRaisedIssues.map(i => `- [${i.severity.toUpperCase()}] ${i.category}: ${i.description}`).join('\n')}
+
+` : ''}${previouslyVerifiedOK.length > 0 ? `### Already Verified Correct (SKIP THESE)
+
+The following markers were confirmed present and accurate in the previous validation cycle.
+Do NOT re-check these — spend your iterations on unverified markers and new checks only.
+
+${previouslyVerifiedOK.map(m => `- ${m}`).join('\n')}
 
 ` : ''}${patientContext ? `\n### Patient Context\n${patientContext}\n` : ''}
 

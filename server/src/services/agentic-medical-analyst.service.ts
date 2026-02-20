@@ -638,7 +638,7 @@ export class AnalystToolExecutor {
             section: section.pageNumber
               ? `${section.name} - Page ${section.pageNumber}`
               : section.name,
-            matches: matchingLines.slice(0, 10), // Limit matches per section
+            matches: matchingLines,
           });
         }
       }
@@ -649,11 +649,10 @@ export class AnalystToolExecutor {
     }
 
     const output = results
-      .slice(0, 15) // Limit total sections
       .map(r => `### ${r.section}\n\n${r.matches.join('\n\n---\n\n')}`)
       .join('\n\n---\n\n');
 
-    // No size cap — chat compression service handles conversation history growth
+    // No slice caps — chat compression service handles conversation history growth
     return `# Search Results for "${query}"\n\nFound matches in ${results.length} section(s):\n\n${output}`;
   }
 
@@ -694,7 +693,7 @@ export class AnalystToolExecutor {
     const issues: string[] = [];
 
     // Minimum thresholds
-    const MIN_DOCUMENT_COVERAGE = 50;
+    const MIN_DOCUMENT_COVERAGE = 100;
     const MIN_SEARCHES = 3;
 
     if (stats.documentCoverage < MIN_DOCUMENT_COVERAGE && stats.totalDocuments > 2) {
@@ -711,6 +710,37 @@ export class AnalystToolExecutor {
 
     if (!stats.timelineExtracted && this.parsedData.timelineEvents.length > 0) {
       issues.push(`Timeline events not extracted. Call extract_timeline_events() to build the Medical History Timeline.`);
+    }
+
+    // Temporal year coverage enforcement — for multi-year datasets
+    const { dateRange, documentsByYear } = this.parsedData;
+    if (dateRange && dateRange.years >= 5) {
+      const yearsWithDataInSource = Object.keys(documentsByYear).map(Number).sort((a, b) => a - b);
+      if (yearsWithDataInSource.length >= 3) {
+        // Find the timeline section content
+        let timelineContent = '';
+        for (const [key, content] of this.currentAnalysis) {
+          if (key.toLowerCase().includes('timeline')) {
+            timelineContent += content + '\n';
+          }
+        }
+
+        if (timelineContent) {
+          // Extract 4-digit years mentioned in the timeline
+          const yearMatches = timelineContent.match(/\b(19[9]\d|20[0-2]\d)\b/g) ?? [];
+          const yearsInTimeline = new Set(yearMatches.map(y => parseInt(y, 10)));
+          const missingFromTimeline = yearsWithDataInSource.filter(y => !yearsInTimeline.has(y));
+          const missingRatio = missingFromTimeline.length / yearsWithDataInSource.length;
+
+          if (missingRatio > 0.4) {
+            issues.push(
+              `Medical History Timeline is missing ${missingFromTimeline.length}/${yearsWithDataInSource.length} years that have data in the source (${missingFromTimeline.join(', ')}). ` +
+              `Update your timeline to include ALL years with data. ` +
+              `Do NOT write "The Gap" — include what was found for each year, even if labs were normal (e.g., "2014: Stable CBC. Lipid panel within range.").`
+            );
+          }
+        }
+      }
     }
 
     // Required section enforcement — these map to structurer JSON fields
@@ -828,6 +858,29 @@ ${output}
 Use \`extract_timeline_events(year)\` to get detailed events for a specific year.`;
   }
 
+  /**
+   * Build a compact year-by-year scaffold from timeline events.
+   * Auto-injected into currentAnalysis when extract_timeline_events() is called.
+   * Guarantees every year with source data appears in the timeline.
+   */
+  private buildTimelineScaffold(events: TimelineEvent[]): string {
+    const byYear: Record<number, TimelineEvent[]> = {};
+    for (const event of events) {
+      if (!byYear[event.year]) byYear[event.year] = [];
+      byYear[event.year].push(event);
+    }
+
+    const years = Object.keys(byYear).map(Number).sort((a, b) => a - b);
+    const rows = years.map(y => {
+      const yearEvents = byYear[y];
+      const uniqueDocs = [...new Set(yearEvents.map(e => e.document))];
+      const docsStr = uniqueDocs.slice(0, 3).join(', ') + (uniqueDocs.length > 3 ? ` +${uniqueDocs.length - 3} more` : '');
+      return `| ${y} | ${yearEvents.length} | ${docsStr} |`;
+    }).join('\n');
+
+    return `*Auto-extracted scaffold from source data — enrich each year with clinical findings. NEVER summarize a period as "The Gap" — include what was found for each year, even if tests were normal.*\n\n| Year | Events | Source Documents |\n|------|--------|------------------|\n${rows}\n\n**Required:** Replace each year row above with a proper clinical entry such as:\n- "2008: Stable CBC (WBC 6.2, Plt 210). Lipid panel normal. No active issues noted."\n- "2015: Thyroid function within range (TSH 2.1). Routine metabolic panel normal."`;
+  }
+
   private extractTimelineEvents(year?: number): string {
     // Track that timeline was extracted
     this.timelineExtracted = true;
@@ -844,6 +897,15 @@ Use \`extract_timeline_events(year)\` to get detailed events for a specific year
         : `# Timeline Events\n\nNo dated events found in the documents.`;
     }
 
+    // Auto-inject scaffold into analysis (full call only, not per-year)
+    // Only inject if no timeline section has been written yet
+    if (!year) {
+      const hasTimeline = [...this.currentAnalysis.keys()].some(k => k.toLowerCase().includes('timeline'));
+      if (!hasTimeline) {
+        this.currentAnalysis.set('Medical History Timeline', this.buildTimelineScaffold(events));
+      }
+    }
+
     // Group by year for readability
     const byYear: Record<number, TimelineEvent[]> = {};
     for (const event of events) {
@@ -854,11 +916,11 @@ Use \`extract_timeline_events(year)\` to get detailed events for a specific year
     const years = Object.keys(byYear).map(Number).sort((a, b) => a - b);
     const output = years.map(y => {
       const yearEvents = byYear[y];
-      const eventList = yearEvents.slice(0, 20).map(e => {
+      const eventList = yearEvents.map(e => {
         const dateStr = e.day ? e.date : (e.month ? `${e.year}-${String(e.month).padStart(2, '0')}` : `${e.year}`);
         return `- **${dateStr}** - ${e.document}: ${e.snippet.substring(0, 80)}${e.snippet.length > 80 ? '...' : ''}`;
       }).join('\n');
-      return `## ${y} (${yearEvents.length} events)\n${eventList}${yearEvents.length > 20 ? `\n... and ${yearEvents.length - 20} more` : ''}`;
+      return `## ${y} (${yearEvents.length} events)\n${eventList}`;
     }).join('\n\n');
 
     return `# Timeline Events${year ? ` for ${year}` : ''}
@@ -870,8 +932,9 @@ ${output}
 
 ---
 
-**Use these events to build a comprehensive Medical History Timeline in your analysis.**
-Include significant events from across the entire date range, not just recent ones.`;
+**A preliminary "Medical History Timeline" scaffold has been auto-inserted into your analysis.**
+Enrich each year row with clinical detail from the events above.
+NEVER write "The Gap" — include a brief entry for every year shown, even if labs were normal.`;
   }
 
   private getValueHistory(marker: string): string {
@@ -1086,7 +1149,7 @@ export class AgenticMedicalAnalyst {
   async *analyze(
     extractedContent: string,
     patientContext?: string,
-    maxIterations: number = 50
+    maxIterations: number = 200
   ): AsyncGenerator<AnalystEvent, string, unknown> {
     const toolExecutor = new AnalystToolExecutor(extractedContent);
 

@@ -44,7 +44,7 @@ export interface CompressionResult {
 
 export interface CompressionContext {
   /** Determines the compression prompt variant */
-  phase: 'analyst' | 'validator';
+  phase: 'analyst' | 'validator' | 'structurer';
   /** Current state stored outside conversation history (analysis sections, docs explored, etc.) */
   externalState?: string;
 }
@@ -139,7 +139,47 @@ export function findSplitPoint(
 // Compression Prompt
 // ============================================================================
 
-export function getMedicalCompressionPrompt(phase: 'analyst' | 'validator'): string {
+export function getMedicalCompressionPrompt(phase: 'analyst' | 'validator' | 'structurer'): string {
+  if (phase === 'structurer') {
+    return `You are a conversation history compressor for a medical data structuring agent.
+
+When the conversation history grows too large, you compress it into a structured snapshot. This snapshot becomes the agent's ONLY memory of past work. All JSON sections built so far, source lookups performed, and current progress MUST be preserved.
+
+First, review the entire conversation in a private <scratchpad>. Identify every JSON section that was written and every source lookup performed. Then generate the <state_snapshot>.
+
+Be EXTREMELY dense with information. Include which sections are done, which are pending, and what source data was found. Omit only tool response formatting boilerplate.
+
+<state_snapshot>
+    <patient_overview>
+        <!-- Patient context and the question being analyzed.
+             Include demographics, chief complaints, key findings from the analysis. -->
+    </patient_overview>
+
+    <json_sections_written>
+        <!-- ALL JSON sections written so far. Include:
+             - WRITTEN: executiveSummary (~NKB, shortAnswer + N keyFindings)
+             - WRITTEN: criticalFindings (N items, most critical: [MarkerName] [value] [unit])
+             - WRITTEN: timeline (N events, spanning [year]-[year])
+             - WRITTEN: diagnoses (N diagnoses including [primary diagnosis])
+             - PENDING: [list remaining sections] -->
+    </json_sections_written>
+
+    <source_lookups>
+        <!-- Source queries and value histories retrieved so far.
+             - SEARCHED: "[query]" → found in N sections
+             - VALUE HISTORY: "[MarkerName]" → N values ([year]: [val], [year]: [val])
+             - DATE RANGE: source spans [year]-[year] (N years) -->
+    </source_lookups>
+
+    <current_progress>
+        <!-- What section was being worked on when compression occurred.
+             - Currently building: [section name]
+             - Next planned: [next section]
+             - Required sections still missing: [list] -->
+    </current_progress>
+</state_snapshot>`;
+  }
+
   if (phase === 'validator') {
     return `You are a conversation history compressor for a medical data validation agent.
 
@@ -290,7 +330,30 @@ export class ChatCompressionService {
 
     // Find split point: compress oldest portion, keep newest
     const compressFraction = 1 - preserveFraction;
-    const splitPoint = findSplitPoint(history, compressFraction);
+    let splitPoint = findSplitPoint(history, compressFraction);
+
+    // When splitPoint === 0, ALL user entries after index 0 are function responses
+    // (agentic tool loop pattern). The system prompt lives at index 0 and must be
+    // preserved. Find a function-boundary split point within the older portion instead.
+    let preserveSystemPrompt = false;
+    if (splitPoint === 0 && history.length > 3) {
+      const targetIndex = Math.ceil(history.length * compressFraction);
+      // Walk backwards from targetIndex to find the last user-functionResponse entry.
+      // Splitting after it (i+1) means the next model turn starts the kept portion.
+      let midPoint = 0;
+      for (let i = Math.min(targetIndex, history.length - 2); i >= 2; i--) {
+        const entry = history[i];
+        if (entry.role === 'user' && entry.parts.some(p => p.functionResponse !== undefined)) {
+          midPoint = i + 1; // split after this function response
+          break;
+        }
+      }
+      if (midPoint > 1) {
+        splitPoint = midPoint;
+        preserveSystemPrompt = true;
+        console.log(`[ChatCompression] Using function-boundary split at index ${splitPoint} (system prompt preserved)`);
+      }
+    }
 
     if (splitPoint === 0) {
       console.log('[ChatCompression] No safe split point found, skipping');
@@ -302,7 +365,9 @@ export class ChatCompressionService {
       };
     }
 
-    const toCompress = history.slice(0, splitPoint);
+    // When preserving the system prompt, compress [1..splitPoint) not [0..splitPoint)
+    const compressStart = preserveSystemPrompt ? 1 : 0;
+    const toCompress = history.slice(compressStart, splitPoint);
     const toKeep = history.slice(splitPoint);
 
     // Build the compression request
@@ -321,7 +386,7 @@ export class ChatCompressionService {
     ];
 
     try {
-      const compressionModel = REALM_CONFIG.models.markdown; // gemini-2.5-flash
+      const compressionModel = REALM_CONFIG.models.doctor; // gemini-3-pro-preview
 
       const response = await this.genai.models.generateContent({
         model: compressionModel,
@@ -343,8 +408,9 @@ export class ChatCompressionService {
         };
       }
 
-      // Build new history: [summary, model ack, ...kept entries]
+      // Build new history: [system prompt (if preserved), summary, model ack, ...kept entries]
       const newHistory: ConversationEntry[] = [
+        ...(preserveSystemPrompt ? [history[0]] : []),
         {
           role: 'user',
           parts: [{ text: summary }],

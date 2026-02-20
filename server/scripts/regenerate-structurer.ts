@@ -21,9 +21,10 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { GeminiAdapter } from '../src/adapters/gemini/gemini.adapter.js';
 import { AgenticValidator, type ValidatorEvent } from '../src/services/agentic-validator.service.js';
+import { AgenticDataStructurer, type StructurerEvent } from '../src/services/agentic-data-structurer.service.js';
 import { formatResearchAsMarkdown, type ResearchOutput } from '../src/services/research-agent.service.js';
 import { REALM_CONFIG } from '../src/config.js';
-import { extractSourceExcerpts, extractLabSections } from '../src/utils/source-excerpts.js';
+import { extractSourceExcerpts } from '../src/utils/source-excerpts.js';
 import { deepMergeJsonPatch } from '../src/utils/json-patch-merge.js';
 import { transformOrganInsightsToBodyTwin } from '../src/services/body-twin-transformer.service.js';
 import { injectBodyTwinViewer } from '../src/utils/inject-body-twin.js';
@@ -158,36 +159,29 @@ async function regenerateStructurer(userPrompt?: string) {
   const structuredDataPath = path.join(storageDir, 'structured_data.json');
   let structuredDataContent = '';
 
-  const dataStructurerSkill = loadSkill('data-structurer');
-  const labSections = extractLabSections(allExtractedContent, 50_000);
+  console.log('Running agentic data structurer...');
+  const agenticStructurer = new AgenticDataStructurer();
+  const structurerGenerator = agenticStructurer.structure(
+    allExtractedContent,
+    analysisContent,
+    researchMarkdown,
+    prompt,
+    25
+  );
 
-  const structurePrompt = `${dataStructurerSkill}
-
----
-
-${prompt ? `#### Patient's Question/Context\n${prompt}\n\n` : ''}### Priority 1: Rich Medical Analysis (PRIMARY - includes cross-system connections)
-<analysis>
-${analysisContent}
-</analysis>
-
-### Priority 2: Research Findings (for citations and verified claims)
-<research>
-${researchMarkdown}
-</research>
-
-### Priority 3: Source Lab Data (for exact values, units, and reference ranges)
-When the analysis omits units or reference ranges, use this raw lab data as the ground truth.
-<source_lab_data>
-${labSections}
-</source_lab_data>`;
-  // NOTE: full allExtractedContent intentionally EXCLUDED (991KB+ causes timeouts)
-  // Instead, extractLabSections() provides a ~50KB subset of lab-data-dense sections
-
-  console.log('Extracting structured data for visualizations...');
-  structuredDataContent = await streamWithRetry(gemini, structurePrompt, `${sessionId}-structure`, REALM_CONFIG.models.doctor, 'DataStructuring');
-
-  // Clean up JSON
-  structuredDataContent = cleanupJson(structuredDataContent);
+  let structurerResult = await structurerGenerator.next();
+  while (!structurerResult.done) {
+    const event = structurerResult.value as StructurerEvent;
+    if (event.type === 'log') {
+      console.log(`  ${event.data.message ?? ''}`);
+    } else if (event.type === 'tool_call' && event.data.toolName) {
+      console.log(`  [Structurer] ${event.data.toolName}(${JSON.stringify(event.data.toolArgs ?? {}).substring(0, 80)})`);
+    } else if (event.type === 'error') {
+      console.error(`  [Structurer] Error: ${event.data.message}`);
+    }
+    structurerResult = await structurerGenerator.next();
+  }
+  structuredDataContent = structurerResult.value as string;
 
   // Validate JSON
   try {
@@ -222,7 +216,7 @@ ${labSections}
 
   const validationPath = path.join(storageDir, 'validation.md');
 
-  const MAX_CORRECTION_CYCLES = 3;
+  const MAX_CORRECTION_CYCLES = 1;
   let correctionCycle = 0;
   let validationPassed = false;
   let finalValidationStatus = '';
@@ -291,7 +285,9 @@ ${labSections}
         const issueDescriptions = actionableIssues.map((i: { category: string; description: string }) => `- ${i.category}: ${i.description}`).join('\n');
         const sourceExcerpts = extractSourceExcerpts(allExtractedContent, actionableIssues);
 
-        const correctionPrompt = `${dataStructurerSkill}
+        const correctionPrompt = `You are a medical data correction specialist. Your task is to fix specific issues in a structured JSON document.
+
+Output ONLY a JSON PATCH (a plain JSON object, no markdown, no explanations, no tool calls) containing only the fields that need to change. Start your response with \`{\` and end with \`}\`.
 
 ---
 
@@ -326,16 +322,6 @@ Output ONLY a JSON PATCH containing the fields that need to change.
 - For arrays that need full replacement: include the full array with {"_action": "replace"} as first element
 - Do NOT include unchanged fields — only include what needs to change
 - Output must be valid JSON starting with \`{\`
-
-Example: To fix a unit in criticalFindings and add a missing medication:
-\`\`\`json
-{
-  "criticalFindings": [{"_action": "replace"}, {"marker": "MarkerX", "value": 150, "unit": "mg/dL", "refRange": "70-100", "status": "high"}],
-  "qualitativeData": {
-    "medications": [{"name": "NewMed", "status": "current"}]
-  }
-}
-\`\`\`
 
 Output the JSON PATCH now (starting with \`{\`):`;
 

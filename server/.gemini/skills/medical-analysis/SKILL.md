@@ -70,7 +70,7 @@ You have access to these tools for exploration:
 4. update_analysis("Patient Context", initial_snapshot including date range)
 ```
 
-**CRITICAL:** If data spans many years, your Medical History Timeline should reflect this with proportional coverage. Don't just focus on recent data.
+**CRITICAL:** If data spans many years, your Medical History Timeline MUST reflect this with proportional coverage. Don't just focus on recent data. Call `extract_timeline_events()` early — it auto-inserts a year-by-year scaffold you MUST enrich. Never write "The Gap" — include what was found for every year, even normal labs.
 
 ### Phase 2: Systematic Exploration (5-10 cycles)
 For each major document or finding:
@@ -288,8 +288,13 @@ Call `complete_analysis()` only when you have:
 
 Before calling `complete_analysis()`, verify:
 1. Call `get_date_range()` - note how many years of data exist
-2. Call `extract_timeline_events()` - review all dated events
-3. Ensure your Medical History Timeline has entries across the full date range
+2. Call `extract_timeline_events()` - this **automatically inserts a year-by-year scaffold** into your Medical History Timeline section. The scaffold lists every year with data found in the source.
+3. **Enrich the scaffold**: for each year in the scaffold, replace the placeholder row with a real clinical entry. Example:
+   - `2008: CBC stable (WBC 6.4, Plt 218). Lipid panel normal. No active concerns.`
+   - `2015: Thyroid function within range (TSH 2.3). Annual metabolic panel unremarkable.`
+4. **NEVER write "The Gap"** or similar summaries for any date range. If a period had normal labs, write that explicitly.
+
+**Why this matters**: The analysis will be **blocked from completing** if your timeline is missing >40% of years that have data in the source. The completion check verifies that every year with source data appears in your written timeline.
 
 **Confidence levels:**
 - **High**: Comprehensive data, clear patterns, all major systems covered, **timeline covers full date range**

@@ -24,9 +24,10 @@ import { readFileWithEncoding } from '../../../vendor/gemini-cli/packages/core/s
 import { PDFExtractionService } from '../../services/pdf-extraction.service.js';
 import { AgenticMedicalAnalyst, type AnalystEvent } from '../../services/agentic-medical-analyst.service.js';
 import { AgenticValidator, type ValidatorEvent } from '../../services/agentic-validator.service.js';
+import { AgenticDataStructurer, type StructurerEvent } from '../../services/agentic-data-structurer.service.js';
 import { researchClaims, formatResearchAsMarkdown, type ResearchOutput, type ResearchEvent } from '../../services/research-agent.service.js';
 import { REALM_CONFIG } from '../../config.js';
-import { extractSourceExcerpts, extractLabSections } from '../../utils/source-excerpts.js';
+import { extractSourceExcerpts } from '../../utils/source-excerpts.js';
 import { deepMergeJsonPatch } from '../../utils/json-patch-merge.js';
 import { transformOrganInsightsToBodyTwin } from '../../services/body-twin-transformer.service.js';
 import { injectBodyTwinViewer } from '../../utils/inject-body-twin.js';
@@ -89,11 +90,6 @@ const loadMedicalAnalysisSkill = () => loadSkill(
 const loadHTMLBuilderSkill = () => loadSkill(
   'html-builder',
   'You are an HTML builder. Transform the analysis into a beautiful, interactive HTML page.'
-);
-
-const loadDataStructurerSkill = () => loadSkill(
-  'data-structurer',
-  'You are a data extraction specialist. Extract structured JSON from medical analysis for chart visualization.'
 );
 
 const loadContentReviewerSkill = () => loadSkill(
@@ -640,7 +636,7 @@ export class AgenticDoctorUseCase {
       const analysisGenerator = agenticAnalyst.analyze(
         allExtractedContent,
         prompt, // Patient context/question
-        35 // Max iterations for thorough exploration
+        200 // Max iterations — 100% document coverage + compression now working
       );
 
       // Consume the generator and capture the return value
@@ -803,52 +799,35 @@ export class AgenticDoctorUseCase {
     let structuredDataContent = '';
 
     try {
-      const dataStructurerSkill = loadDataStructurerSkill();
-
-      const labSections = extractLabSections(allExtractedContent, 50_000);
-
-      const structurePrompt = `${dataStructurerSkill}
-
----
-
-${prompt ? `#### Patient's Question/Context\n${prompt}\n\n` : ''}### Priority 1: Rich Medical Analysis (PRIMARY source - includes cross-system connections)
-<analysis>
-${analysisContent}
-</analysis>
-
-### Priority 2: Research Findings (for citations and verified claims)
-<research>
-${researchMarkdown}
-</research>
-
-### Priority 3: Source Lab Data (for exact values, units, and reference ranges)
-When the analysis omits units or reference ranges, use this raw lab data as the ground truth.
-<source_lab_data>
-${labSections}
-</source_lab_data>`;
-      // NOTE: full allExtractedContent intentionally EXCLUDED (991KB+ causes timeouts)
-      // Instead, extractLabSections() provides a ~50KB subset of lab-data-dense sections
-
-      // Log payload size for debugging network issues
-      console.log(`[AgenticDoctor] Data structuring prompt payload: ${Math.round(structurePrompt.length / 1024)}KB`);
-
-      const dsGenId = `gen-data-structuring-${sessionId}`;
-      const dsStartTime = Date.now();
-      try { this.obs.startGeneration(dsGenId, { name: 'data-structuring', traceId, parentSpanId: PipelinePhase.DataStructuring, model: REALM_CONFIG.models.doctor }); } catch { /* non-fatal */ }
-
-      structuredDataContent = await streamWithRetry(
-        this.llmClient,
-        structurePrompt,
-        `${sessionId}-structure`,
-        REALM_CONFIG.models.doctor,
-        {
-          operationName: 'DataStructuring',
-          maxRetries: 3,
-          billingContext: this.billingContext,
-        }
+      const agenticStructurer = new AgenticDataStructurer(
+        this.billingContext,
+        this.obs,
+        traceId,
+        PipelinePhase.DataStructuring,
       );
 
-      try { this.obs.endGeneration(dsGenId, { outputCharCount: structuredDataContent.length, latencyMs: Date.now() - dsStartTime }); } catch { /* non-fatal */ }
+      const structurerGenerator = agenticStructurer.structure(
+        allExtractedContent,
+        analysisContent,
+        researchMarkdown,
+        prompt,
+        25,
+      );
+
+      let structurerResult = await structurerGenerator.next();
+      while (!structurerResult.done) {
+        const event = structurerResult.value as StructurerEvent;
+        if (event.type === 'log') {
+          yield { type: 'log', message: event.data.message ?? '' };
+        } else if (event.type === 'tool_call' && event.data.toolName && !event.data.toolResult) {
+          yield { type: 'log', message: `[Structurer] ${event.data.toolName}(${JSON.stringify(event.data.toolArgs ?? {}).substring(0, 80)})` };
+        } else if (event.type === 'error') {
+          yield { type: 'log', message: `[Structurer] Error: ${event.data.message}` };
+        }
+        structurerResult = await structurerGenerator.next();
+      }
+
+      structuredDataContent = structurerResult.value as string;
 
       if (structuredDataContent.trim().length === 0) {
         throw new Error('LLM returned empty structured data');
@@ -937,15 +916,16 @@ ${labSections}
     yield { type: 'step', name: 'Validation', status: 'running' };
     yield { type: 'log', message: 'Starting agentic validation (tool-based)...' };
 
-    const MAX_CORRECTION_CYCLES = 3;
+    const MAX_CORRECTION_CYCLES = 1;
     let correctionCycle = 0;
     let validationPassed = false;
     let validationContent = '';
     let allPreviouslyRaisedIssues: Array<{ category: string; severity: string; description: string }> = [];
+    let allPreviouslyVerifiedOK: string[] = [];
     // Track ALL issues across ALL cycles with resolution status
     const allCycleIssues: Array<{ category: string; severity: string; description: string; cycle: number; corrected: boolean }> = [];
 
-    while (correctionCycle <= MAX_CORRECTION_CYCLES && !validationPassed) {
+    while (correctionCycle < MAX_CORRECTION_CYCLES && !validationPassed) {
       try {
         // Use AgenticValidator for tool-based validation
         const validator = new AgenticValidator(this.billingContext, this.obs, traceId, PipelinePhase.Validation);
@@ -954,7 +934,8 @@ ${labSections}
           structuredDataContent,
           prompt,
           15, // max iterations
-          allPreviouslyRaisedIssues
+          allPreviouslyRaisedIssues,
+          allPreviouslyVerifiedOK
         );
 
         const validationIssues: Array<{
@@ -995,13 +976,17 @@ ${labSections}
         }
 
         // Get final result from generator return value
-        const finalResult = iterResult.value as { status: string; issues: Array<{ category: string; severity: string; description: string }>; summary: string } | undefined;
+        const finalResult = iterResult.value as { status: string; issues: Array<{ category: string; severity: string; description: string }>; summary: string; verifiedMarkers: string[] } | undefined;
         if (finalResult) {
           validationStatus = finalResult.status;
           validationSummary = finalResult.summary;
           validationIssues.push(...finalResult.issues.filter(i =>
             !validationIssues.some(existing => existing.description === i.description)
           ));
+          // Accumulate verified-OK markers so next cycle skips re-checking them
+          if (finalResult.verifiedMarkers?.length) {
+            allPreviouslyVerifiedOK = [...new Set([...allPreviouslyVerifiedOK, ...finalResult.verifiedMarkers])];
+          }
         }
 
         // Accumulate issues for next cycle (so validator skips previously raised issues)
@@ -1022,15 +1007,21 @@ ${labSections}
         if (needsRevision) {
           yield { type: 'log', message: `Validation found ${actionableIssues.length} actionable issues that need correction.` };
 
-          if (correctionCycle < MAX_CORRECTION_CYCLES) {
-            yield { type: 'log', message: 'Sending corrections back to data structurer...' };
+          {
+            yield { type: 'log', message: `Sending corrections to data structurer (cycle ${correctionCycle + 1}/${MAX_CORRECTION_CYCLES})...` };
 
             // Build correction prompt with specific issues
             const issueList = actionableIssues.map(i => `- ${i.description}`).join('\n');
 
-            const dataStructurerSkill = loadDataStructurerSkill();
+            // NOTE: Do NOT use loadDataStructurerSkill() here — the SKILL.md is written for
+            // the agentic loop with tools (update_json_section, complete_structuring, etc.).
+            // This correction call is a plain single-shot LLM call with NO tools. Using the
+            // agentic SKILL.md would confuse the model into outputting tool-call text instead
+            // of a JSON patch.
             const sourceExcerpts = extractSourceExcerpts(allExtractedContent, actionableIssues);
-            const correctionPrompt = `${dataStructurerSkill}
+            const correctionPrompt = `You are a medical data correction specialist. Your task is to fix specific issues in a structured JSON document.
+
+Output ONLY a JSON PATCH (a plain JSON object, no markdown, no explanations, no tool calls) containing only the fields that need to change. Start your response with \`{\` and end with \`}\`.
 
 ---
 
@@ -1119,9 +1110,6 @@ Output the JSON PATCH now (starting with \`{\`):`;
             }
 
             correctionCycle++;
-          } else {
-            yield { type: 'log', message: 'Max correction cycles reached. Proceeding with current data.' };
-            validationPassed = true;
           }
         } else {
           yield { type: 'log', message: `Validation ${validationStatus === 'pass' ? 'passed' : 'passed with warnings'}.` };
@@ -1157,6 +1145,10 @@ All ${REALM_CONFIG.retry.llm.maxRetries} retries were exhausted.
         yield { type: 'log', message: 'Validation failed. Proceeding with unvalidated data.' };
         validationPassed = true; // Continue with pipeline despite validation failure
       }
+    }
+
+    if (!validationPassed) {
+      yield { type: 'log', message: `Max correction cycles (${MAX_CORRECTION_CYCLES}) reached. Proceeding with current data.` };
     }
 
     // Write final validation report with FULL history across all cycles
