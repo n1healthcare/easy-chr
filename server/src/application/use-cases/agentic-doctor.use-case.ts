@@ -8,7 +8,7 @@
  * Phase 4: Data Structuring - LLM extracts chart-ready JSON (SOURCE OF TRUTH) → structured_data.json
  * Phase 5: Validation - LLM validates structured_data.json completeness → validation.md (with correction loop)
  * Phase 6: Organ Insights - LLM generates organ-by-organ findings from validated data → organ_insights.md
- * Phase 7: Report Generation - LLM with html-builder skill → interactive N1 Care Report (index.html)
+ * Phase 7: Report Generation - LLM with html-builder skill → interactive n1.care report (index.html)
  * Phase 8: Content Review - LLM compares structured_data.json vs index.html for gaps → content_review.json
  * Phase 9: HTML Regeneration - If gaps found, LLM regenerates HTML with feedback
  */
@@ -103,6 +103,32 @@ const loadOrganInsightsSkill = () => loadSkill(
   'You are an organ-level clinical insight specialist. Analyze validated structured data and produce organ-by-organ findings in markdown.'
 );
 
+const REPORT_LOGO_URL_FALLBACK = 'https://app.n1.care/n1-care-white.svg';
+
+async function loadReportLogoSrc(): Promise<string> {
+  const logoCandidates = [
+    path.join(process.cwd(), 'src', 'assets', 'branding', 'n1-care-white.svg'),
+    path.join(process.cwd(), 'src', 'assets', 'branding', 'n1-care-white.png'),
+    path.join(process.cwd(), 'src', 'assets', 'branding', 'n1-logo.svg'),
+    path.join(process.cwd(), 'src', 'assets', 'branding', 'n1-logo.png'),
+  ];
+
+  for (const logoPath of logoCandidates) {
+    try {
+      const file = await fs.promises.readFile(logoPath);
+      const ext = path.extname(logoPath).toLowerCase();
+      const mimeType = ext === '.png' ? 'image/png' : 'image/svg+xml';
+      return `data:${mimeType};base64,${file.toString('base64')}`;
+    } catch (error) {
+      // Log for debugging and try the next candidate.
+      console.debug(`[AgenticDoctor] Could not load logo candidate ${logoPath}:`, error);
+    }
+  }
+
+  console.warn('[AgenticDoctor] Could not load local report logo, falling back to app.n1.care URL');
+  return REPORT_LOGO_URL_FALLBACK;
+}
+
 /**
  * Load the report HTML template (CSS + placeholders + snippet library).
  * The template is the single source of truth for visual design — the LLM
@@ -117,7 +143,9 @@ async function loadReportTemplate(): Promise<string> {
   );
 
   try {
-    return await fs.promises.readFile(templatePath, 'utf-8');
+    const template = await fs.promises.readFile(templatePath, 'utf-8');
+    const logoSrc = await loadReportLogoSrc();
+    return template.replace(/\{\{LOGO_SRC\}\}/g, logoSrc);
   } catch (error) {
     console.warn('[AgenticDoctor] Could not load report_template.html — LLM will generate CSS');
     return '';
@@ -1276,7 +1304,7 @@ ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}`;
     // ========================================================================
     startSpan(PipelinePhase.HtmlGeneration);
     yield { type: 'step', name: 'Report Generation', status: 'running' };
-    yield { type: 'log', message: 'Building your N1 Care Report...' };
+    yield { type: 'log', message: 'Building your n1.care CHR report...' };
 
     const realmId = sessionId;
     const realmPath = LegacyPaths.realm(realmId);
@@ -1648,7 +1676,7 @@ ${htmlContent}
       const realmUrl = `/realms/${realmId}/index.html`;
 
       console.log(`[AgenticDoctor] Pipeline complete. Realm: ${realmUrl}`);
-      yield { type: 'log', message: `N1 Care Report ready: ${realmUrl}` };
+      yield { type: 'log', message: `n1.care report ready: ${realmUrl}` };
       yield { type: 'result', url: realmUrl };
 
       // Score trace as success
