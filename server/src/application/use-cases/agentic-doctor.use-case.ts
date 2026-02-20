@@ -110,10 +110,10 @@ const REPORT_LOGO_URL_FALLBACK = 'https://app.n1.care/n1-care-white.svg';
 
 async function loadReportLogoSrc(): Promise<string> {
   const logoCandidates = [
-    path.join(process.cwd(), 'src', 'assets', 'branding', 'n1-care-white.png'),
     path.join(process.cwd(), 'src', 'assets', 'branding', 'n1-care-white.svg'),
-    path.join(process.cwd(), 'src', 'assets', 'branding', 'n1-logo.png'),
+    path.join(process.cwd(), 'src', 'assets', 'branding', 'n1-care-white.png'),
     path.join(process.cwd(), 'src', 'assets', 'branding', 'n1-logo.svg'),
+    path.join(process.cwd(), 'src', 'assets', 'branding', 'n1-logo.png'),
   ];
 
   for (const logoPath of logoCandidates) {
@@ -122,8 +122,9 @@ async function loadReportLogoSrc(): Promise<string> {
       const ext = path.extname(logoPath).toLowerCase();
       const mimeType = ext === '.png' ? 'image/png' : 'image/svg+xml';
       return `data:${mimeType};base64,${file.toString('base64')}`;
-    } catch {
-      // Try next candidate.
+    } catch (error) {
+      // Log for debugging and try the next candidate.
+      console.debug(`[AgenticDoctor] Could not load logo candidate ${logoPath}:`, error);
     }
   }
 
