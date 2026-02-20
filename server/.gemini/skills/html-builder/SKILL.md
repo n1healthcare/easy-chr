@@ -47,6 +47,23 @@ You receive a **pre-styled HTML template** (`report_template.html`) with all CSS
 
 **You are a renderer, not a synthesizer.** You don't decide what's important - the JSON already reflects those decisions.
 
+## MANDATORY: Count Before You Render
+
+For every array section, you MUST count the items first and render exactly that many elements. No editorial selection.
+
+Before rendering each array, state the count in an HTML comment:
+
+```html
+<!-- criticalFindings: N items — rendering all N gauges -->
+<!-- timeline: N items — rendering all N entries -->
+<!-- diagnoses: N items — rendering all N cards -->
+<!-- trends: N items — rendering all N charts -->
+```
+
+Then generate exactly N elements. If you find yourself stopping before N, you are skipping data — go back and complete the array.
+
+**This is non-negotiable.** A dataset with 10 critical findings gets 10 gauges. A dataset with 14 timeline entries gets 14 timeline items. There is no threshold above which it is acceptable to render a subset.
+
 ---
 
 ## CRITICAL: Substitute Actual Values
@@ -116,8 +133,10 @@ The template placeholders are already in this order.
 
 ### Plotly Line Chart (for `trends[]`)
 
+**Count `trends.length` first. Generate that exact number of `.plotly-chart` divs and `Plotly.newPlot('trend-...')` calls.**
+
 ```javascript
-// For each item in trends[]
+// For EACH item in trends[] — ALL of them
 Plotly.newPlot('trend-MARKER_ID', [{
   x: ['Date1', 'Date2', ...],
   y: [value1, value2, ...],
@@ -169,8 +188,10 @@ Plotly.newPlot('trend-MARKER_ID', [{
 
 ### Plotly Gauge Chart (for `criticalFindings[]`)
 
+**Count `criticalFindings.length` first. Generate that exact number of `.gauge-card` divs and that exact number of `Plotly.newPlot('gauge-...')` calls. Do not stop early.**
+
 ```javascript
-// For each item in criticalFindings[]
+// For EACH item in criticalFindings[] — ALL of them, not a selection
 Plotly.newPlot('gauge-MARKER_ID', [{
   type: 'indicator',
   mode: 'gauge+number',
@@ -370,5 +391,13 @@ Output ONLY the complete HTML file:
 - Search your output for `{{` — if found, you have placeholders that need to be replaced
 - Verify all `{{SECTION:*}}` placeholders have been replaced (with content or empty string)
 - Verify `{{CHARTS_INIT}}` has been replaced with Plotly `<script>` block
+
+**ARRAY COMPLETENESS CHECK — do this for each array:**
+- `criticalFindings` has N items → count `gauge-card` divs in your output → must equal N
+- `timeline` has N items → count `timeline-item` divs → must equal N
+- `diagnoses` has N items → count `diagnosis-card` divs → must equal N
+- `trends` has N items → count `Plotly.newPlot('trend-` calls → must equal N
+
+If any count is less than N, you have dropped data. Go back and add the missing items before outputting.
 
 **Render the N1 Care Report now by filling the template with data from structured_data.json.**

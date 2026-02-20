@@ -150,7 +150,7 @@ const ANALYST_TOOLS = [
   },
   {
     name: 'get_analysis',
-    description: 'Get the current state of your analysis. Use this to review what you have written so far before adding more.',
+    description: 'Get a section INDEX showing all sections you have written with their sizes. Use this frequently — it is cheap and does NOT grow history. To read a specific section\'s content, use get_section().',
     parameters: {
       type: Type.OBJECT,
       properties: {},
@@ -158,14 +158,28 @@ const ANALYST_TOOLS = [
     },
   },
   {
+    name: 'get_section',
+    description: 'Read the full content of a specific analysis section you have previously written. First call get_analysis() to see the index, then call this to read one section before revising it.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        section_name: {
+          type: Type.STRING,
+          description: 'The section name from the get_analysis() index',
+        },
+      },
+      required: ['section_name'],
+    },
+  },
+  {
     name: 'update_analysis',
-    description: 'Add new content or update a section of your analysis. You can specify a section to update, or append new content. IMPORTANT: When writing findings that include lab values, ALWAYS include the exact numeric value, the unit (e.g., mg/dL, mIU/L), the reference range (e.g., ref 70-100), and the status flag (H/L) if applicable. Format: "Marker: Value Unit (ref Range) Flag". Example: "HbA1c: 5.7 % (ref 4.0-5.6) *H"',
+    description: 'Write exploration notes (during Phases 1–4) or synthesis sections (Phase 5 only). Use specific descriptive names — NEVER use "append". IMPORTANT: When writing findings that include lab values, ALWAYS include the exact numeric value, the unit (e.g., mg/dL, mIU/L), the reference range (e.g., ref 70-100), and the status flag (H/L) if applicable. Format: "Marker: Value Unit (ref Range) Flag". Example: "HbA1c: 5.7 % (ref 4.0-5.6) *H"',
     parameters: {
       type: Type.OBJECT,
       properties: {
         section: {
           type: Type.STRING,
-          description: 'The section name to update (e.g., "Executive Summary", "Critical Findings", "Metabolic Analysis"). Use "append" to add to the end.',
+          description: 'The section name to write. Use specific descriptive names — e.g., "OAT Panel Jul 2025", "Coagulation Findings Jan 2025", "Executive Summary". NEVER use "append".',
         },
         content: {
           type: Type.STRING,
@@ -181,7 +195,7 @@ const ANALYST_TOOLS = [
   },
   {
     name: 'complete_analysis',
-    description: 'Signal that your analysis is complete. IMPORTANT: You must have written ALL required sections before calling this: Executive Summary, System-by-System Analysis, Medical History Timeline, Unified Root Cause Hypothesis, Causal Chain, Keystone Findings, Recommendations, and Missing Data. You must also have at least 3 of: Competing Hypotheses, Identified Diagnoses, Supplement Schedule, Prognosis, Questions for Doctor.',
+    description: 'Signal that your exploration and synthesis are complete. Requirements before calling: (1) read ≥80% of documents, (2) performed ≥10 searches, (3) called get_date_range() and extract_timeline_events(), (4) written ≥8 sections total, (5) completed all Phase 5 synthesis sections with replace=true (Executive Summary, System-by-System Analysis, Medical History Timeline, Unified Root Cause Hypothesis, Causal Chain, Keystone Findings, Recommendations, Missing Data).',
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -456,28 +470,12 @@ export function parseExtractedData(extractedContent: string): ParsedExtractedDat
 // Analysis Completion Requirements
 // ============================================================================
 
-// These map to downstream JSON fields the structurer must populate.
-// If the analyst skips these, the structurer either halluccinates or leaves them empty.
-const REQUIRED_SECTIONS: Array<{ key: string; alternatives?: string[]; label: string }> = [
-  { key: 'executive summary', label: 'Executive Summary' },
-  { key: 'system', label: 'System-by-System Analysis' },
-  { key: 'timeline', label: 'Medical History Timeline' },
-  { key: 'root cause', alternatives: ['unified'], label: 'Unified Root Cause Hypothesis' },
-  { key: 'causal chain', label: 'Causal Chain' },
-  { key: 'keystone', label: 'Keystone Findings' },
-  { key: 'recommendations', label: 'Recommendations' },
-  { key: 'missing data', alternatives: ['data gaps', 'blind spots'], label: 'Missing Data' },
-];
-
-const EXPECTED_SECTIONS: Array<{ key: string; alternatives?: string[]; label: string }> = [
-  { key: 'competing', alternatives: ['hypotheses'], label: 'Competing Hypotheses' },
-  { key: 'diagnoses', label: 'Identified Diagnoses' },
-  { key: 'supplement', alternatives: ['schedule'], label: 'Supplement Schedule' },
-  { key: 'prognosis', alternatives: ['outlook'], label: 'Prognosis / Future Outlook' },
-  { key: 'questions for doctor', alternatives: ['doctor questions'], label: 'Questions for Doctor' },
-];
-
-const MIN_EXPECTED_SECTIONS = 3;
+// Coverage-based thresholds — no keyword matching.
+// The structurer has tool-based access to source data and will build its own JSON.
+const MIN_DOCUMENT_COVERAGE = 80;   // % of documents that must be read
+const MIN_SEARCHES = 10;            // minimum searches performed
+const MIN_SECTIONS = 8;             // minimum sections written (notes + synthesis)
+const MIN_TOTAL_CONTENT_KB = 15;    // minimum KB of analysis content
 
 // ============================================================================
 // Tool Execution
@@ -495,16 +493,6 @@ export class AnalystToolExecutor {
 
   constructor(extractedContent: string) {
     this.parsedData = parseExtractedData(extractedContent);
-  }
-
-  // Check if any written section matches a key (fuzzy match via toLowerCase().includes())
-  private hasSectionMatching(key: string, alternatives?: string[]): boolean {
-    const keys = [key, ...(alternatives || [])];
-    for (const [sectionName] of this.currentAnalysis) {
-      const lower = sectionName.toLowerCase();
-      if (keys.some(k => lower.includes(k))) return true;
-    }
-    return false;
   }
 
   // Get coverage stats for enforcement
@@ -540,6 +528,8 @@ export class AnalystToolExecutor {
         return this.searchData(args.query as string, args.include_context as boolean ?? true);
       case 'get_analysis':
         return this.getAnalysis();
+      case 'get_section':
+        return this.getSection(args.section_name as string);
       case 'update_analysis':
         return this.updateAnalysis(
           args.section as string,
@@ -658,32 +648,44 @@ export class AnalystToolExecutor {
 
   private getAnalysis(): string {
     if (this.currentAnalysis.size === 0) {
-      return 'Analysis is empty. Use update_analysis() to start building your analysis.';
+      return 'No sections written yet. Use update_analysis() to start taking exploration notes.';
     }
+    const index = Array.from(this.currentAnalysis.entries())
+      .map(([section, content]) => `- "${section}" (${(content.length / 1024).toFixed(1)}KB)`)
+      .join('\n');
+    const totalKB = Array.from(this.currentAnalysis.values())
+      .reduce((sum, c) => sum + c.length, 0) / 1024;
+    return `# Analysis Index — ${this.currentAnalysis.size} section(s), ${totalKB.toFixed(1)}KB total\n\n${index}\n\nUse get_section(section_name) to read a specific section's full content.`;
+  }
 
-    const sections = Array.from(this.currentAnalysis.entries())
-      .map(([section, content]) => `## ${section}\n\n${content}`)
-      .join('\n\n---\n\n');
-
-    return `# Current Analysis\n\n${sections}`;
+  private getSection(sectionName: string): string {
+    if (!sectionName) return 'Error: section_name is required.';
+    if (this.currentAnalysis.has(sectionName)) {
+      return `# ${sectionName}\n\n${this.currentAnalysis.get(sectionName)}`;
+    }
+    const available = Array.from(this.currentAnalysis.keys()).map(k => `- "${k}"`).join('\n');
+    return `Section "${sectionName}" not found. Use the exact name from get_analysis().\n\nAvailable sections:\n${available}`;
   }
 
   private updateAnalysis(section: string, content: string, replace: boolean): string {
     if (section.toLowerCase() === 'append') {
-      // Add as a new section with auto-generated name
-      const sectionNum = this.currentAnalysis.size + 1;
-      const newSection = `Section ${sectionNum}`;
-      this.currentAnalysis.set(newSection, content);
-      return `Added new section: "${newSection}"`;
+      return `Error: "append" is not a valid section name. Provide a specific descriptive name.\nExamples: "OAT Panel Jul 2025", "Coagulation Findings Jan 2025", "Executive Summary"`;
     }
+
+    const prevContent = this.currentAnalysis.get(section);
+    const prevSizeKB = prevContent ? (prevContent.length / 1024).toFixed(1) : null;
 
     if (replace || !this.currentAnalysis.has(section)) {
       this.currentAnalysis.set(section, content);
-      return `Updated section: "${section}"`;
+      const newSizeKB = (content.length / 1024).toFixed(1);
+      return prevSizeKB
+        ? `Replaced "${section}" (was ${prevSizeKB}KB → now ${newSizeKB}KB)`
+        : `Written "${section}" (${newSizeKB}KB)`;
     } else {
-      const existing = this.currentAnalysis.get(section) || '';
-      this.currentAnalysis.set(section, existing + '\n\n' + content);
-      return `Appended to section: "${section}"`;
+      const newContent = prevContent + '\n\n' + content;
+      this.currentAnalysis.set(section, newContent);
+      const newSizeKB = (newContent.length / 1024).toFixed(1);
+      return `Appended to "${section}" (was ${prevSizeKB}KB → now ${newSizeKB}KB). Use replace=true to overwrite instead of append.`;
     }
   }
 
@@ -692,24 +694,35 @@ export class AnalystToolExecutor {
     const stats = this.getCoverageStats();
     const issues: string[] = [];
 
-    // Minimum thresholds
-    const MIN_DOCUMENT_COVERAGE = 100;
-    const MIN_SEARCHES = 3;
-
+    // Document coverage — allow edge cases with very large doc sets
     if (stats.documentCoverage < MIN_DOCUMENT_COVERAGE && stats.totalDocuments > 2) {
-      issues.push(`Only ${stats.documentCoverage}% of documents read (${stats.documentsRead}/${stats.totalDocuments}). Read more documents before completing.`);
+      issues.push(`Only ${stats.documentCoverage}% of documents read (${stats.documentsRead}/${stats.totalDocuments}). Read at least ${MIN_DOCUMENT_COVERAGE}% of documents before completing.`);
     }
 
+    // Search depth — comprehensive analysis needs many cross-references
     if (stats.searchesPerformed < MIN_SEARCHES) {
-      issues.push(`Only ${stats.searchesPerformed} searches performed. Use search_data() to cross-reference findings and find patterns.`);
+      issues.push(`Only ${stats.searchesPerformed} searches performed (need ${MIN_SEARCHES}). Use search_data() to cross-reference findings, trace causal chains, and find patterns.`);
     }
 
+    // Temporal tools — required for timeline completeness
     if (!stats.dateRangeChecked) {
       issues.push(`Date range not checked. Call get_date_range() to understand the temporal scope of the data.`);
     }
 
     if (!stats.timelineExtracted && this.parsedData.timelineEvents.length > 0) {
       issues.push(`Timeline events not extracted. Call extract_timeline_events() to build the Medical History Timeline.`);
+    }
+
+    // Section depth — ensures meaningful exploration happened
+    if (stats.analysisSections < MIN_SECTIONS) {
+      issues.push(`Only ${stats.analysisSections} sections written (need ${MIN_SECTIONS}). Write more exploration notes and synthesis sections before completing.`);
+    }
+
+    // Content depth — ensures meaningful content was written
+    const totalContentKB = Array.from(this.currentAnalysis.values())
+      .reduce((sum, c) => sum + c.length, 0) / 1024;
+    if (totalContentKB < MIN_TOTAL_CONTENT_KB) {
+      issues.push(`Only ${totalContentKB.toFixed(1)}KB of analysis written (need ${MIN_TOTAL_CONTENT_KB}KB). Write more detailed findings before completing.`);
     }
 
     // Temporal year coverage enforcement — for multi-year datasets
@@ -743,35 +756,6 @@ export class AnalystToolExecutor {
       }
     }
 
-    // Required section enforcement — these map to structurer JSON fields
-    const missingRequired: string[] = [];
-    for (const req of REQUIRED_SECTIONS) {
-      if (!this.hasSectionMatching(req.key, req.alternatives)) {
-        missingRequired.push(req.label);
-      }
-    }
-    if (missingRequired.length > 0) {
-      issues.push(
-        `Missing REQUIRED sections (${missingRequired.length}): ${missingRequired.join(', ')}. ` +
-        `Use update_analysis() to write each of these before completing.`
-      );
-    }
-
-    // Expected section enforcement — at least some of these should be covered
-    const missingExpected: string[] = [];
-    for (const exp of EXPECTED_SECTIONS) {
-      if (!this.hasSectionMatching(exp.key, exp.alternatives)) {
-        missingExpected.push(exp.label);
-      }
-    }
-    const expectedPresent = EXPECTED_SECTIONS.length - missingExpected.length;
-    if (expectedPresent < MIN_EXPECTED_SECTIONS) {
-      issues.push(
-        `Only ${expectedPresent}/${EXPECTED_SECTIONS.length} expected sections written (need at least ${MIN_EXPECTED_SECTIONS}). ` +
-        `Missing: ${missingExpected.join(', ')}. Write at least ${MIN_EXPECTED_SECTIONS - expectedPresent} more.`
-      );
-    }
-
     // If there are issues, return them instead of completing
     if (issues.length > 0) {
       return `# Cannot Complete Analysis Yet
@@ -782,8 +766,9 @@ ${issues.map((issue, i) => `${i + 1}. ${issue}`).join('\n')}
 
 ## Current Coverage Stats
 - Documents read: ${stats.documentsRead}/${stats.totalDocuments} (${stats.documentCoverage}%)
-- Searches performed: ${stats.searchesPerformed}
-- Analysis sections: ${stats.analysisSections}
+- Searches performed: ${stats.searchesPerformed} (need ${MIN_SEARCHES})
+- Analysis sections: ${stats.analysisSections} (need ${MIN_SECTIONS})
+- Total content: ${totalContentKB.toFixed(1)}KB (need ${MIN_TOTAL_CONTENT_KB}KB)
 - Date range checked: ${stats.dateRangeChecked ? 'Yes' : 'No'}
 - Timeline extracted: ${stats.timelineExtracted ? 'Yes' : 'No'}
 

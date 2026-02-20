@@ -1,6 +1,6 @@
 # Claude Context: N1 Personal Realm Generator
 
-> **Last Updated**: 2026-02-19
+> **Last Updated**: 2026-02-20
 > **Purpose**: This file helps Claude Code (and new developers) quickly understand the project. Keep it updated as development progresses.
 
 ## What This Project Does
@@ -673,6 +673,20 @@ All items below are pre-compression workarounds that are now safe to remove. Com
 - [x] Add `check_value_in_json()` validator tool ✅
 - [x] Update medical-analysis SKILL.md with new tools and timeline requirements ✅
 - [x] Integrate AgenticValidator into Phase 6 ✅
+
+---
+
+#### ✅ Track 7: Fix Analyst Exploration Depth & Stop Duplication Loop — COMPLETE (2026-02-20)
+
+**Problem solved**: Medical analyst (Phase 2) produced bloated, repetitive output with massive section duplication (same sections written 4–6× each). Root causes were three conflicting schemas forcing the LLM into re-write loops, plus missing feedback mechanisms leaving it blind to what it already wrote.
+
+**What was changed**:
+- [x] Rewrote `.gemini/skills/medical-analysis/SKILL.md` — implemented two-mode workflow: **Mode A** (exploration notes per document with descriptive names, Phases 1–4) vs **Mode B** (final synthesis sections once with `replace=true`, Phase 5 only). Removed schema list embedded in exploration workflow. Completion criteria now coverage-based (≥80% docs, ≥10 searches, ≥8 sections) instead of keyword-matching. ✅
+- [x] Added `get_section(section_name)` tool — lets LLM read ONE specific section cheaply without getting full content dump. Schema + `case` added together per convention. ✅
+- [x] Changed `getAnalysis()` to return **section index only** (names + sizes) — no longer dumps full content into conversation history. Mirrors the structurer's `get_json_draft()` pattern. ✅
+- [x] Updated `updateAnalysis()` — blocks `"append"` with an error message, provides size feedback on every write (`Written "X" (3.2KB)`, `Replaced "X" (was 2.1KB → now 3.4KB)`, `Appended to "X" (was 1.2KB → now 3.1KB)`). ✅
+- [x] Removed `REQUIRED_SECTIONS`, `EXPECTED_SECTIONS`, `MIN_EXPECTED_SECTIONS`, `hasSectionMatching()` — these were forcing re-write loops. Replaced with four coverage-based constants: `MIN_DOCUMENT_COVERAGE=80`, `MIN_SEARCHES=10`, `MIN_SECTIONS=8`, `MIN_TOTAL_CONTENT_KB=15`. ✅
+- [x] Kept temporal year coverage enforcement (>40% missing = blocked) — this check is good. ✅
 
 ---
 
