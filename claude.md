@@ -42,7 +42,7 @@ The core workflow uses a **9-phase agentic medical analysis pipeline** orchestra
 | 4 | Research | `research.json` | Claim extraction + web search validation |
 | 5 | Agentic Data Structuring | `structured_data.json` | **SOURCE OF TRUTH** - Agentic loop builds 25+ semantic fields section-by-section. analysis.md + research.json in context; full extracted.md accessible via tools (search_source, get_value_history, get_date_range) |
 | 6 | Validation | `validation.md` | Completeness check with 1 correction cycle |
-| 7 | HTML Generation | `index.html` | Data-driven rendering with Plotly visualizations |
+| 7 | HTML Generation | `index.html` | **Agentic** section-by-section rendering with tool enforcement — `complete_rendering()` blocks if any array is incomplete |
 | 8 | Content Review | `content_review.json` | 4-dimensional QA (question addressed, fidelity, completeness, design) |
 | 9 | HTML Regeneration | `index.html` | Only runs if Phase 8 fails |
 
@@ -64,6 +64,7 @@ Uploaded Files → extracted.md → analysis.md → cross_systems.md
 - `server/src/application/ports/markdown-fetcher.port.ts` - Port interface for markdown/PDF fetching
 - `server/src/services/agentic-medical-analyst.service.ts` - Phase 2 agent with tool executor
 - `server/src/services/agentic-data-structurer.service.ts` - Phase 5 agent with tool executor (StructurerToolExecutor + AgenticDataStructurer)
+- `server/src/services/agentic-html-renderer.service.ts` - Phase 7 agent with tool executor (HtmlRendererToolExecutor + AgenticHtmlRenderer)
 - `server/src/services/agentic-validator.service.ts` - Phase 6 agent with tool executor
 - `server/src/services/research-agent.service.ts` - Phase 4 research
 - `server/src/services/pdf-extraction.service.ts` - Phase 1 PDF OCR
