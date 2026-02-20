@@ -25,6 +25,7 @@ import { PDFExtractionService } from '../../services/pdf-extraction.service.js';
 import { AgenticMedicalAnalyst, type AnalystEvent } from '../../services/agentic-medical-analyst.service.js';
 import { AgenticValidator, type ValidatorEvent } from '../../services/agentic-validator.service.js';
 import { AgenticDataStructurer, type StructurerEvent } from '../../services/agentic-data-structurer.service.js';
+import { AgenticHtmlRenderer, type RendererEvent } from '../../services/agentic-html-renderer.service.js';
 import { researchClaims, formatResearchAsMarkdown, type ResearchOutput, type ResearchEvent } from '../../services/research-agent.service.js';
 import { REALM_CONFIG } from '../../config.js';
 import { extractSourceExcerpts } from '../../utils/source-excerpts.js';
@@ -177,6 +178,8 @@ function stripThinkingText(content: string, marker: string | RegExp): string {
 
 interface StreamWithRetryOptions {
   maxRetries?: number;
+  /** Fixed delay between retries in ms. Bypasses exponential backoff. */
+  fixedRetryDelayMs?: number;
   operationName: string;
   onRetry?: (attempt: number, error: string) => void;
   billingContext?: BillingContext;
@@ -227,8 +230,8 @@ async function streamWithRetry(
         options.onRetry(attempt, errorMsg);
       }
 
-      // Exponential backoff
-      const waitMs = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+      // Fixed delay or exponential backoff
+      const waitMs = options.fixedRetryDelayMs ?? Math.min(1000 * Math.pow(2, attempt - 1), 10_000);
       await new Promise(resolve => setTimeout(resolve, waitMs));
     }
   }
@@ -1225,6 +1228,7 @@ ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}`;
         {
           operationName: 'OrganInsights',
           maxRetries: 3,
+          fixedRetryDelayMs: 60_000, // wait 1 full minute before each retry — lets proxy recover
         }
       );
 
@@ -1265,9 +1269,10 @@ ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}`;
     }
 
     // ========================================================================
-    // Phase 7: HTML Generation
-    // Uses sendMessageStream with html-builder skill
-    // DATA-DRIVEN: structured_data.json is the ONLY source - JSON drives structure
+    // Phase 7: HTML Generation (Agentic)
+    // AgenticHtmlRenderer renders section-by-section using tools.
+    // complete_rendering() enforces all array items are rendered before finishing.
+    // Falls back to single-shot html-builder if renderer returns empty.
     // ========================================================================
     startSpan(PipelinePhase.HtmlGeneration);
     yield { type: 'step', name: 'Report Generation', status: 'running' };
@@ -1280,78 +1285,83 @@ ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}`;
     await this.storage.ensureDir(LegacyPaths.realmDir(realmId));
 
     try {
-      const htmlSkill = loadHTMLBuilderSkill();
       const reportTemplate = await loadReportTemplate();
-      const templateInstructions = createTemplateInstructions(reportTemplate);
 
-      const htmlPrompt = `${htmlSkill}
-${templateInstructions}
----
-
-### Structured Data (SOURCE OF TRUTH)
-This JSON contains ALL data for rendering. Iterate through each field and render appropriate sections.
-Only render sections for fields that have data. Do not invent sections not in this JSON.
-<structured_data>
-${structuredDataContent}
-</structured_data>
-${organInsightsContent ? `
-### Organ-by-Organ Insights (ENRICHMENT — use to enhance organ/system sections)
-Use these insights to add clinical depth to relevant sections (systemsHealth, diagnoses, connections).
-Render an "Organ Health Details" section with collapsible cards for each organ listed below.
-Do NOT create sections for organs not listed here.
-<organ_insights>
-${organInsightsContent}
-</organ_insights>` : ''}`;
-
-      // Log payload size for debugging network issues
-      const payloadSizeKB = Math.round(htmlPrompt.length / 1024);
-      console.log(`[AgenticDoctor] HTML prompt payload: ${payloadSizeKB}KB (${htmlPrompt.length} chars)`);
-      yield { type: 'log', message: `Generating interactive HTML experience (${payloadSizeKB}KB payload)...` };
+      // Log payload context
+      const payloadSizeKB = Math.round(structuredDataContent.length / 1024);
+      console.log(`[AgenticDoctor] HTML renderer: ${payloadSizeKB}KB structured data, template ${Math.round(reportTemplate.length / 1024)}KB`);
+      yield { type: 'log', message: `Generating interactive HTML experience (${payloadSizeKB}KB data)...` };
 
       const htmlGenId = `gen-html-generation-${sessionId}`;
       const htmlStartTime = Date.now();
       try { this.obs.startGeneration(htmlGenId, { name: 'html-generation', traceId, parentSpanId: PipelinePhase.HtmlGeneration, model: REALM_CONFIG.models.html }); } catch { /* non-fatal */ }
 
-      let htmlContent = await streamWithRetry(
-        this.llmClient,
-        htmlPrompt,
-        `${sessionId}-html`,
-        REALM_CONFIG.models.html,
-        {
-          operationName: 'HTMLGeneration',
-          maxRetries: 3,
-          billingContext: this.billingContext,
-        }
+      const agenticRenderer = new AgenticHtmlRenderer(this.billingContext);
+      const rendererGenerator = agenticRenderer.render(
+        structuredDataContent,
+        reportTemplate,
+        organInsightsContent || undefined,
+        60,
       );
+
+      let rendererResult = await rendererGenerator.next();
+      while (!rendererResult.done) {
+        const event = rendererResult.value as RendererEvent;
+        if (event.type === 'log') {
+          yield { type: 'log', message: event.data.message ?? '' };
+        } else if (event.type === 'tool_call' && event.data.toolName && !event.data.toolResult) {
+          yield { type: 'log', message: `[Renderer] ${event.data.toolName}(${JSON.stringify(event.data.toolArgs ?? {}).substring(0, 80)})` };
+        } else if (event.type === 'error') {
+          yield { type: 'log', message: `[Renderer] Error: ${event.data.message}` };
+        }
+        rendererResult = await rendererGenerator.next();
+      }
+
+      let htmlContent = rendererResult.value as string;
 
       try { this.obs.endGeneration(htmlGenId, { outputCharCount: htmlContent.length, latencyMs: Date.now() - htmlStartTime }); } catch { /* non-fatal */ }
 
-      if (htmlContent.trim().length === 0) {
-        throw new Error('LLM returned empty HTML');
+      // Fallback: if agentic renderer produced empty output, fall back to single-shot
+      if (!htmlContent || htmlContent.trim().length === 0) {
+        console.warn('[AgenticDoctor] Agentic renderer returned empty HTML — falling back to single-shot');
+        yield { type: 'log', message: 'Renderer returned empty output, falling back to single-shot generation...' };
+
+        const htmlSkill = loadHTMLBuilderSkill();
+        const templateInstructions = createTemplateInstructions(reportTemplate);
+
+        const htmlPrompt = `${htmlSkill}
+${templateInstructions}
+---
+
+### Structured Data (SOURCE OF TRUTH)
+<structured_data>
+${structuredDataContent}
+</structured_data>
+${organInsightsContent ? `
+<organ_insights>
+${organInsightsContent}
+</organ_insights>` : ''}`;
+
+        htmlContent = await streamWithRetry(
+          this.llmClient,
+          htmlPrompt,
+          `${sessionId}-html`,
+          REALM_CONFIG.models.html,
+          { operationName: 'HTMLGeneration-Fallback', maxRetries: 3, billingContext: this.billingContext }
+        );
+
+        if (!htmlContent || htmlContent.trim().length === 0) {
+          throw new Error('Both agentic renderer and single-shot fallback returned empty HTML');
+        }
       }
 
-      // Clean up the HTML
+      // Clean up HTML (strip any stray thinking text before <!DOCTYPE)
       htmlContent = htmlContent.trim();
-
-      // Strip any thinking text before <!DOCTYPE
-      // Use lastIndexOf: the LLM sometimes mentions <!DOCTYPE in its thinking,
-      // so the real one is the last occurrence.
       const doctypeIndex = htmlContent.lastIndexOf('<!DOCTYPE');
       if (doctypeIndex > 0) {
-        console.log(`[AgenticDoctor] Stripping ${doctypeIndex} chars of thinking text from HTML`);
+        console.log(`[AgenticDoctor] Stripping ${doctypeIndex} chars before <!DOCTYPE`);
         htmlContent = htmlContent.slice(doctypeIndex);
       }
-
-      // Handle markdown code blocks if present
-      if (htmlContent.startsWith('```html')) {
-        htmlContent = htmlContent.slice(7);
-      } else if (htmlContent.startsWith('```')) {
-        htmlContent = htmlContent.slice(3);
-      }
-      if (htmlContent.endsWith('```')) {
-        htmlContent = htmlContent.slice(0, -3);
-      }
-      htmlContent = htmlContent.trim();
 
       // Write HTML to file
       await this.storage.writeFile(realmPath, htmlContent, 'text/html');
@@ -1552,122 +1562,46 @@ ${htmlContent}
         yield { type: 'log', message: 'Regenerating HTML with reviewer feedback...' };
 
         try {
-          const htmlSkill = loadHTMLBuilderSkill();
-          const reportTemplate = await loadReportTemplate();
-          const templateInstructions = createTemplateInstructions(reportTemplate);
+          // Build feedback context for the renderer
+          const feedbackParts: string[] = [contentReviewResult.overall.feedback_for_regeneration];
+          const missingCategories = contentReviewResult.content_completeness?.missing_categories;
+          if (missingCategories && missingCategories.length > 0) {
+            feedbackParts.push(`Missing sections that MUST be rendered: ${missingCategories.join(', ')}`);
+          }
+          const detailIssues = contentReviewResult.detail_fidelity?.issues;
+          if (detailIssues && detailIssues.length > 0) {
+            feedbackParts.push(`Detail fidelity issues:\n${JSON.stringify(detailIssues, null, 2)}`);
+          }
+          const feedbackContext = feedbackParts.join('\n\n');
 
-          // Build regeneration prompt with feedback
-          const regenPrompt = `${htmlSkill}
-${templateInstructions}
----
-
-## REGENERATION TASK
-
-Your previous HTML output had issues. You need to regenerate addressing ALL of the following:
-
-### Reviewer Feedback (MUST ADDRESS)
-<feedback>
-${contentReviewResult.overall.feedback_for_regeneration}
-</feedback>
-
-### User Question Issues (MOST IMPORTANT - FIX FIRST)
-<user_question_issues>
-User Asked: ${contentReviewResult.user_question_addressed?.user_question || prompt || 'N/A'}
-Question Answered: ${contentReviewResult.user_question_addressed?.question_answered || false}
-Answer Prominent: ${contentReviewResult.user_question_addressed?.answer_prominent || false}
-Findings Connected: ${contentReviewResult.user_question_addressed?.findings_connected || false}
-Issues: ${JSON.stringify(contentReviewResult.user_question_addressed?.issues || [], null, 2)}
-</user_question_issues>
-
-### Detail Fidelity Issues
-<detail_issues>
-${JSON.stringify(contentReviewResult.detail_fidelity?.issues || [], null, 2)}
-</detail_issues>
-
-### Missing Content Categories
-<missing_categories>
-${JSON.stringify(contentReviewResult.content_completeness?.missing_categories || [], null, 2)}
-</missing_categories>
-
-### Visual Design Feedback
-<design_feedback>
-Score: ${contentReviewResult.visual_design?.score || 'unknown'}
-Weaknesses: ${JSON.stringify(contentReviewResult.visual_design?.weaknesses || [], null, 2)}
-Fix Instructions: ${JSON.stringify(contentReviewResult.visual_design?.fix_instructions || [], null, 2)}
-</design_feedback>
-
-### Source Data (use ALL details from here)
-
-${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}### Structured Data (SOURCE OF TRUTH - the JSON drives all HTML sections)
-<structured_data>
-${structuredDataContent}
-</structured_data>
-${organInsightsContent ? `
-### Organ-by-Organ Insights (ENRICHMENT)
-<organ_insights>
-${organInsightsContent}
-</organ_insights>` : ''}
-
-## CRITICAL INSTRUCTIONS
-
-1. Address EVERY issue in the feedback
-2. Include ALL specific names, dosages, values, timings from the structured data
-3. Do NOT genericize or summarize - use exact details from JSON
-4. Make urgent/critical items visually prominent (callouts, warnings, colored boxes)
-5. Preserve explanatory context - the WHY matters as much as the WHAT
-6. Only render sections for fields that have data in the JSON
-
-**Output the complete regenerated HTML now.**`;
-
-          console.log(`[AgenticDoctor] Regeneration prompt payload: ${Math.round(regenPrompt.length / 1024)}KB`);
-
-          const regenGenId = `gen-html-regeneration-${sessionId}`;
-          const regenStartTime = Date.now();
-          try { this.obs.startGeneration(regenGenId, { name: 'html-regeneration', traceId, parentSpanId: PipelinePhase.HtmlRegeneration, model: REALM_CONFIG.models.html }); } catch { /* non-fatal */ }
-
-          let regenHtml = '';
-          const regenStream = await this.llmClient.sendMessageStream(
-            regenPrompt,
-            `${sessionId}-html-regen`,
-            undefined,
-            {
-              model: REALM_CONFIG.models.html,
-              billingContext: this.billingContext,
-            }
+          const regenTemplate = await loadReportTemplate();
+          const agenticRegenRenderer = new AgenticHtmlRenderer(this.billingContext);
+          const regenRendererGenerator = agenticRegenRenderer.render(
+            structuredDataContent,
+            regenTemplate,
+            organInsightsContent || undefined,
+            60,
+            feedbackContext,
           );
 
-          for await (const chunk of regenStream) {
-            regenHtml += chunk;
+          let regenHtml = '';
+          let regenResult = await regenRendererGenerator.next();
+          while (!regenResult.done) {
+            const event = regenResult.value as RendererEvent;
+            if (event.type === 'log') {
+              yield { type: 'log', message: `[Regen] ${event.data.message ?? ''}` };
+            } else if (event.type === 'tool_call' && event.data.toolName && !event.data.toolResult) {
+              yield { type: 'log', message: `[Regen] ${event.data.toolName}(${JSON.stringify(event.data.toolArgs ?? {}).substring(0, 80)})` };
+            }
+            regenResult = await regenRendererGenerator.next();
           }
+          regenHtml = regenResult.value as string;
 
-          try { this.obs.endGeneration(regenGenId, { outputCharCount: regenHtml.length, latencyMs: Date.now() - regenStartTime }); } catch { /* non-fatal */ }
-
-          if (regenHtml.trim().length > 0) {
-            // Clean up regenerated HTML
-            regenHtml = regenHtml.trim();
-            const regenDoctypeIndex = regenHtml.lastIndexOf('<!DOCTYPE');
-            if (regenDoctypeIndex > 0) {
-              regenHtml = regenHtml.slice(regenDoctypeIndex);
-            }
-            if (regenHtml.startsWith('```html')) {
-              regenHtml = regenHtml.slice(7);
-            } else if (regenHtml.startsWith('```')) {
-              regenHtml = regenHtml.slice(3);
-            }
-            if (regenHtml.endsWith('```')) {
-              regenHtml = regenHtml.slice(0, -3);
-            }
-            regenHtml = regenHtml.trim();
-
-            // Validate it's valid HTML
-            if (regenHtml.includes('<!DOCTYPE') && regenHtml.includes('</html>')) {
-              htmlContent = regenHtml;
-              await this.storage.writeFile(realmPath, htmlContent, 'text/html');
-              console.log(`[AgenticDoctor] Regenerated HTML: ${htmlContent.length} chars`);
-              yield { type: 'log', message: 'HTML regenerated with fixes.' };
-            } else {
-              yield { type: 'log', message: 'Regeneration produced invalid HTML, keeping original.' };
-            }
+          if (regenHtml && regenHtml.trim().length > 0) {
+            htmlContent = regenHtml;
+            await this.storage.writeFile(realmPath, htmlContent, 'text/html');
+            console.log(`[AgenticDoctor] Regenerated HTML: ${htmlContent.length} chars`);
+            yield { type: 'log', message: 'HTML regenerated with fixes.' };
           } else {
             yield { type: 'log', message: 'Regeneration returned empty, keeping original HTML.' };
           }

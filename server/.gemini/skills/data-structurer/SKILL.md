@@ -113,14 +113,14 @@ You MUST output valid JSON matching this schema structure. Replace all placehold
   },
 
   "executiveSummary": {
-    "patientContext": "[Brief description from actual patient data]",
+    "patientContext": "[Full description: age, sex, key active conditions, data time span, current clinical status — do not abbreviate]",
     "userQuestion": "[The exact question the user asked]",
-    "shortAnswer": "[2-3 sentence direct answer based on actual findings]",
+    "shortAnswer": "[Direct answer that captures the full clinical picture. Match the depth of the analyst's response — do not compress into fewer sentences than the analysis uses.]",
     "keyFindingsPreview": [
-      { "finding": "[actual finding name]", "implication": "[actual implication]" }
+      { "finding": "[actual finding name]", "implication": "[actual implication — full sentence explaining clinical significance, not a phrase]" }
     ],
     "topPriority": "[The single most important action based on actual data]",
-    "narrativeSummary": "[A paragraph based on actual findings]"
+    "narrativeSummary": "[The complete narrative from the analysis. Preserve the full trajectory, turning points, and clinical story — multiple paragraphs if the analysis provides them. Do not compress.]"
   },
 
   "diagnoses": [
@@ -162,8 +162,8 @@ You MUST output valid JSON matching this schema structure. Replace all placehold
 
   "integrativeReasoning": {
     "unifiedRootCause": {
-      "hypothesis": "[from analysis - the primary hypothesis]",
-      "supportingEvidence": ["[actual evidence from data]"],
+      "hypothesis": "[The full hypothesis statement from the analysis, including the name, confidence rationale, and supporting context. Do not reduce to a title alone.]",
+      "supportingEvidence": ["[actual evidence from data — full sentences, not just marker names]"],
       "confidence": "high | medium | low"
     },
     "causalChain": [
@@ -189,7 +189,7 @@ You MUST output valid JSON matching this schema structure. Replace all placehold
         "likelihood": "high | medium | low"
       }
     ],
-    "temporalNarrative": "[from analysis - the patient's health story]",
+    "temporalNarrative": "[The complete temporal narrative from the analysis. Include all years, turning points, pre/post-inflection details, and causal timeline the analyst described. Preserve the full story — do not compress.]",
     "priorityStackRank": [
       {
         "rank": 1,
@@ -321,7 +321,7 @@ You MUST output valid JSON matching this schema structure. Replace all placehold
         "value": "[value if applicable]",
         "unit": "[unit if applicable]"
       },
-      "mechanism": "[from analysis - cross-system connection explanation]",
+      "mechanism": "[Full mechanistic explanation from the analysis — the biological pathway showing how one finding causes the other. Write complete sentences, not a phrase.]",
       "confidence": "high | medium | low",
       "type": "causal | correlative | bidirectional"
     }
@@ -458,9 +458,10 @@ You MUST output valid JSON matching this schema structure. Replace all placehold
 ### Field-Specific Rules
 
 #### Executive Summary
-- `patientContext`: Summarize from actual patient symptoms and medical history
+- `patientContext`: Extract the full context — age, sex, presenting conditions, data time span, current clinical status. Do not compress.
 - `userQuestion`: Copy the patient's question exactly
-- `shortAnswer`: Synthesize answer based on ACTUAL findings only
+- `shortAnswer`: Write a complete answer that captures the full clinical picture from the analysis. Match the depth and sentence count of the analyst's response — do not reduce.
+- `narrativeSummary`: Extract the complete narrative from the analysis. If the analyst wrote 3 paragraphs, preserve 3 paragraphs. Do not collapse into one.
 - `keyFindingsPreview`: Use only findings that exist in the data
 
 #### Numeric Values
@@ -478,10 +479,20 @@ Based on actual reference ranges from the data:
 - Value in range → `normal`
 - Value in optimal sub-range → `optimal`
 
+#### criticalFindings — Completeness (CRITICAL)
+
+**Include a marker in `criticalFindings` if the analysis does ANY of the following:**
+- Explicitly labels it as "critical", "significant", "urgent", "key finding", or "keystone"
+- Lists it under any section named "Critical Findings", "Key Metrics", "Keystone Findings", "Urgent Values", or "Red Flags"
+- Mentions it 3 or more times as a notable finding across different analysis sections
+- Identifies it as part of the primary causal chain or root cause evidence
+
+**Do NOT editorially reduce this list.** The analyst's judgment about clinical significance supersedes editorial preference. If the analyst flagged 16 markers, include all 16 — the HTML layer decides how many to visualize as gauges.
+
 #### Connections
 - Extract from the cross-system connections section in analysis.md
 - Only include connections mentioned in the analysis
-- Include the mechanism explanation as stated
+- Include the mechanism explanation as stated — full biological pathway, not a summary phrase
 
 #### Systems Health Scoring
 Score each body system 1-10 based on actual findings:
@@ -516,7 +527,7 @@ Before outputting, verify:
 ### Core Data
 - [ ] Every cross-system connection from analysis is in `connections`
 - [ ] Every recommendation from analysis is in `actionPlan`
-- [ ] Critical findings are in `criticalFindings`
+- [ ] ALL markers the analyst explicitly flagged as critical/keystone/urgent are in `criticalFindings` — cross-check against the analysis "Critical Findings", "Keystone Findings", and "Key Metrics" sections. Do not editorially reduce this list.
 - [ ] Multi-timepoint data is in `trends`
 
 ### Rich Sections (if data exists)
@@ -564,13 +575,19 @@ You will receive data with these sources:
 
 ## Your Task
 
-Extract ALL data into the structured JSON format specified above.
+Work through the analysis systematically using tools. Build the JSON section by section — do not output raw JSON text.
 
-**CRITICAL:**
-- Output ONLY valid JSON - no markdown, no explanation
-- **ONLY include data that exists in the source documents**
+**Workflow:**
+1. Call `get_date_range()` to understand the temporal scope
+2. Read the analysis in your context thoroughly before writing any sections
+3. Use `update_json_section` for object sections, `append_to_section` for arrays
+4. Cross-check exact values via `search_source` or `get_value_history` when needed
+5. Call `get_json_draft()` periodically to review progress
+6. Call `complete_structuring()` when all required sections are done
+
+**Data rules:**
+- **ONLY extract data that exists in the source documents**
 - **NEVER fabricate values, dates, or findings**
-- If a section has no data, use empty arrays or null
+- If a section has no data, use empty arrays `[]` or `null`
+- Preserve the depth and detail of the analysis — do not compress narratives into single sentences
 - Your output becomes the SOURCE OF TRUTH for the HTML Builder
-
-**Output the JSON now (starting with `{`):**

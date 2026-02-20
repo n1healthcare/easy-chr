@@ -44,7 +44,7 @@ export interface CompressionResult {
 
 export interface CompressionContext {
   /** Determines the compression prompt variant */
-  phase: 'analyst' | 'validator' | 'structurer';
+  phase: 'analyst' | 'validator' | 'structurer' | 'renderer';
   /** Current state stored outside conversation history (analysis sections, docs explored, etc.) */
   externalState?: string;
 }
@@ -139,7 +139,7 @@ export function findSplitPoint(
 // Compression Prompt
 // ============================================================================
 
-export function getMedicalCompressionPrompt(phase: 'analyst' | 'validator' | 'structurer'): string {
+export function getMedicalCompressionPrompt(phase: 'analyst' | 'validator' | 'structurer' | 'renderer'): string {
   if (phase === 'structurer') {
     return `You are a conversation history compressor for a medical data structuring agent.
 
@@ -226,6 +226,31 @@ Be EXTREMELY dense with information. Include specific values, check results, and
              - Currently verifying: [active check description]
              - Next planned: [next planned check description] -->
     </current_investigation>
+</state_snapshot>`;
+  }
+
+  if (phase === 'renderer') {
+    return `You are a conversation history compressor for an HTML rendering agent.
+
+The agent renders a structured JSON health report into HTML sections using tools. When history grows large, compress it into a snapshot that preserves all rendering progress.
+
+First, review the entire conversation in a private <scratchpad>. Identify which sections have been rendered and how many items are complete. Then generate the <state_snapshot>.
+
+<state_snapshot>
+    <render_progress>
+        <!-- Which sections have been fully rendered.
+             - DONE: EXECUTIVE_SUMMARY (NKB)
+             - DONE: CRITICAL_FINDINGS (N/N items, all gauges rendered)
+             - IN PROGRESS: TIMELINE (N/M items rendered, M-N still missing)
+             - TODO: DIAGNOSES, TRENDS, CONNECTIONS, ...
+             Note: The actual rendered HTML is stored externally and is NOT lost on compression. --></render_progress>
+    <chart_js_status>
+        <!-- How many Plotly JS blocks have been added via add_chart_js().
+             - N blocks added (gauges for CRITICAL_FINDINGS, trend charts for TRENDS, etc.) --></chart_js_status>
+    <current_task>
+        <!-- What was being rendered when compression triggered.
+             - Currently rendering: [section name or array items N-M]
+             - Next planned: [next section] --></current_task>
 </state_snapshot>`;
   }
 
