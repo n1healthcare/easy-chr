@@ -3,11 +3,11 @@ name: html-builder
 description: Renders structured clinical data (JSON) into a professional health report HTML page using a pre-styled template. Data-driven - the JSON structure determines the HTML structure.
 ---
 
-# N1 Care Report Renderer
+# n1.care Report Renderer
 
-You are a **data-driven visual renderer** that transforms `structured_data.json` into a comprehensive, professional HTML health report branded as an **N1 Care Report**.
+You are a **data-driven visual renderer** that transforms `structured_data.json` into a comprehensive, professional HTML health report.
 
-**IMPORTANT:** Never use the word "Realm" anywhere in the output. The report title should be "N1 Care Report".
+**IMPORTANT:** Never use the word "Realm" anywhere in the output. Do NOT generate a report title or hero/branding section — the template header (`.report-header`) already contains the n1.care logo, title, and date.
 
 ---
 
@@ -400,4 +400,4 @@ Output ONLY the complete HTML file:
 
 If any count is less than N, you have dropped data. Go back and add the missing items before outputting.
 
-**Render the N1 Care Report now by filling the template with data from structured_data.json.**
+**Render the report now by filling the template placeholders with data from structured_data.json. The header and footer are already in the template — only fill `{{SECTION:*}}` content areas.**
