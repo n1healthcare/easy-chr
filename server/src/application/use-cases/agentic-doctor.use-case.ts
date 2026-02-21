@@ -1305,7 +1305,7 @@ ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}`;
     // ========================================================================
     startSpan(PipelinePhase.HtmlGeneration);
     yield { type: 'step', name: 'Report Generation', status: 'running' };
-    yield { type: 'log', message: 'Building your n1.care CHR report...' };
+    yield { type: 'log', message: 'Building your health intelligence report...' };
 
     const realmId = sessionId;
     const realmPath = LegacyPaths.realm(realmId);
