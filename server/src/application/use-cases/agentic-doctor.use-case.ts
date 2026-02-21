@@ -168,6 +168,7 @@ function createTemplateInstructions(reportTemplate: string): string {
 ### Report Template (START FROM THIS — DO NOT GENERATE CSS)
 Work directly in this template. Replace each {{SECTION:*}} placeholder with generated HTML.
 Use the snippet library at the bottom of the template for correct HTML structures.
+- The header (.report-header) with logo and title is already built — do NOT regenerate or duplicate it
 - For JSON fields with data: replace the matching placeholder with rendered HTML
 - For JSON fields without data: replace the placeholder with empty string
 - Generate Plotly JavaScript for charts and place in {{CHARTS_INIT}}
@@ -1304,7 +1305,7 @@ ${prompt ? `### Patient's Question/Context\n${prompt}\n\n` : ''}`;
     // ========================================================================
     startSpan(PipelinePhase.HtmlGeneration);
     yield { type: 'step', name: 'Report Generation', status: 'running' };
-    yield { type: 'log', message: 'Building your n1.care CHR report...' };
+    yield { type: 'log', message: 'Building your health intelligence report...' };
 
     const realmId = sessionId;
     const realmPath = LegacyPaths.realm(realmId);

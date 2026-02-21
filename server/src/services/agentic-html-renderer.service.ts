@@ -413,6 +413,8 @@ export class AgenticHtmlRenderer {
 ${feedbackBlock}
 ${sectionSummary}
 
+IMPORTANT: The template header (.report-header) with the n1.care logo and report title is already built. Do NOT generate any title, hero, or branding section — only fill {{SECTION:*}} content areas.
+
 Start by calling get_render_progress() to see the current state, then render each section:
 1. For EACH section: call get_section_data(jsonField) to retrieve the data, then call render_section() or render_items()
 2. For array sections with enforced completeness (criticalFindings→CRITICAL_FINDINGS, timeline→TIMELINE, diagnoses→DIAGNOSES, trends→TRENDS): you MUST render ALL items
